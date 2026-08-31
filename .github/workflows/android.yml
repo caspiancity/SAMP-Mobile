@@ -29,18 +29,49 @@ jobs:
           
           cp -r . /tmp/mnt_casefold/ci_workspace/
 
-      - name: Fix Duplicate Native Libraries (.so)
+      - name: Patch Native Library Rules (Safely)
         run: |
-          # Dublikat libbass.so və digər native faylların xəta yaratmasının qarşısını alırıq
-          cat << 'EOF' >> /tmp/mnt_casefold/ci_workspace/app/build.gradle
+          python3 -c '
+          import os
 
-          android {
-              packagingOptions {
-                  pickFirst '**/libbass.so'
-                  pickFirst '**/lib*.so'
+          base_dir = "/tmp/mnt_casefold/ci_workspace/app"
+          groovy_file = os.path.join(base_dir, "build.gradle")
+          kotlin_file = os.path.join(base_dir, "build.gradle.kts")
+
+          if os.path.exists(kotlin_file):
+              target = kotlin_file
+              rule = """
+              packaging {
+                  jniLibs {
+                      pickFirsts.add("**/libbass.so")
+                      pickFirsts.add("**/lib*.so")
+                  }
               }
-          }
-          EOF
+              """
+          elif os.path.exists(groovy_file):
+              target = groovy_file
+              rule = """
+              packagingOptions {
+                  pickFirst "**/libbass.so"
+                  pickFirst "**/lib*.so"
+              }
+              """
+          else:
+              raise FileNotFoundError("Build faylı tapılmadı!")
+
+          with open(target, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          if "android {" in content:
+              content = content.replace("android {", "android {\n" + rule, 1)
+          else:
+              content += f"\nandroid {{\n{rule}\n}}\n"
+
+          with open(target, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print(f"Uğurla patch edildi: {target}")
+          '
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

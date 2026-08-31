@@ -236,9 +236,9 @@ void UI::renderSpeedometer()
     CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     if (!pPed || !pPed->IsInVehicle()) return;
 
-    // 1. Sürəti hesabla (Xətalı GetMoveSpeedVector əvəzinə GetMoveSpeed istifadə olunur)
+    // 1. Sürəti hesabla (GetMoveSpeedVector funksiyasında type mismatch (CVector <-> VECTOR) xətası olurdu, cast edərək fixlədik)
     CVector vecMoveSpeed = { 0.0f, 0.0f, 0.0f };
-    pPed->GetMoveSpeed(&vecMoveSpeed);
+    pPed->GetMoveSpeedVector((VECTOR*)&vecMoveSpeed);
 
     float fRealSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + 
                              vecMoveSpeed.y * vecMoveSpeed.y + 
@@ -255,7 +255,7 @@ void UI::renderSpeedometer()
     ImVec2 display = ImGui::GetIO().DisplaySize;
     float windowWidth = ScaleX(130.0f);
     float windowHeight = ScaleY(130.0f);
-    
+
     float posX = (display.x * 0.5f) + ScaleX(70.0f); // Ortadan sağa sürüşdürmə
     float posY = display.y - ScaleY(150.0f);        // Alt hissə
 
@@ -277,7 +277,7 @@ void UI::renderSpeedometer()
     // 135 dərəcədən (sol alt) 405 dərəcəyə (sağ alt) qədər 270 dərəcəlik qövs
     float startAngle = 135.0f * (3.14159265f / 180.0f);
     float endAngle   = 405.0f * (3.14159265f / 180.0f);
-    
+
     float maxSpeed = 240.0f; // Maksimum spidometr limiti
     float currentSpeedRatio = std::min(fDisplaySpeed / maxSpeed, 1.0f);
     float currentAngle = startAngle + (endAngle - startAngle) * currentSpeedRatio;

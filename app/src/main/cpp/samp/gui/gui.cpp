@@ -17,11 +17,16 @@
 #include "game/Pools.h"
 #include "../java/jniutil.h"
 #include "obfuscate/str_obfuscator.hpp"
+#include "../settings.h"
+
+#include <cmath>
 
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
 extern CJavaWrapper* pJavaWrapper;
+extern CGame *pGame;
+extern CSettings* pSettings;
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
         : Widget(), ImGuiWrapper(display_size, font_path)
@@ -112,6 +117,9 @@ void UI::render()
 
     renderDebug();
 
+    renderSpeedometer();
+    renderCKDialog();
+
     ProcessPushedTextdraws();
 
     if (m_bNeedClearMousePos) {
@@ -191,10 +199,6 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
     return true;
 }
 
-#include "../settings.h"
-extern CGame *pGame;
-extern CSettings* pSettings;
-
 void UI::renderDebug()
 {
     if (m_debugInfo)
@@ -222,4 +226,70 @@ void UI::ProcessPushedTextdraws()
         pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bs, HIGH_PRIORITY, RELIABLE_SEQUENCED, 0, false, UNASSIGNED_NETWORK_ID, 0);
         m_BufferedCommandTextdraws.ReadUnlock();
     }
+}
+
+void UI::renderSpeedometer()
+{
+    if (!pNetGame || !pNetGame->GetPlayerPool() || !pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
+
+    CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
+    if (!pPed || !pPed->IsInVehicle()) return;
+
+    VEHICLE_TYPE* pVeh = pPed->GetGtaVehicle();
+    if (!pVeh) return;
+
+    CVector vecMoveSpeed;
+    pPed->GetStuffFromVehicle(&vecMoveSpeed);
+    float fSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + vecMoveSpeed.y * vecMoveSpeed.y + vecMoveSpeed.z * vecMoveSpeed.z) * 180.0f;
+
+    float fHealth = pPed->GetVehicleHealth();
+    int healthPercent = (int)(fHealth / 10.0f);
+    if (healthPercent > 100) healthPercent = 100;
+    if (healthPercent < 0) healthPercent = 0;
+
+    int fuelPercent = 85;
+
+    ImGui::SetNextWindowPos(ImVec2(displaySize().x - ScaleX(320), displaySize().y - ScaleY(180)), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(ScaleX(300), ScaleY(150)), ImGuiCond_Always);
+
+    ImGui::Begin("Speedometer", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground);
+
+    ImGui::SetWindowFontScale(1.4f);
+    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "SPEED: %.0f KM/H", fSpeed);
+
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "HP: %d%%", healthPercent);
+    ImGui::ProgressBar(healthPercent / 100.0f, ImVec2(ScaleX(280), ScaleY(15)), "");
+
+    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.1f, 1.0f), "FUEL: %d%%", fuelPercent);
+    ImGui::ProgressBar(fuelPercent / 100.0f, ImVec2(ScaleX(280), ScaleY(15)), "");
+
+    ImGui::End();
+}
+
+void UI::renderCKDialog()
+{
+    if (!m_bCKDialogVisible) return;
+
+    ImGui::SetNextWindowPos(ImVec2(displaySize().x * 0.5f - ScaleX(250), displaySize().y * 0.5f - ScaleY(200)), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(ScaleX(500), ScaleY(400)), ImGuiCond_FirstUseEver);
+
+    ImGui::Begin("Client Komandaları Siyahısı (/ck)", &m_bCKDialogVisible, ImGuiWindowFlags_NoCollapse);
+
+    ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "Mövcud Client Əmrləri:");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::BulletText("/ck - Bu komanda siyahısı pəncərəsini açır");
+    ImGui::BulletText("/headlight [r] [g] [b] - Faraların rəngini dəyişir");
+    ImGui::BulletText("/handling [speed/accel/brake] [dəyər] - Avtomobil parametri dəyişir");
+    ImGui::BulletText("/fpscam - Birinci şəxs (FPS) kamerasını açır/bağlayır");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    if (ImGui::Button("Bağla", ImVec2(ScaleX(100), ScaleY(35)))) {
+        m_bCKDialogVisible = false;
+    }
+
+    ImGui::End();
 }

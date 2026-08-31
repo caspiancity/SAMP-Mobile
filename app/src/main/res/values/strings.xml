@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">GTA 2.11</string>
-    <string name="play_bth">START!</string>
+    <string name="app_name">APACHE</string>
+    <string name="play_bth">BAŞLA!</string>
     <string name="samp_ver">SA:MP 0.3.7</string>
     <string name="client_name">SA:MP 2.11 </string>
     <string name="bug_info">Found a bug? Report it, and I\'ll fix it!</string>
-    <string name="authors">thanks to bkuzn and afobazl</string>
+    <string name="authors">bu hələ başlanğıcdır..</string>
     <string name="downloaderAssetsHeader">Preparing assets:</string>
     <string name="downloaderError">Error</string>
     <string name="downloaderNoData">Game Data was either not installed or was deleted. Please connect to the internet and relaunch so it can download!</string>

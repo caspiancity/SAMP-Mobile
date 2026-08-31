@@ -17,19 +17,24 @@ jobs:
 
       - name: Setup Case-Insensitive Native ext4 Workspace
         run: |
-          # 4 GB həcmində virtual diski yaradılır
+          # 4 GB həcmində virtual diski yaradırıq
           dd if=/dev/zero of=/tmp/casefold.img bs=1M count=4096
           mkfs.ext4 -O casefold /tmp/casefold.img
           
-          mkdir -p /tmp/ci_workspace
-          sudo mount -o loop /tmp/casefold.img /tmp/ci_workspace
-          sudo chown -R $USER:$USER /tmp/ci_workspace
+          # Diski /tmp/mnt_casefold ünvanına bağlayırıq (ana qovluq)
+          mkdir -p /tmp/mnt_casefold
+          sudo mount -o loop /tmp/casefold.img /tmp/mnt_casefold
+          sudo chown -R $USER:$USER /tmp/mnt_casefold
           
-          # Boş qovluğa böyük-kiçik hərf həssaslığını ləğv edən attribut verilir
-          chattr +F /tmp/ci_workspace
+          # Ana qovluğun içində lost+found olduğu üçün boş DEYİL.
+          # Buna görə içəridə tamamilə boş olan yeni alt qovluq yaradırıq:
+          mkdir -p /tmp/mnt_casefold/ci_workspace
           
-          # Layihə faylları kopyalanır
-          cp -r . /tmp/ci_workspace/
+          # Böyük-kiçik hərf həssaslığını (casefold) sadəcə bu boş alt qovluğa tətbiq edirik
+          chattr +F /tmp/mnt_casefold/ci_workspace
+          
+          # Layihə fayllarını artıq təhlükəsiz şəkildə həmin qovluğa kopyalayırıq
+          cp -r . /tmp/mnt_casefold/ci_workspace/
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -42,7 +47,8 @@ jobs:
 
       - name: Build APK with Gradle
         run: |
-          cd /tmp/ci_workspace
+          # DİQQƏT: İş sahəsi artıq mnt_casefold/ci_workspace altındadır
+          cd /tmp/mnt_casefold/ci_workspace
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
@@ -50,4 +56,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SA-MP-Mobile-Debug
-          path: /tmp/ci_workspace/app/build/outputs/apk/debug/*.apk
+          path: /tmp/mnt_casefold/ci_workspace/app/build/outputs/apk/debug/*.apk

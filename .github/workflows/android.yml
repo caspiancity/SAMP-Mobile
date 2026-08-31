@@ -1,52 +1,45 @@
-name: Build SAMP Mobile (GTA 2.11)
+name: Build SA-MP Mobile APK
 
 on:
   push:
-    branches:
-      - GTA-2.11 # Əgər kodun başqa branch-dədirsə, adını dəyiş (məs: main)
+    branches: [ "GTA-2.11", "main" ]
   pull_request:
-    branches:
-      - GTA-2.11
-  workflow_dispatch: # Actions panelindən əllə (manual) başlatmaq üçün
+    branches: [ "GTA-2.11" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Repodakı kodu GitHub runner-ə yükləyirik
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    # 2. Java mühitini quraşdırırıq (Kuzia15 layihələri üçün JDK 17 uyğundur)
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+      - name: Setup Case-Insensitive Filesystem (ciopfs)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ciopfs
+          mkdir -p /tmp/raw_data /tmp/ci_workspace
+          ciopfs /tmp/raw_data /tmp/ci_workspace
+          cp -r . /tmp/ci_workspace/
 
-    # 3. Gradle keşləməsini aktiv edirik (Növbəti build-lərin sürətli olması üçün)
-    - name: Setup Gradle Cache
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    # 4. Gradlew skriptinə icra icazəsi veririk
-    - name: Grant Execute Permission for Gradlew
-      run: chmod +x gradlew
+      - name: Setup Android SDK & NDK
+        uses: android-actions/setup-android@v3
 
-    # 5. APK və lazımi .so kitabxanalarını (SO files) build edirik
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      - name: Build APK with Gradle
+        run: |
+          cd /tmp/ci_workspace
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
-    # 6. Hazır olan APK faylını GitHub-dan yükləyə bilmək üçün Artifact kimi saxlayırıq
-    - name: Upload Output APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: SAMP-2.11-Debug-APK
-        path: app/build/outputs/apk/debug/*.apk
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SA-MP-Mobile-Debug
+          path: /tmp/ci_workspace/app/build/outputs/apk/debug/*.apk

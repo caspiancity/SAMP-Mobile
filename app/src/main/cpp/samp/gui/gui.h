@@ -84,6 +84,11 @@ public:
     void ProcessPushedTextdraws();
     void PushToBufferedQueueTextDrawPressed(uint16_t textdrawId);
 
+    void renderSpeedometer();
+    void renderCKDialog();
+    void ToggleCKDialog(bool toggle) { m_bCKDialogVisible = toggle; }
+    bool IsCKDialogVisible() const { return m_bCKDialogVisible; }
+
 protected:
     void drawList() override;
 
@@ -108,4 +113,6 @@ private:
     DataStructures::SingleProducerConsumer<BUFFERED_COMMAND_TEXTDRAW> m_BufferedCommandTextdraws;
 
     CDebugInfo* m_debugInfo = nullptr;
+
+    bool m_bCKDialogVisible = false;
 };

@@ -20,6 +20,7 @@
 #include "../settings.h"
 
 #include <cmath>
+#include <algorithm>
 
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
@@ -235,39 +236,78 @@ void UI::renderSpeedometer()
     CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     if (!pPed || !pPed->IsInVehicle()) return;
 
+    // 1. Sürəti hesabla (Xətalı GetMoveSpeedVector əvəzinə GetMoveSpeed istifadə olunur)
     CVector vecMoveSpeed = { 0.0f, 0.0f, 0.0f };
-    pPed->GetMoveSpeedVector(&vecMoveSpeed);
-    float fSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + vecMoveSpeed.y * vecMoveSpeed.y + vecMoveSpeed.z * vecMoveSpeed.z) * 180.0f;
+    pPed->GetMoveSpeed(&vecMoveSpeed);
 
-    float fHealth = 1000.0f;
-    if (pNetGame->GetVehiclePool()) {
-        VEHICLEID vehId = pNetGame->GetPlayerPool()->GetLocalPlayer()->m_LastVehicleID;
-        CVehicle* pVeh = pNetGame->GetVehiclePool()->Get(vehId);
-        if (pVeh) {
-            fHealth = pVeh->GetHealth();
-        }
+    float fRealSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + 
+                             vecMoveSpeed.y * vecMoveSpeed.y + 
+                             vecMoveSpeed.z * vecMoveSpeed.z) * 180.0f;
+
+    // 2. Sürətin 1-ər 1-ər axıcı (smooth) artması üçün interpolation (lerp)
+    static float fDisplaySpeed = 0.0f;
+    float deltaTime = ImGui::GetIO().DeltaTime;
+    fDisplaySpeed += (fRealSpeed - fDisplaySpeed) * std::min(1.0f, deltaTime * 10.0f);
+
+    if (fDisplaySpeed < 0.1f) fDisplaySpeed = 0.0f;
+
+    // 3. Konumlandırma (Ekranın alt ortasından bir az sağda)
+    ImVec2 display = ImGui::GetIO().DisplaySize;
+    float windowWidth = ScaleX(130.0f);
+    float windowHeight = ScaleY(130.0f);
+    
+    float posX = (display.x * 0.5f) + ScaleX(70.0f); // Ortadan sağa sürüşdürmə
+    float posY = display.y - ScaleY(150.0f);        // Alt hissə
+
+    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
+
+    ImGui::Begin("ModernSpeedometer", nullptr, 
+        ImGuiWindowFlags_NoDecoration | 
+        ImGuiWindowFlags_NoInputs | 
+        ImGuiWindowFlags_NoBackground |
+        ImGuiWindowFlags_NoSavedSettings);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 center = ImVec2(posX + windowWidth * 0.5f, posY + windowHeight * 0.5f);
+    float radius = ScaleX(45.0f);
+    float thickness = ScaleX(5.0f);
+
+    // 4. Dairəvi Qırmızı Bar (Arc) Hesablaması
+    // 135 dərəcədən (sol alt) 405 dərəcəyə (sağ alt) qədər 270 dərəcəlik qövs
+    float startAngle = 135.0f * (3.14159265f / 180.0f);
+    float endAngle   = 405.0f * (3.14159265f / 180.0f);
+    
+    float maxSpeed = 240.0f; // Maksimum spidometr limiti
+    float currentSpeedRatio = std::min(fDisplaySpeed / maxSpeed, 1.0f);
+    float currentAngle = startAngle + (endAngle - startAngle) * currentSpeedRatio;
+
+    // Dairəvi Bar - Arxa fon (Tünd boz halqa)
+    drawList->PathArcTo(center, radius, startAngle, endAngle, 36);
+    drawList->PathStroke(IM_COL32(40, 42, 50, 160), 0, thickness);
+
+    // Dairəvi Bar - Sürət artdıqca dolan Qırmızı Bar
+    if (fDisplaySpeed > 0.5f) {
+        drawList->PathArcTo(center, radius, startAngle, currentAngle, 36);
+        drawList->PathStroke(IM_COL32(235, 45, 50, 240), 0, thickness);
     }
 
-    int healthPercent = (int)(fHealth / 10.0f);
-    if (healthPercent > 100) healthPercent = 100;
-    if (healthPercent < 0) healthPercent = 0;
+    // 5. Sürət Mətni (000 formatında, boz-ağ rəngdə)
+    char speedStr[16];
+    snprintf(speedStr, sizeof(speedStr), "%03d", (int)roundf(fDisplaySpeed));
 
-    int fuelPercent = 85;
+    ImGui::SetWindowFontScale(1.3f);
+    ImVec2 textSize = ImGui::CalcTextSize(speedStr);
 
-    ImGui::SetNextWindowPos(ImVec2(displaySize().x - ScaleX(320), displaySize().y - ScaleY(180)), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(ScaleX(300), ScaleY(150)), ImGuiCond_Always);
+    // "000" rəqəmini tam mərkəzə düzləndirmə
+    ImGui::SetCursorPos(ImVec2((windowWidth - textSize.x) * 0.5f, (windowHeight - textSize.y) * 0.5f - ScaleY(6.0f)));
+    ImGui::TextColored(ImVec4(0.88f, 0.90f, 0.92f, 1.0f), "%s", speedStr);
 
-    ImGui::Begin("Speedometer", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground);
-
-    ImGui::SetWindowFontScale(1.4f);
-    ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "SPEED: %.0f KM/H", fSpeed);
-
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "HP: %d%%", healthPercent);
-    ImGui::ProgressBar(healthPercent / 100.0f, ImVec2(ScaleX(280), ScaleY(15)), "");
-
-    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.1f, 1.0f), "FUEL: %d%%", fuelPercent);
-    ImGui::ProgressBar(fuelPercent / 100.0f, ImVec2(ScaleX(280), ScaleY(15)), "");
+    // Mərkəzdən aşağı kiçik "KM/H" etiketi
+    ImGui::SetWindowFontScale(0.65f);
+    ImVec2 kmhSize = ImGui::CalcTextSize("KM/H");
+    ImGui::SetCursorPos(ImVec2((windowWidth - kmhSize.x * 0.65f) * 0.5f, (windowHeight * 0.5f) + ScaleY(12.0f)));
+    ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.60f, 0.75f), "KM");
 
     ImGui::End();
 }

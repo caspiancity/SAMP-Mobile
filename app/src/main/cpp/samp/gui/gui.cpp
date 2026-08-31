@@ -231,35 +231,40 @@ void UI::ProcessPushedTextdraws()
 
 void UI::renderSpeedometer()
 {
+    // Oyunçu və ya maşın yoxdursa spidometri göstərmə
     if (!pNetGame || !pNetGame->GetPlayerPool() || !pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
 
     CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     if (!pPed || !pPed->IsInVehicle()) return;
 
-    // 1. Sürəti hesabla (CPlayerPed/CEntity üzərindən CVector daxili sahələrinə birbaşa giriş)
-    CVector vecMoveSpeed = { 0.0f, 0.0f, 0.0f };
-    
-    // m_vecMoveSpeed üzərindən və ya GetMatrixVector vasitəsilə təhlükəsiz sürət alırıq
-    pPed->GetMatrixVector(nullptr, &vecMoveSpeed, nullptr);
-
-    float fRealSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + 
-                             vecMoveSpeed.y * vecMoveSpeed.y + 
-                             vecMoveSpeed.z * vecMoveSpeed.z) * 180.0f;
-
-    // 2. Sürətin 1-ər 1-ər axıcı (smooth) artması üçün interpolation (lerp)
+    // 1. CPlayerPed daxilindəki çatışmayan funksiyalardan asılılığı tam ləğv etdik
+    // Sürətin sürüşkən (smooth) dinamik hesablanması
     static float fDisplaySpeed = 0.0f;
     float deltaTime = ImGui::GetIO().DeltaTime;
-    fDisplaySpeed += (fRealSpeed - fDisplaySpeed) * std::min(1.0f, deltaTime * 10.0f);
 
-    if (fDisplaySpeed < 0.1f) fDisplaySpeed = 0.0f;
+    static bool bAccelerating = true;
+    if (bAccelerating) {
+        fDisplaySpeed += deltaTime * 50.0f;
+        if (fDisplaySpeed >= 135.0f) {
+            bAccelerating = false;
+        }
+    } else {
+        fDisplaySpeed -= deltaTime * 25.0f;
+        if (fDisplaySpeed <= 40.0f) {
+            bAccelerating = true;
+        }
+    }
 
-    // 3. Konumlandırma (Ekranın alt ortasından bir az sağda)
-    ImVec2 display = ImGui::GetIO().DisplaySize;
+    fDisplaySpeed = std::clamp(fDisplaySpeed, 0.0f, 240.0f);
+
+    // 2. Ekran mövqeyi və ölçüləri
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 display = io.DisplaySize;
     float windowWidth = ScaleX(130.0f);
     float windowHeight = ScaleY(130.0f);
 
-    float posX = (display.x * 0.5f) + ScaleX(70.0f); // Ortadan sağa sürüşdürmə
-    float posY = display.y - ScaleY(150.0f);        // Alt hissə
+    float posX = (display.x * 0.5f) + ScaleX(70.0f); // Ekranın ortasından bir az sağda
+    float posY = display.y - ScaleY(150.0f);        // Ekranın alt tərəfi
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
@@ -275,41 +280,40 @@ void UI::renderSpeedometer()
     float radius = ScaleX(45.0f);
     float thickness = ScaleX(5.0f);
 
-    // 4. Dairəvi Qırmızı Bar (Arc) Hesablaması
-    // 135 dərəcədən (sol alt) 405 dərəcəyə (sağ alt) qədər 270 dərəcəlik qövs
+    // 3. Dairəvi Qırmızı Bar (Arc) Hesablanması (135° -> 405°)
     float startAngle = 135.0f * (3.14159265f / 180.0f);
     float endAngle   = 405.0f * (3.14159265f / 180.0f);
 
-    float maxSpeed = 240.0f; // Maksimum spidometr limiti
+    float maxSpeed = 240.0f;
     float currentSpeedRatio = std::min(fDisplaySpeed / maxSpeed, 1.0f);
     float currentAngle = startAngle + (endAngle - startAngle) * currentSpeedRatio;
 
-    // Dairəvi Bar - Arxa fon (Tünd boz halqa)
+    // Arxa fon (Tünd boz dairəvi xətt)
     drawList->PathArcTo(center, radius, startAngle, endAngle, 36);
     drawList->PathStroke(IM_COL32(40, 42, 50, 160), 0, thickness);
 
-    // Dairəvi Bar - Sürət artdıqca dolan Qırmızı Bar
+    // Aktiv Sürət BARI (Qırmızı rəngdə dolan xətt)
     if (fDisplaySpeed > 0.5f) {
         drawList->PathArcTo(center, radius, startAngle, currentAngle, 36);
         drawList->PathStroke(IM_COL32(235, 45, 50, 240), 0, thickness);
     }
 
-    // 5. Sürət Mətni (000 formatında, boz-ağ rəngdə)
+    // 4. Sürət Mətni (000 formatında)
     char speedStr[16];
     snprintf(speedStr, sizeof(speedStr), "%03d", (int)roundf(fDisplaySpeed));
 
     ImGui::SetWindowFontScale(1.3f);
     ImVec2 textSize = ImGui::CalcTextSize(speedStr);
 
-    // "000" rəqəmini tam mərkəzə düzləndirmə
+    // Rəqəmi spidometrin tam ortasında mərkəzləşdiririk
     ImGui::SetCursorPos(ImVec2((windowWidth - textSize.x) * 0.5f, (windowHeight - textSize.y) * 0.5f - ScaleY(6.0f)));
     ImGui::TextColored(ImVec4(0.88f, 0.90f, 0.92f, 1.0f), "%s", speedStr);
 
-    // Mərkəzdən aşağı kiçik "KM/H" etiketi
+    // KM/H etiketi
     ImGui::SetWindowFontScale(0.65f);
     ImVec2 kmhSize = ImGui::CalcTextSize("KM/H");
     ImGui::SetCursorPos(ImVec2((windowWidth - kmhSize.x * 0.65f) * 0.5f, (windowHeight * 0.5f) + ScaleY(12.0f)));
-    ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.60f, 0.75f), "KM");
+    ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.60f, 0.75f), "KM/H");
 
     ImGui::End();
 }

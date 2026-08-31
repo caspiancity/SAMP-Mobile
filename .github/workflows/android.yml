@@ -17,24 +17,30 @@ jobs:
 
       - name: Setup Case-Insensitive Native ext4 Workspace
         run: |
-          # 4 GB həcmində virtual diski yaradırıq
           dd if=/dev/zero of=/tmp/casefold.img bs=1M count=4096
           mkfs.ext4 -O casefold /tmp/casefold.img
           
-          # Diski /tmp/mnt_casefold ünvanına bağlayırıq (ana qovluq)
           mkdir -p /tmp/mnt_casefold
           sudo mount -o loop /tmp/casefold.img /tmp/mnt_casefold
           sudo chown -R $USER:$USER /tmp/mnt_casefold
           
-          # Ana qovluğun içində lost+found olduğu üçün boş DEYİL.
-          # Buna görə içəridə tamamilə boş olan yeni alt qovluq yaradırıq:
           mkdir -p /tmp/mnt_casefold/ci_workspace
-          
-          # Böyük-kiçik hərf həssaslığını (casefold) sadəcə bu boş alt qovluğa tətbiq edirik
           chattr +F /tmp/mnt_casefold/ci_workspace
           
-          # Layihə fayllarını artıq təhlükəsiz şəkildə həmin qovluğa kopyalayırıq
           cp -r . /tmp/mnt_casefold/ci_workspace/
+
+      - name: Fix Duplicate Native Libraries (.so)
+        run: |
+          # Dublikat libbass.so və digər native faylların xəta yaratmasının qarşısını alırıq
+          cat << 'EOF' >> /tmp/mnt_casefold/ci_workspace/app/build.gradle
+
+          android {
+              packagingOptions {
+                  pickFirst '**/libbass.so'
+                  pickFirst '**/lib*.so'
+              }
+          }
+          EOF
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -47,7 +53,6 @@ jobs:
 
       - name: Build APK with Gradle
         run: |
-          # DİQQƏT: İş sahəsi artıq mnt_casefold/ci_workspace altındadır
           cd /tmp/mnt_casefold/ci_workspace
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace

@@ -235,14 +235,19 @@ void UI::renderSpeedometer()
     CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     if (!pPed || !pPed->IsInVehicle()) return;
 
-    VEHICLE_TYPE* pVeh = pPed->GetGtaVehicle();
-    if (!pVeh) return;
-
-    CVector vecMoveSpeed;
-    pPed->GetStuffFromVehicle(&vecMoveSpeed);
+    CVector vecMoveSpeed = { 0.0f, 0.0f, 0.0f };
+    pPed->GetMoveSpeedVector(&vecMoveSpeed);
     float fSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + vecMoveSpeed.y * vecMoveSpeed.y + vecMoveSpeed.z * vecMoveSpeed.z) * 180.0f;
 
-    float fHealth = pPed->GetVehicleHealth();
+    float fHealth = 1000.0f;
+    if (pNetGame->GetVehiclePool()) {
+        VEHICLEID vehId = pNetGame->GetPlayerPool()->GetLocalPlayer()->m_LastVehicleID;
+        CVehicle* pVeh = pNetGame->GetVehiclePool()->Get(vehId);
+        if (pVeh) {
+            fHealth = pVeh->GetHealth();
+        }
+    }
+
     int healthPercent = (int)(fHealth / 10.0f);
     if (healthPercent > 100) healthPercent = 100;
     if (healthPercent < 0) healthPercent = 0;
@@ -274,20 +279,20 @@ void UI::renderCKDialog()
     ImGui::SetNextWindowPos(ImVec2(displaySize().x * 0.5f - ScaleX(250), displaySize().y * 0.5f - ScaleY(200)), ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(ScaleX(500), ScaleY(400)), ImGuiCond_FirstUseEver);
 
-    ImGui::Begin("Client Komandaları Siyahısı (/ck)", &m_bCKDialogVisible, ImGuiWindowFlags_NoCollapse);
+    ImGui::Begin("Client Komandalar Siyahisi (/ck)", &m_bCKDialogVisible, ImGuiWindowFlags_NoCollapse);
 
-    ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "Mövcud Client Əmrləri:");
+    ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "Movcud Client Emrleri:");
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::BulletText("/ck - Bu komanda siyahısı pəncərəsini açır");
-    ImGui::BulletText("/headlight [r] [g] [b] - Faraların rəngini dəyişir");
-    ImGui::BulletText("/handling [speed/accel/brake] [dəyər] - Avtomobil parametri dəyişir");
-    ImGui::BulletText("/fpscam - Birinci şəxs (FPS) kamerasını açır/bağlayır");
+    ImGui::BulletText("/ck - Bu komanda siyahisi penceresini acir");
+    ImGui::BulletText("/headlight [r] [g] [b] - Faralarin rengini deyisir");
+    ImGui::BulletText("/handling [speed/accel/brake] [deyer] - Avtomobil parametri deyisir");
+    ImGui::BulletText("/fpscam - Birinci sexs (FPS) kamerasini acir/baglayir");
 
     ImGui::Spacing();
     ImGui::Separator();
-    if (ImGui::Button("Bağla", ImVec2(ScaleX(100), ScaleY(35)))) {
+    if (ImGui::Button("Bagla", ImVec2(ScaleX(100), ScaleY(35)))) {
         m_bCKDialogVisible = false;
     }
 

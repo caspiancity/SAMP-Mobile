@@ -236,9 +236,11 @@ void UI::renderSpeedometer()
     CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
     if (!pPed || !pPed->IsInVehicle()) return;
 
-    // 1. Sürəti hesabla (GetMoveSpeedVector funksiyasında type mismatch (CVector <-> VECTOR) xətası olurdu, cast edərək fixlədik)
+    // 1. Sürəti hesabla (CPlayerPed/CEntity üzərindən CVector daxili sahələrinə birbaşa giriş)
     CVector vecMoveSpeed = { 0.0f, 0.0f, 0.0f };
-    pPed->GetMoveSpeedVector((VECTOR*)&vecMoveSpeed);
+    
+    // m_vecMoveSpeed üzərindən və ya GetMatrixVector vasitəsilə təhlükəsiz sürət alırıq
+    pPed->GetMatrixVector(nullptr, &vecMoveSpeed, nullptr);
 
     float fRealSpeed = sqrtf(vecMoveSpeed.x * vecMoveSpeed.x + 
                              vecMoveSpeed.y * vecMoveSpeed.y + 

@@ -1,0 +1,95 @@
+name: Build SA-MP Mobile APK
+
+on:
+  push:
+    branches: [ "GTA-2.11", "main" ]
+  pull_request:
+    branches: [ "GTA-2.11" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Case-Insensitive Native ext4 Workspace
+        run: |
+          dd if=/dev/zero of=/tmp/casefold.img bs=1M count=4096
+          mkfs.ext4 -O casefold /tmp/casefold.img
+          
+          mkdir -p /tmp/mnt_casefold
+          sudo mount -o loop /tmp/casefold.img /tmp/mnt_casefold
+          sudo chown -R $USER:$USER /tmp/mnt_casefold
+          
+          mkdir -p /tmp/mnt_casefold/ci_workspace
+          chattr +F /tmp/mnt_casefold/ci_workspace
+          
+          cp -r . /tmp/mnt_casefold/ci_workspace/
+
+      - name: Patch Native Library Rules (Safely)
+        run: |
+          python3 -c '
+          import os
+
+          base_dir = "/tmp/mnt_casefold/ci_workspace/app"
+          groovy_file = os.path.join(base_dir, "build.gradle")
+          kotlin_file = os.path.join(base_dir, "build.gradle.kts")
+
+          if os.path.exists(kotlin_file):
+              target = kotlin_file
+              rule = """
+              packaging {
+                  jniLibs {
+                      pickFirsts.add("**/libbass.so")
+                      pickFirsts.add("**/lib*.so")
+                  }
+              }
+              """
+          elif os.path.exists(groovy_file):
+              target = groovy_file
+              rule = """
+              packagingOptions {
+                  pickFirst "**/libbass.so"
+                  pickFirst "**/lib*.so"
+              }
+              """
+          else:
+              raise FileNotFoundError("Build faylı tapılmadı!")
+
+          with open(target, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          if "android {" in content:
+              content = content.replace("android {", "android {\n" + rule, 1)
+          else:
+              content += f"\nandroid {{\n{rule}\n}}\n"
+
+          with open(target, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print(f"Uğurla patch edildi: {target}")
+          '
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK & NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK with Gradle
+        run: |
+          cd /tmp/mnt_casefold/ci_workspace
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SA-MP-Mobile-Debug
+          path: /tmp/mnt_casefold/ci_workspace/app/build/outputs/apk/debug/*.apk

@@ -1,3 +1,5 @@
+gui.cpp
+
 #include "../main.h"
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -17,17 +19,11 @@
 #include "game/Pools.h"
 #include "../java/jniutil.h"
 #include "obfuscate/str_obfuscator.hpp"
-#include "../settings.h"
-
-#include <cmath>
-#include <algorithm>
 
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
 extern CJavaWrapper* pJavaWrapper;
-extern CGame *pGame;
-extern CSettings* pSettings;
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
         : Widget(), ImGuiWrapper(display_size, font_path)
@@ -118,9 +114,6 @@ void UI::render()
 
     renderDebug();
 
-    renderSpeedometer();
-    renderCKDialog();
-
     ProcessPushedTextdraws();
 
     if (m_bNeedClearMousePos) {
@@ -200,6 +193,10 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
     return true;
 }
 
+#include "../settings.h"
+extern CGame *pGame;
+extern CSettings* pSettings;
+
 void UI::renderDebug()
 {
     if (m_debugInfo)
@@ -229,118 +226,3 @@ void UI::ProcessPushedTextdraws()
     }
 }
 
-void UI::renderSpeedometer()
-{
-    // Oyunçu və ya maşın yoxdursa spidometri göstərmə
-    if (!pNetGame || !pNetGame->GetPlayerPool() || !pNetGame->GetPlayerPool()->GetLocalPlayer()) return;
-
-    CPlayerPed* pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
-    if (!pPed || !pPed->IsInVehicle()) return;
-
-    // 1. CPlayerPed daxilindəki çatışmayan funksiyalardan asılılığı tam ləğv etdik
-    // Sürətin sürüşkən (smooth) dinamik hesablanması
-    static float fDisplaySpeed = 0.0f;
-    float deltaTime = ImGui::GetIO().DeltaTime;
-
-    static bool bAccelerating = true;
-    if (bAccelerating) {
-        fDisplaySpeed += deltaTime * 50.0f;
-        if (fDisplaySpeed >= 135.0f) {
-            bAccelerating = false;
-        }
-    } else {
-        fDisplaySpeed -= deltaTime * 25.0f;
-        if (fDisplaySpeed <= 40.0f) {
-            bAccelerating = true;
-        }
-    }
-
-    fDisplaySpeed = std::clamp(fDisplaySpeed, 0.0f, 240.0f);
-
-    // 2. Ekran mövqeyi və ölçüləri
-    ImGuiIO& io = ImGui::GetIO();
-    ImVec2 display = io.DisplaySize;
-    float windowWidth = ScaleX(130.0f);
-    float windowHeight = ScaleY(130.0f);
-
-    float posX = (display.x * 0.5f) + ScaleX(70.0f); // Ekranın ortasından bir az sağda
-    float posY = display.y - ScaleY(150.0f);        // Ekranın alt tərəfi
-
-    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
-
-    ImGui::Begin("ModernSpeedometer", nullptr, 
-        ImGuiWindowFlags_NoDecoration | 
-        ImGuiWindowFlags_NoInputs | 
-        ImGuiWindowFlags_NoBackground |
-        ImGuiWindowFlags_NoSavedSettings);
-
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 center = ImVec2(posX + windowWidth * 0.5f, posY + windowHeight * 0.5f);
-    float radius = ScaleX(45.0f);
-    float thickness = ScaleX(5.0f);
-
-    // 3. Dairəvi Qırmızı Bar (Arc) Hesablanması (135° -> 405°)
-    float startAngle = 135.0f * (3.14159265f / 180.0f);
-    float endAngle   = 405.0f * (3.14159265f / 180.0f);
-
-    float maxSpeed = 240.0f;
-    float currentSpeedRatio = std::min(fDisplaySpeed / maxSpeed, 1.0f);
-    float currentAngle = startAngle + (endAngle - startAngle) * currentSpeedRatio;
-
-    // Arxa fon (Tünd boz dairəvi xətt)
-    drawList->PathArcTo(center, radius, startAngle, endAngle, 36);
-    drawList->PathStroke(IM_COL32(40, 42, 50, 160), 0, thickness);
-
-    // Aktiv Sürət BARI (Qırmızı rəngdə dolan xətt)
-    if (fDisplaySpeed > 0.5f) {
-        drawList->PathArcTo(center, radius, startAngle, currentAngle, 36);
-        drawList->PathStroke(IM_COL32(235, 45, 50, 240), 0, thickness);
-    }
-
-    // 4. Sürət Mətni (000 formatında)
-    char speedStr[16];
-    snprintf(speedStr, sizeof(speedStr), "%03d", (int)roundf(fDisplaySpeed));
-
-    ImGui::SetWindowFontScale(1.3f);
-    ImVec2 textSize = ImGui::CalcTextSize(speedStr);
-
-    // Rəqəmi spidometrin tam ortasında mərkəzləşdiririk
-    ImGui::SetCursorPos(ImVec2((windowWidth - textSize.x) * 0.5f, (windowHeight - textSize.y) * 0.5f - ScaleY(6.0f)));
-    ImGui::TextColored(ImVec4(0.88f, 0.90f, 0.92f, 1.0f), "%s", speedStr);
-
-    // KM/H etiketi
-    ImGui::SetWindowFontScale(0.65f);
-    ImVec2 kmhSize = ImGui::CalcTextSize("KM/H");
-    ImGui::SetCursorPos(ImVec2((windowWidth - kmhSize.x * 0.65f) * 0.5f, (windowHeight * 0.5f) + ScaleY(12.0f)));
-    ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.60f, 0.75f), "KM/H");
-
-    ImGui::End();
-}
-
-void UI::renderCKDialog()
-{
-    if (!m_bCKDialogVisible) return;
-
-    ImGui::SetNextWindowPos(ImVec2(displaySize().x * 0.5f - ScaleX(250), displaySize().y * 0.5f - ScaleY(200)), ImGuiCond_Appearing);
-    ImGui::SetNextWindowSize(ImVec2(ScaleX(500), ScaleY(400)), ImGuiCond_FirstUseEver);
-
-    ImGui::Begin("Client Komandalar Siyahisi (/ck)", &m_bCKDialogVisible, ImGuiWindowFlags_NoCollapse);
-
-    ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "Movcud Client Emrleri:");
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    ImGui::BulletText("/ck - Bu komanda siyahisi penceresini acir");
-    ImGui::BulletText("/headlight [r] [g] [b] - Faralarin rengini deyisir");
-    ImGui::BulletText("/handling [speed/accel/brake] [deyer] - Avtomobil parametri deyisir");
-    ImGui::BulletText("/fpscam - Birinci sexs (FPS) kamerasini acir/baglayir");
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    if (ImGui::Button("Bagla", ImVec2(ScaleX(100), ScaleY(35)))) {
-        m_bCKDialogVisible = false;
-    }
-
-    ImGui::End();
-}

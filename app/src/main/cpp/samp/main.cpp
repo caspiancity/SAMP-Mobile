@@ -254,7 +254,7 @@ void DoInitStuff()
 	{
 		//ReadSettingFile();
 
-		pNetGame = new CNetGame("94.23.168.153", 2305, pSettings->Get().szNickName, pSettings->Get().szPassword);
+		pNetGame = new CNetGame("54.38.117.76", 1309, pSettings->Get().szNickName, pSettings->Get().szPassword);
 		bNetworkInited = true;
 
         FLog("DoInitStuff end");

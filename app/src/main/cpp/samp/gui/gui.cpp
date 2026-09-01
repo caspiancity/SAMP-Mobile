@@ -1,5 +1,3 @@
-gui.cpp
-
 #include "../main.h"
 #include "../game/game.h"
 #include "../net/netgame.h"

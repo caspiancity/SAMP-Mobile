@@ -763,7 +763,7 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 		pVehiclePool->New(&VehicleInfo);
 		VehicleInfo.VehicleID++;
 		pVehiclePool->New(&VehicleInfo);
-	}*/
+	}
 
 	if (pVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
 	{

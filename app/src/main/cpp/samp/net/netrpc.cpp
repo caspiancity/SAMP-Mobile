@@ -740,7 +740,7 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 	if (VehicleInfo.iVehicleType < 400 || VehicleInfo.iVehicleType > 611) return;
 
 	pVehiclePool->New(&VehicleInfo);
-	CVehicle* pVehicle = pVehiclePool->GetAt(VehicleInfo.VehicleID);
+	/*CVehicle* pVehicle = pVehiclePool->GetAt(VehicleInfo.VehicleID);
 	if (!pVehicle) return;
 
 	bool bIsTrain = false;
@@ -763,9 +763,9 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 		pVehiclePool->New(&VehicleInfo);
 		VehicleInfo.VehicleID++;
 		pVehiclePool->New(&VehicleInfo);
-	}
+	}*/
 
-	if (pVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
+	/*if (pVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
 	{
 		for (int i = 0; i < 14; i++)
 		{
@@ -782,7 +782,7 @@ void WorldVehicleAdd(RPCParameters* rpcParams)
 
 	if (VehicleInfo.iBodyColor1 != -1 || VehicleInfo.iBodyColor2 != -1) {
 		pVehicle->SetColor(VehicleInfo.iBodyColor1, VehicleInfo.iBodyColor2);
-	}
+	}*/
 }
 // 0.3.7
 void WorldVehicleRemove(RPCParameters* rpcParams)

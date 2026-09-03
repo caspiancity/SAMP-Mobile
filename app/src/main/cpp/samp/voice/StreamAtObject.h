@@ -28,3 +28,4 @@ private:
 
 using StreamAtObjectPtr = std::unique_ptr<StreamAtObject>;
 #define MakeStreamAtObject std::make_unique<StreamAtObject>
+

@@ -52,3 +52,4 @@ CAnimBlendAssociation* RpAnimBlendGetNextAssociation(CAnimBlendAssociation* asso
 CAnimBlendAssociation* RpAnimBlendGetNextAssociation(CAnimBlendAssociation* association, uint32 flags);
 void RpAnimBlendKeyFrameInterpolate(void* voidOut, void* voidIn1, void* voidIn2, float time, void* customData);
 void* RtAnimBlendKeyFrameApply(void* result, void* frame);
+

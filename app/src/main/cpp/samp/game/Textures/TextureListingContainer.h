@@ -21,3 +21,4 @@ public:
 };
 VALIDATE_SIZE(TextureListingContainer, (VER_x32 ? 0x11 : 0x15));
 
+

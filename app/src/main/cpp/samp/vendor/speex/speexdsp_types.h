@@ -124,3 +124,4 @@
 #endif
 
 #endif  /* _SPEEX_TYPES_H */
+

@@ -72,3 +72,4 @@ public:
     static float  GetTimeStepInSeconds() { return ms_fTimeStep / TIMESTEP_PER_SECOND; }
     static float  GetTimeStepInMS() { return GetTimeStepInSeconds() * 1000.0f; } // pattern: CTimer::ms_fTimeStep * 0.02f * 1000.0f
 };
+

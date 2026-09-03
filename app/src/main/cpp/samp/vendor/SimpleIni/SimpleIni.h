@@ -3375,3 +3375,4 @@ typedef CSimpleIniTempl<wchar_t,
 
 #endif // INCLUDED_SimpleIni_h
 
+

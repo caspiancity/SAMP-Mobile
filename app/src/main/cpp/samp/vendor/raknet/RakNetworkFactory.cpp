@@ -48,3 +48,4 @@ void RakNetworkFactory::DestroyRakPeerInterface( RakPeerInterface* i )
 {
 	delete ( RakPeer* ) i;
 }
+

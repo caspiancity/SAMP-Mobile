@@ -37,3 +37,4 @@ extern unsigned int RAK_DLL_EXPORT randomMT( void );
 extern float RAK_DLL_EXPORT frandomMT( void );
 
 #endif
+

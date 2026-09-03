@@ -45,3 +45,4 @@ void CPtrListSingleLink::DeleteNode(CPtrNodeSingleLink* node, CPtrNodeSingleLink
 
     delete node;
 }
+

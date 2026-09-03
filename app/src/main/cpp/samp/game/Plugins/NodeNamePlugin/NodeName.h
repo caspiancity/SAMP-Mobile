@@ -61,3 +61,4 @@ _NODENAMEPLUGINAPI RwChar const* GetFrameNodeName(RwFrame* frame);
  * @addr    0x72FB00
  */
 _NODENAMEPLUGINAPI void SetFrameNodeName(RwFrame* frame, const RwChar* name);
+

@@ -150,3 +150,4 @@ _rwStringStreamFindAndRead(RwChar *string, RwStream * stream);
 #ifdef    __cplusplus
 }
 #endif                          /* __cplusplus */
+

@@ -24,3 +24,4 @@ public:
     [[nodiscard]] static uint32 GetKey(const char* str, int32 size);
     [[nodiscard]] static uint32 GetUppercaseKey(const char* str);
 };
+

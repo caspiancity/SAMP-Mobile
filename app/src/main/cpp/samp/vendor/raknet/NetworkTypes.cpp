@@ -179,3 +179,4 @@ void NetworkID::SetPeerToPeerMode(bool isPeerToPeer)
 {
 	peerToPeerMode=isPeerToPeer;
 }
+

@@ -986,3 +986,4 @@ static const char* GetTaskTypeName(eTaskType taskType) {
     }
 #undef CASE_FOR
 }
+

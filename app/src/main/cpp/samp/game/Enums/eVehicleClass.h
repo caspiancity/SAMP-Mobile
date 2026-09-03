@@ -24,3 +24,4 @@ enum eVehicleClass : int8_t {
 
 
 #endif //LIVERUSSIA_EVEHICLECLASS_H
+

@@ -18,3 +18,4 @@ public:
 };
 
 VALIDATE_SIZE(CQueuedMode, 0xC);
+

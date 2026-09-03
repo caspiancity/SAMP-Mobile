@@ -127,3 +127,4 @@ bool CVoiceRender::initStatus {false };
 std::vector<CVoiceRender::DeviceInitCallback> CVoiceRender::deviceInitCallbacks;
 std::vector<CVoiceRender::RenderCallback> CVoiceRender::renderCallbacks;
 std::vector<CVoiceRender::DeviceFreeCallback> CVoiceRender::deviceFreeCallbacks;
+

@@ -52,3 +52,4 @@ public:
     static void SetupVehicleVariables(RpClump* clump);
 };
 
+

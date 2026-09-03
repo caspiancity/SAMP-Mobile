@@ -47,3 +47,4 @@ public:
     bool IsTouched(CVector2D *pVecOut);
 };
 VALIDATE_SIZE(CWidgetGta, (VER_x32 ? 0x90 : 0xA8));
+

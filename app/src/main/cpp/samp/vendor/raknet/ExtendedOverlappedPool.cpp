@@ -65,3 +65,4 @@ void ExtendedOverlappedPool::ReleasePointer( ExtendedOverlappedStruct *p )
 #endif
 
 */
+

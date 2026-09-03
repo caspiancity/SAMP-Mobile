@@ -34,3 +34,4 @@ public:
     static std::vector<LoadCallback> loadCallbacks;
     static std::vector<ExitCallback> exitCallbacks;
 };
+

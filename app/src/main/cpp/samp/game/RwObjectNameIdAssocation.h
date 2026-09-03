@@ -87,3 +87,4 @@ public:
 };
 
 VALIDATE_SIZE(RwObjectNameIdAssocation, (VER_x32 ? 0xC : 0x10));
+

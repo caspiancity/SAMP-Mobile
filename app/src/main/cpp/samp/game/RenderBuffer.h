@@ -91,3 +91,4 @@ inline int32 uiTempBufferVerticesStored;
 inline RxVertexIndex aTempBufferIndices[TOTAL_TEMP_BUFFER_INDICES];
 inline TempVertexBuffer TempBufferVertices;
 inline RwD3D9Vertex aRadiosityVertexBuffer[TOTAL_RADIOSITY_VERTEX_BUFFER];
+

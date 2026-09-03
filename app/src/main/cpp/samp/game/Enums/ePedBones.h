@@ -50,3 +50,4 @@ enum ePedBones : int16 {
 
     BONE_NUM = 303
 };
+

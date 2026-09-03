@@ -21,3 +21,4 @@ public:
     static void UpdateDayNightBalanceParam();
     static void Update();
 };
+

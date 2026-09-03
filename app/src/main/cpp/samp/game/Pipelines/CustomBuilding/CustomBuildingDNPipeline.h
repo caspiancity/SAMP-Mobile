@@ -11,3 +11,4 @@ public:
 public:
     static void InjectHooks();
 };
+

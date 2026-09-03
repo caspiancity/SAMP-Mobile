@@ -30,3 +30,4 @@ public:
 };
 
 VALIDATE_SIZE(CPtrNodeDoubleLink, (VER_x32 ? 0xC : 0x18));
+

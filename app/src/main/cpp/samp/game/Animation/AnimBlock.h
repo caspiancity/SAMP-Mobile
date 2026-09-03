@@ -21,3 +21,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlock, 0x20);
+

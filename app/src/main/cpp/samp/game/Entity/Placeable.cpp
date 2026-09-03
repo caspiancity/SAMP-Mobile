@@ -252,3 +252,4 @@ CPlaceable::~CPlaceable() {
 
     m_matrix = reinterpret_cast<CMatrixLink*>(&gDummyMatrix);
 }
+

@@ -45,3 +45,4 @@ public:
 };
 
 VALIDATE_SIZE(CBox, 0x18);
+

@@ -45,3 +45,4 @@ float CEvent::CalcSoundLevelIncrement(float level1, float level2) {
     level2 = std::powf(10.0f, level2 * 0.1f);
     return std::log10f((level1 + level2) / level1) * 10.0f;
 }
+

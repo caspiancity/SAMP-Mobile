@@ -20,3 +20,4 @@ public:
 };
 
 VALIDATE_SIZE(CEntryInfoNode, (VER_x32 ? 0x14 : 0x28));
+

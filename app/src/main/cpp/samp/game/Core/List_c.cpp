@@ -183,3 +183,4 @@ ListItem_c* List_c::GetItemOffset(bool bFromHead, int32 iOffset) {
         return result;
     }
 }
+

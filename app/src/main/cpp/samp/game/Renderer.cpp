@@ -12,3 +12,4 @@ void CRenderer::InjectHooks() {
     CHook::Write(g_libGTASA + 0x83A488, &ms_aVisibleEntityPtrs);
     CHook::Write(g_libGTASA + 0x83A438, &ms_nNoOfVisibleEntities);
 }
+

@@ -22,3 +22,4 @@ public:
     CTask*    Clone()       const override { return new CTaskComplexEnterCarAsDriver{*this}; }
 };
 VALIDATE_SIZE(CTaskComplexEnterCarAsDriver, (VER_x32 ? 0x50 : 0x70));
+

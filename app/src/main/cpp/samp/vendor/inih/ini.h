@@ -128,3 +128,4 @@ int ini_parse_string(const char* string, ini_handler handler, void* user);
 #endif
 
 #endif /* __INI_H__ */
+

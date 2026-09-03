@@ -69,3 +69,4 @@ CVector CompressFxVector(const CompressedVector& compressedVec) {
             static_cast<float>(compressedVec.z) * FX_RECIPROCAL
     };
 }
+

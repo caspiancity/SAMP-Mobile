@@ -58,3 +58,4 @@ public:
     }
 };
 VALIDATE_SIZE(CEvent, (VER_x32 ? 0xC : 0x10));
+

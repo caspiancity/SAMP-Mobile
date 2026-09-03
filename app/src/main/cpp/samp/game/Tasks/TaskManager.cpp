@@ -299,3 +299,4 @@ void CTaskManager::InjectHooks() {
 CTask *CTaskManager::FindActiveTaskByType(eTaskType taskType) {
     return CHook::CallFunction<CTask*>(g_libGTASA + 0x6842F0, this, taskType);
 }
+

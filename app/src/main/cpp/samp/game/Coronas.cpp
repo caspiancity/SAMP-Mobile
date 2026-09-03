@@ -55,3 +55,4 @@ void CCoronas::Init() {
 void CCoronas::Render() {
     CHook::CallFunction<void>(g_libGTASA + 0x5CE048 );
 }
+

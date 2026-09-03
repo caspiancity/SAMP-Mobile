@@ -56,3 +56,4 @@ auto CSphere::GetTransformed(const CMatrix& transform) const -> CSphere {
 auto TransformObject(const CSphere& sp, const CMatrix& transform) -> CSphere {
     return { transform * sp.m_vecCenter, sp.m_fRadius };
 }
+

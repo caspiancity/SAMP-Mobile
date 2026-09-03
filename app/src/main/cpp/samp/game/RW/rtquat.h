@@ -79,3 +79,4 @@ RtQuat* RtQuatRotate(RtQuat* quat, const RwV3d* axis, RwReal angle, RwOpCombineT
 const RtQuat* RtQuatQueryRotate(const RtQuat* quat, RwV3d* unitAxis, RwReal* angle); // 0x7EBA80
 RwV3d* RtQuatTransformVectors(RwV3d* vectorsOut, const RwV3d* vectorsIn, const RwInt32 numPoints, const RtQuat* quat); // 0x7EBBB0
 RwReal RtQuatModulus(RtQuat* q); // 0x7EBD10
+

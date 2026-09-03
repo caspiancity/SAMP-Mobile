@@ -100,3 +100,4 @@ void RenderBuffer::PushIndices(std::initializer_list<int32> idxs, bool useCurren
         PushIndex(idx, useCurrentVtxAsBase);
     }
 }
+

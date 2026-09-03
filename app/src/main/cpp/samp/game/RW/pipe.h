@@ -48,3 +48,4 @@ extern RwBool _rwPipeAttach(void);
 
 //extern void   _rwPipeInitForCamera(const RwCamera *camera);
 //#define rwPipeInitForCamera(_camera)  _rwPipeInitForCamera(_camera)
+

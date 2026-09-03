@@ -73,3 +73,4 @@ bool MicroIcon::hasShowed { false };
 RwTexture* MicroIcon::tPassiveIcon { nullptr };
 RwTexture* MicroIcon::tActiveIcon { nullptr };
 RwTexture* MicroIcon::tMutedIcon { nullptr };
+

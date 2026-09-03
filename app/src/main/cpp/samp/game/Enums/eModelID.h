@@ -14864,3 +14864,4 @@ enum eModelID : int32_t { // Number of entries: 14832
 inline bool IsModelIDForCutScene(eModelID modelId) {
     return modelId >= MODEL_CUTOBJ01 && modelId <= MODEL_CUTOBJ20;
 }
+

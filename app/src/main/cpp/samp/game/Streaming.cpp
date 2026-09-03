@@ -908,3 +908,4 @@ CLink<CEntityGTA*>* CStreaming::AddEntity(CEntityGTA* entity) {
 char *CStreaming::GetModelCDName(int32 index) {
     return CHook::CallFunction<char*>(g_libGTASA + 0x3AD8E4, index);
 }
+

@@ -233,3 +233,4 @@ CVector Multiply3x3(const CVector& v, const CMatrix& constm) {
             DotProduct(m.GetUp(), v)
     };
 }
+

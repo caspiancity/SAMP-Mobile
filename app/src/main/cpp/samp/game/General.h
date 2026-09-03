@@ -122,3 +122,4 @@ namespace CGeneral { // More like `Math` (Or `Meth`, given how bad the code is, 
     }
 
 };
+

@@ -26,3 +26,4 @@ public:
 };
 
 VALIDATE_SIZE(CRideAnimData, 0x1C);
+

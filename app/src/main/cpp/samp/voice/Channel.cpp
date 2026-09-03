@@ -153,3 +153,4 @@ void Channel::SetStopCallback(StopCallback stopCallback) noexcept
 {
     this->stopCallback = std::move(stopCallback);
 }
+

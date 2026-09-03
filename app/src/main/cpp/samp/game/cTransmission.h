@@ -37,3 +37,4 @@ public:
 
 };
 static_assert(sizeof(cTransmission) == 0x68, "Invalid size cTransmission");
+

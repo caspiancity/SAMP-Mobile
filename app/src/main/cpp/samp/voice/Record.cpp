@@ -676,3 +676,4 @@ std::vector<int> Record::deviceNumbersList;
 
 SpeexEchoState *Record::speexEchoState { NULL };
 SpeexPreprocessState *Record::speexPreprocessState { NULL };
+

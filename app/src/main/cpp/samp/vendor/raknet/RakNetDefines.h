@@ -19,3 +19,4 @@
 
 /// Maximum (stack) size to use with _alloca before using new and delete instead.
 #define MAX_ALLOCA_STACK_ALLOCATION 1048576
+

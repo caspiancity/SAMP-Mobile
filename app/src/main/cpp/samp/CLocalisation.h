@@ -19,3 +19,4 @@
 #define localisation_bad_mod "QOŞULMA RƏDD EDİLDİ: Səhv mod versiyası"
 #define localisation_bad_id "QOŞULMA RƏDD EDİLDİ: Boş slot yoxdur"
 #define localisation_bad_ver "QOŞULMA RƏDD EDİLDİ: Səhv versiya"
+

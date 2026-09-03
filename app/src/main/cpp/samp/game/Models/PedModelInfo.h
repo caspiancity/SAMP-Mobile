@@ -28,3 +28,4 @@ public:
 
 
 static_assert(sizeof(CPedModelInfo) == (VER_x32 ? 0x5c : 0x78));
+

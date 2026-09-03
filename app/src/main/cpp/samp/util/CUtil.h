@@ -32,3 +32,4 @@ public:
     static float GetDistanceBetween3DPoints(const RwV3d f, const RwV3d s);
 };
 
+

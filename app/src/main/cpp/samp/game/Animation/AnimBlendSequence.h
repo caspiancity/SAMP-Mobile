@@ -56,3 +56,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlendSequence, (VER_x32 ? 0xC : 0x10));
+

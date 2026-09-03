@@ -53,3 +53,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlendNode, (VER_x32 ? 0x18 : 0x20));
+

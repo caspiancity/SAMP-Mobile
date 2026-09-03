@@ -39,3 +39,4 @@ public:
     friend auto TransformObject(const CSphere& sp, const CMatrix& transform) -> CSphere;
 };
 VALIDATE_SIZE(CSphere, 0x10);
+

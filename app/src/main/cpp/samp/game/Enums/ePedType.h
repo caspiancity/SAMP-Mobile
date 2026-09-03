@@ -41,3 +41,4 @@ enum ePedType : int32_t
     PEDTYPE_LAST_PEDTYPE = 0x20,
 };
 
+

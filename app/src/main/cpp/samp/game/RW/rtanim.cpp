@@ -113,3 +113,4 @@ RwBool RtAnimInterpolatorBlendSubInterpolator(RtAnimInterpolator* outAnim, RtAni
 RwBool RtAnimInterpolatorAddSubInterpolator(RtAnimInterpolator* outAnim, RtAnimInterpolator* mainAnim, RtAnimInterpolator* subAnim) {
     return CHook::CallFunction<RwBool>(g_libGTASA + 0x787EEC, outAnim, mainAnim, subAnim);
 }
+

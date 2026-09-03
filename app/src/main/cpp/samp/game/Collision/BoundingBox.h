@@ -24,3 +24,4 @@ public:
 VALIDATE_SIZE(CBoundingBox, 0x18);
 
 static inline int32 numBBFailed = 0;
+

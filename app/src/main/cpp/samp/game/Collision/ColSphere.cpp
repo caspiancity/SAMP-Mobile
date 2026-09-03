@@ -83,3 +83,4 @@ auto TransformObject(const CColSphere& sp, const CMatrix& transform) -> CColSphe
             sp.m_Surface
     };
 }
+

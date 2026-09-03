@@ -95,3 +95,4 @@ static_assert(sizeof(KeyFrameCompressed)==0xA);
 static_assert(sizeof(KeyFrameTransCompressed)==0x10);
 static_assert(sizeof(KeyFrame)==0x14);
 static_assert(sizeof(KeyFrameTrans)==0x20);
+

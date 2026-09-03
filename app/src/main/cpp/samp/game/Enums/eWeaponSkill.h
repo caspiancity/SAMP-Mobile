@@ -6,3 +6,4 @@ enum class eWeaponSkill : uint8 {
     PRO,
     COP
 };
+

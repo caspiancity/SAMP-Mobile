@@ -17,3 +17,4 @@ struct AnimAssocDefinition {
     AnimDescriptor* animDesc{};
 };
 VALIDATE_SIZE(AnimAssocDefinition, (VER_x32 ? 0x30 : 0x38));
+

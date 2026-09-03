@@ -26,3 +26,4 @@ private:
     static std::atomic<time_t> timestamp;
 
 };
+

@@ -253,3 +253,4 @@ bool Playback::initStatus { false };
 bool Playback::loadStatus { false };
 
 HSTREAM Playback::deviceOutputChannel { NULL };
+

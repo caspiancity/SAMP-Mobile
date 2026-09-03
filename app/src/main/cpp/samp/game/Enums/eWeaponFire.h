@@ -14,3 +14,4 @@ enum eWeaponFire : uint32_t {
     WEAPON_FIRE_CAMERA,
     WEAPON_FIRE_USE
 };
+

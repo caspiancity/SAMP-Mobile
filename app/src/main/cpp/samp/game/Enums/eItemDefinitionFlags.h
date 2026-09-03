@@ -64,3 +64,4 @@ struct sItemDefinitionFlags {
     inline sItemDefinitionFlags(uint32 flags) : dwFlags(flags) {}
 };
 VALIDATE_SIZE(sItemDefinitionFlags, 0x4);
+

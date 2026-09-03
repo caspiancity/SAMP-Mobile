@@ -25,3 +25,4 @@ public:
 };
 
 VALIDATE_SIZE(CPtrListDoubleLink, (VER_x32 ? 0x4 : 0x8));
+

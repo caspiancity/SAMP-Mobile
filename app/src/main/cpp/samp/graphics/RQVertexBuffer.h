@@ -7,3 +7,4 @@
 struct RQVertexBuffer {
     uint32_t vtable;
 };
+

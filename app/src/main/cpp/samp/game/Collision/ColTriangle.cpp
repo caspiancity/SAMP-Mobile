@@ -33,3 +33,4 @@ auto CColTriangle::GetPoly(const CollisionVector* verts) const -> CStoredCollPol
             .ligthing = m_nLight,
     };
 }
+

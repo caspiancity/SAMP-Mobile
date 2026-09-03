@@ -34,3 +34,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlendAssocGroup, (VER_x32 ? 0x14 : 0x20));
+

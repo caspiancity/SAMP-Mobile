@@ -41,3 +41,4 @@ enum eVehicleHandlingFlags : uint32_t {
     VEHICLE_HANDLING_STREET_RACER       = 0x4000000,
     VEHICLE_HANDLING_SWINGING_CHASSIS   = 0x10000000
 };
+

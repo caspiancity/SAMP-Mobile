@@ -157,3 +157,4 @@ std::array<AnimAssocDefinition, NUM_ANIM_ASSOC_GROUPS> CAnimManager::ms_aAnimAss
                 {"nvadaplaneanims", "nevada",       MODEL_MALE01,  awc(aNevadaPlaneAnimations),   aCarAnimDescs1}
         });
 #undef awc
+

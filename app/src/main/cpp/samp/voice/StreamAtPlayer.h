@@ -30,3 +30,4 @@ private:
 
 using StreamAtPlayerPtr = std::unique_ptr<StreamAtPlayer>;
 #define MakeStreamAtPlayer std::make_unique<StreamAtPlayer>
+

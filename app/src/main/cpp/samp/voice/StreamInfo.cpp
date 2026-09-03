@@ -22,3 +22,4 @@ float StreamInfo::GetDistance() const noexcept
 {
     return this->distance;
 }
+

@@ -168,3 +168,4 @@ void speex_decorrelate_destroy(SpeexDecorrState *st);
 
 /** @}*/
 #endif
+

@@ -56,3 +56,4 @@ unsigned DataCompressor::DecompressAndAllocate( RakNet::BitStream * input, unsig
 	assert(decompressedBytes==destinationSizeInBytes);
 	return destinationSizeInBytes;
 }
+

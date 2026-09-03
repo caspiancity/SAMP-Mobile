@@ -30,3 +30,4 @@ void StreamAtPoint::OnChannelCreate(const Channel& channel) noexcept
         reinterpret_cast<BASS_3DVECTOR*>(&this->position),
         &kZeroVector, &kZeroVector);
 }
+

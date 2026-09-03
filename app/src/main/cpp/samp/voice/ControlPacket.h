@@ -18,3 +18,4 @@ struct ControlPacket
 using ControlPacketContainer = Memory::ObjectContainer<ControlPacket>;
 using ControlPacketContainerPtr = Memory::ObjectContainerPtr<ControlPacket>;
 #define MakeControlPacketContainer MakeObjectContainer(ControlPacket)
+

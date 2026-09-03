@@ -45,3 +45,4 @@ public:
 };
 
 VALIDATE_SIZE(CColTrianglePlane, 0x14);
+

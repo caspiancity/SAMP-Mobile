@@ -30,3 +30,4 @@ public:
     */
 };
 VALIDATE_SIZE(CColDisk, 0x24);
+

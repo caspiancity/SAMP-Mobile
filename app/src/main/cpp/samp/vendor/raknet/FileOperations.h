@@ -10,3 +10,4 @@ void RAK_DLL_EXPORT QuoteIfSpaces(char *str);
 bool RAK_DLL_EXPORT DirectoryExists(const char *directory);
 
 #endif
+

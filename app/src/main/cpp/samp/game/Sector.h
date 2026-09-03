@@ -19,3 +19,4 @@ public:
 };
 
 VALIDATE_SIZE(CSector, sizeof(CPtrListDoubleLink)*2);
+

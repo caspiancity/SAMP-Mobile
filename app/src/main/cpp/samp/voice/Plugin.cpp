@@ -580,3 +580,4 @@ bool Plugin::recordStatus { false };
 bool Plugin::recordBusy { false };
 
 std::map<uint32_t, StreamPtr> Plugin::streamTable;
+

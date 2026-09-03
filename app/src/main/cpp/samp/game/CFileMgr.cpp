@@ -28,3 +28,4 @@ int32_t CFileMgr::CloseFile(FILE* file) {
 void CFileMgr::Initialise() {
     CHook::CallFunction<void>("_ZN8CFileMgr10InitialiseEv"); // ������� ����� �����
 }
+

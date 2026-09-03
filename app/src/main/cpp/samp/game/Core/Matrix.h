@@ -204,3 +204,4 @@ CMatrix  Lerp(CMatrix from, CMatrix to, float t);
 
 extern int32_t numMatrices;
 extern CMatrix gDummyMatrix;
+

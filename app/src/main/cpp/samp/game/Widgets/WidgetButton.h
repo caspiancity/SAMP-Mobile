@@ -17,3 +17,4 @@ struct CWidgetButton : CWidgetGta
     float       m_fTVTop;
     float       m_fTVBottom;
 };
+

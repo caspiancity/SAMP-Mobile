@@ -76,3 +76,4 @@ void CPools::InjectHooks() {
     CHook::Write(g_libGTASA + 0x838238, &CPools::ms_pObjectPool);
     CHook::Write(g_libGTASA + 0x83A3B0, &CPools::ms_pTaskPool);
 }
+

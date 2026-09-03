@@ -296,3 +296,4 @@ void CAnimBlendAssociation::ReferenceAnimBlock() {
 CAnimBlendNode* CAnimBlendAssociation::GetNode(int32 nodeIndex) {
     return &m_pNodeArray[nodeIndex];
 }
+

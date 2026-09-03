@@ -413,3 +413,4 @@ bool StringCompressor::DecodeString( char *output, int maxCharsToWrite, RakNet::
 
 	return true;
 }
+

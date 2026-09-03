@@ -1245,3 +1245,4 @@ MACRO_STOP
 }
 #endif                          /* __cplusplus */
 
+

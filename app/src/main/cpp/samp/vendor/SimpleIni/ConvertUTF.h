@@ -147,3 +147,4 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd);
 #endif
 
 /* --------------------------------------------------------------------- */
+

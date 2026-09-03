@@ -70,3 +70,4 @@ CAnimBlendAssocGroup::~CAnimBlendAssocGroup() {
     CHook::CallFunction<void>(g_libGTASA + 0x36C520, this);
 }
 
+

@@ -532,3 +532,4 @@ extern RwBool RwIm2DRenderIndexedPrimitive(RwPrimitiveType primType, RwIm2DVerte
 
 #endif /* RWIMMEDI_H */
 
+

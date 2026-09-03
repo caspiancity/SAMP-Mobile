@@ -132,3 +132,4 @@ int speex_std_vbr_quality_request_handler(SpeexBits *bits, void *state, void *da
 
 /** @} */
 #endif
+

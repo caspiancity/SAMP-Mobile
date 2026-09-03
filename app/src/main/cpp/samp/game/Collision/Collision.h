@@ -222,3 +222,4 @@ void CalculateColPointInsideBox(const CBox& box, const CVector& point, CColPoint
 bool ProcessDiscCollision(CColPoint& colPoint1, const CMatrix& mat, const CColDisk& disk, CColPoint& colPoint2, bool& arg4, float& arg5, CColPoint& colPoint3);
 void ResetMadeInvisibleObjects();
 float ClosestSquaredDistanceBetweenFiniteLines(const CVector& line1Start, const CVector& line1End, const CVector& line2Start, const CVector& line2End, float arg4);
+

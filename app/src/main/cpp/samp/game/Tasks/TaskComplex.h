@@ -29,3 +29,4 @@ public:
     // #vtable: 11
 };
 static_assert(sizeof(CTaskComplex) == (VER_x32 ? 0xC : 0x18));
+

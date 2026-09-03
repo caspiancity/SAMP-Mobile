@@ -26,3 +26,4 @@ void* CPtrNodeSingleLink::operator new(size_t size) {
 void CPtrNodeSingleLink::operator delete(void* data) {
     GetPtrNodeSingleLinkPool()->Delete(static_cast<CPtrNodeSingleLink*>(data));
 }
+

@@ -10,3 +10,4 @@ struct CColSurface {
     uint8        m_nLight{};
 };
 VALIDATE_SIZE(CColSurface, 0x4);
+

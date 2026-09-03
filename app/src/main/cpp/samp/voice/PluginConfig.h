@@ -61,3 +61,4 @@ private:
     static int microVolume;
     static std::string deviceName;
 };
+

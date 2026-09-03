@@ -38,3 +38,4 @@ void Effect::Apply(const Channel& channel)
             "effect (code:%d)", BASS_ErrorGetCode());
     }
 }
+

@@ -40,3 +40,4 @@ public:
     static void startEditObject(uint16_t objectId);
 };
 #pragma pack(pop)
+

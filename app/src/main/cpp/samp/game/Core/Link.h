@@ -26,3 +26,4 @@ public:
     }
 };
 static_assert(sizeof(CLink<void*>) == (VER_x32 ? 0xC : 0x18), "Invalid size CLink");
+

@@ -76,3 +76,4 @@ enum eCamMode : uint16_t {
     MODE_DW_PLANECAM3 = 0x40,
     MODE_AIMWEAPON_ATTACHED = 0x41
 };
+

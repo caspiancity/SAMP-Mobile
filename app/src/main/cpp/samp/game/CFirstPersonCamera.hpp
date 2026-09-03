@@ -17,3 +17,4 @@ public:
     static void Toggle();
     static bool IsEnabled();
 };
+

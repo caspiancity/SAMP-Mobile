@@ -73,3 +73,4 @@ public:
 private:
 	struct stSettings m_Settings;
 };
+

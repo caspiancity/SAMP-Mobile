@@ -25,3 +25,4 @@ void LocalStream::OnChannelCreate(const Channel& channel) noexcept
     BASS_ChannelSet3DAttributes(channel.GetHandle(), BASS_3DMODE_NORMAL,
                                 mindist, maxdist, 360, 360, -1.0f);
 }
+

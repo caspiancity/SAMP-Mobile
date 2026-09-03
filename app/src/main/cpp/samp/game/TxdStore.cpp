@@ -45,3 +45,4 @@ void CTxdStore::PopCurrentTxd() {
 void CTxdStore::SetCurrentTxd(int32 index) {
     CHook::CallFunction<void>(g_libGTASA + 0x602F60, index, nullptr);
 }
+

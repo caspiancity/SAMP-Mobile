@@ -47,3 +47,4 @@ void CAdjustableHUD::InjectHooks() {
  //   CHook::InlineHook(g_libGTASA,  0x0024BB0C, &CAdjustableHUD__Destructor_hook, &CAdjustableHUD__Destructor);
 }
 
+

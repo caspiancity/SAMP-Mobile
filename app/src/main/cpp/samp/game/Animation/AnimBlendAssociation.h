@@ -158,3 +158,4 @@ private:
 
 };
 VALIDATE_SIZE(CAnimBlendAssociation, (VER_x32 ? 0x3C : 0x60));
+

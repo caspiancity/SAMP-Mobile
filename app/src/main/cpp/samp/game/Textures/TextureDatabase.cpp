@@ -46,3 +46,4 @@ void TextureDatabase::InjectHooks() {
 void TextureDatabase::LoadEntry(char *line, bool hashName) {
 
 }
+

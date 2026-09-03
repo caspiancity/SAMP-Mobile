@@ -59,3 +59,4 @@ public:
 };
 
 VALIDATE_SIZE(CColModel, (VER_x32 ? 0x30 : 0x38));
+

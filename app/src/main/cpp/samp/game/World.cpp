@@ -65,3 +65,4 @@ void CWorld::ProcessPedsAfterPreRender() {
         }
     }
 }
+

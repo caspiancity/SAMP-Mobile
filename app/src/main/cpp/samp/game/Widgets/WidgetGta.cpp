@@ -285,3 +285,4 @@ bool CWidgetGta::IsReleased(CVector2D *pVecOut) {
 bool CWidgetGta::IsTouched(CVector2D *pVecOut) {
     return CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x002B3324 + 1 : 0x3725D0), this, pVecOut);
 }
+

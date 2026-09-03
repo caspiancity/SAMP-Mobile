@@ -31,3 +31,4 @@ private:
 
 using StreamAtVehiclePtr = std::unique_ptr<StreamAtVehicle>;
 #define MakeStreamAtVehicle std::make_unique<StreamAtVehicle>
+

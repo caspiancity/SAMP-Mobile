@@ -99,3 +99,4 @@ public:
 };
 
 static_assert(sizeof(CTaskTimer) == 0xC);
+

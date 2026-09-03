@@ -12,3 +12,4 @@ RpSkin* RpSkinGeometryGetSkin(RpGeometry* geometry) {
 RpHAnimHierarchy* RpSkinAtomicGetHAnimHierarchy(const RpAtomic* atomic) {
     return CHook::CallFunction<RpHAnimHierarchy*>(g_libGTASA + 0x784CEC, atomic);
 }
+

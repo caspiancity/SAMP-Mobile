@@ -36,3 +36,4 @@ private:
 
     static HSTREAM deviceOutputChannel;
 };
+

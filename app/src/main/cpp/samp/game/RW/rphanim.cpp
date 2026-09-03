@@ -102,3 +102,4 @@ RwBool RpHAnimFrameSetID(RwFrame* frame, RwInt32 id) {
 RwInt32 RpHAnimFrameGetID(RwFrame* frame) {
     return CHook::CallFunction<RwInt32>(g_libGTASA + 0x77EB98, frame);
 }
+

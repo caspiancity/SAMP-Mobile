@@ -43,3 +43,4 @@ public:
 VALIDATE_SIZE(CPlayerPedGta, (VER_x32 ? 0x7AC : 0x998));
 
 
+

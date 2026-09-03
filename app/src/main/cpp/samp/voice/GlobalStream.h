@@ -17,3 +17,4 @@ public:
 
 using GlobalStreamPtr = std::unique_ptr<GlobalStream>;
 #define MakeGlobalStream std::make_unique<GlobalStream>
+

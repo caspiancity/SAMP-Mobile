@@ -626,3 +626,4 @@ unsigned short SocketLayer::GetLocalPort ( SOCKET s )
 #ifdef _MSC_VER
 #pragma warning( pop )
 #endif
+

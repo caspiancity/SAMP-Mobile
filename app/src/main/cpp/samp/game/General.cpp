@@ -179,3 +179,4 @@ bool CGeneral::RandomBool(float chanceOfTrue) {
 bool CGeneral::DoCoinFlip() {
     return CGeneral::GetRandomNumber() >= RAND_MAX / 2;
 }
+

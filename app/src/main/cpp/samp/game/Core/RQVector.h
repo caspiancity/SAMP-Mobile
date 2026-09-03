@@ -26,3 +26,4 @@ class RQVector {
 
 
 #endif //LIVERUSSIA_RQVECTOR_H
+

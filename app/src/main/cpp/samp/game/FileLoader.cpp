@@ -145,3 +145,4 @@ void CFileLoader::InjectHooks() {
 CEntityGTA *CFileLoader::LoadObjectInstance(CFileObjectInstance *objInstance, const char *modelName) {
     return CHook::CallFunction<CEntityGTA*>(g_libGTASA + 0x491984, objInstance, modelName);
 }
+

@@ -536,3 +536,4 @@ CMatrix Lerp(CMatrix from, CMatrix to, float t) {
     to.ScaleAll(t);
     return from + to;
 }
+

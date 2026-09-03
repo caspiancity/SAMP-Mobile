@@ -99,3 +99,4 @@ void ByteQueue::Print(void)
 		printf("%i ", data[i]);
 	printf("\n");
 }
+

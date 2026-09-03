@@ -90,3 +90,4 @@ public:
 
 VALIDATE_SIZE(CPickup, (VER_x32 ? 0x20 : 0x24));
 
+

@@ -92,3 +92,4 @@ void speex_header_free(void *ptr);
 
 /** @} */
 #endif
+

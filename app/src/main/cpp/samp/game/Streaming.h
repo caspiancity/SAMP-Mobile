@@ -255,3 +255,4 @@ public:
 
     static bool DeleteLeastUsedEntityRwObject(bool bNotOnScreen, int32 streamingFlags);
 };
+

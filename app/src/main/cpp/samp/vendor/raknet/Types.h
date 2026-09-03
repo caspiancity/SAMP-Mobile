@@ -699,3 +699,4 @@ Quick character manipulation
 
 
 #endif // TYPES_H
+

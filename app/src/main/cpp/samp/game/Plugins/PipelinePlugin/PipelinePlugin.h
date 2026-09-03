@@ -58,3 +58,4 @@ _PIPELINEPLUGINAPI RwUInt32 GetPipelineID(RpAtomic * atomic);
  * @param   _nPipelineID  pipeline ID
  */
 _PIPELINEPLUGINAPI void SetPipelineID(RpAtomic * atomic, RwUInt32 pipelineId);
+

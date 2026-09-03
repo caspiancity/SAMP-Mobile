@@ -105,3 +105,4 @@ public:
 };
 
 //inline static int32& CollectPickupBuffer = *(int32*)0x97D644;
+

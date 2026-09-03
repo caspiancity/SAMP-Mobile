@@ -166,3 +166,4 @@ private:
   // Padding to avoid adjacent allocations to share cache line with tail_
   char padding_[kCacheLineSize - sizeof(tail_)];
 };
+

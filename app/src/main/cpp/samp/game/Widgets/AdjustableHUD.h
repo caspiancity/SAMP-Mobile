@@ -37,3 +37,4 @@ public:
     void SaveToDisk();
 };
 VALIDATE_SIZE(CAdjustableHUD, (VER_x32 ? 0x4B0 : 0x548));
+

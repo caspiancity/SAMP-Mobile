@@ -114,3 +114,4 @@ public:
 };
 
 VALIDATE_SIZE(CEventHandler, (VER_x32 ? 0x34 : 0x60));
+

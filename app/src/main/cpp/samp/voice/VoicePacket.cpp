@@ -37,3 +37,4 @@ void VoicePacket::CalcHash()
         sizeof(*this) - sizeof(this->hash)
     );
 }
+

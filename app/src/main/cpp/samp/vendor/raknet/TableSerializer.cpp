@@ -144,3 +144,4 @@ bool TableSerializer::DeserializeCell(RakNet::BitStream *in, DataStructures::Tab
 	}
 	return true;
 }
+

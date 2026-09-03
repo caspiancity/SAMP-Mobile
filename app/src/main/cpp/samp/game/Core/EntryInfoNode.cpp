@@ -25,3 +25,4 @@ void CEntryInfoNode::AddToList(CEntryInfoNode* pNext)
         pNext->m_pPrevious = this;
     }
 }
+

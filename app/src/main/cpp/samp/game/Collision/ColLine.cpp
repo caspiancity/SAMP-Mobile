@@ -27,3 +27,4 @@ void CColLine::DrawWireFrame(CRGBA color, const CMatrix& transform) const {
 //    const auto colorARGB = color.ToInt();
 //    CLines::RenderLineNoClipping(transform * m_vecStart, transform * m_vecEnd, colorARGB, colorARGB);
 }
+

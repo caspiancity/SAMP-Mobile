@@ -95,3 +95,4 @@ void CheckSum::Add ( unsigned char *b, unsigned int length )
 
 		;
 } // CheckSum::add(LPunsigned char, unsigned int)
+

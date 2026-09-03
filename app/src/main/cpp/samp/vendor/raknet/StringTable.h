@@ -101,3 +101,4 @@ protected:
 #define stringTable StringTable::Instance()
 
 #endif
+

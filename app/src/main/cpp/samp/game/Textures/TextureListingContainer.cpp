@@ -8,3 +8,4 @@
 RwRaster *TextureListingContainer::CreateRaster(const TextureDatabaseEntry *forEntry) {
     return CHook::CallFunction<RwRaster*>(g_libGTASA + 0x7950F4, this, forEntry);
 }
+

@@ -27,3 +27,4 @@ void CHandlingDefault::FillDefaultHandling(uint16_t usHandlingID, tHandlingData*
         memcpy(&m_aDefaultModelHandlings[usHandlingID], pSrc, sizeof(tHandlingData));
     }
 }
+

@@ -141,3 +141,4 @@ void StringTable::LogStringNotFound(const char *strName)
 	printf("Efficiency Warning! Unregistered String %s sent to StringTable.\n", strName);
 #endif
 }
+

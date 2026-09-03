@@ -441,3 +441,4 @@ BOOL BASS_FXDEF(BASS_FX_BPM_BeatFree)(DWORD handle);
 #endif
 
 #endif
+

@@ -129,3 +129,4 @@ void SystemAddressList::Clear(void)
 {
 	systemList.Clear();
 }
+

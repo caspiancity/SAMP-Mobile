@@ -780,3 +780,4 @@ bool BitStream::DoEndianSwap(void) const
 #endif
 
 #endif // #if _MSC_VER < 1299 
+

@@ -15,3 +15,4 @@ class CAutomobile : public CVehicleGTA {
 };
 
 VALIDATE_SIZE(CAutomobile, (VER_x32 ? 0x99C : 0xBC8));
+

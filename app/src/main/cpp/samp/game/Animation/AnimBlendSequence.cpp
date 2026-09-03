@@ -186,3 +186,4 @@ KeyFrameTransCompressed* CAnimBlendSequence::GetCompressedFrame(int32 frame) con
     auto* data = static_cast<KeyFrameCompressed*>(m_pFrames);
     return reinterpret_cast<KeyFrameTransCompressed*>(&data[frame]);
 }
+

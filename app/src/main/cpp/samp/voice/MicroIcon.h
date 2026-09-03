@@ -33,3 +33,4 @@ private:
     static bool initStatus;
     static bool showStatus;
 };
+

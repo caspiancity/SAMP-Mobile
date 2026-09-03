@@ -31,3 +31,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlendClumpData, (VER_x32 ? 0x14 : 0x28));
+

@@ -41,3 +41,4 @@ bool IsBuildingPointerValid(CBuilding* building)
 
     return GetBuildingPool()->IsObjectValid(building);
 }
+

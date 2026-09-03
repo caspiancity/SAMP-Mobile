@@ -76,3 +76,4 @@ private:
     static std::vector<std::string> deviceNamesList;
     static std::vector<int> deviceNumbersList;
 };
+

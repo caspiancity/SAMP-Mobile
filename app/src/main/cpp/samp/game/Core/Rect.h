@@ -109,3 +109,4 @@ public:
     bool Contains(const CRect& o) const;
 };
 static_assert(sizeof(CRect) == 0x10);
+

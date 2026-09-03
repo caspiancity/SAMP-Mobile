@@ -90,3 +90,4 @@ VALIDATE_SIZE(CPlayerPedData, (VER_x32 ? 0xAC : 0xD8));
 
 
 #endif //LIVERUSSIA_PLAYERPEDDATA_H
+

@@ -54,3 +54,4 @@ public:
     tColLighting m_nLight;
 };
 VALIDATE_SIZE(CColTriangle, 0x10);
+

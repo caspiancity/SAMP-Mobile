@@ -73,3 +73,4 @@ bool CPickup::Update() {
 void CPickup::Remove() {
     CHook::CallFunction<void>(g_libGTASA + 0x402E34, this);
 }
+

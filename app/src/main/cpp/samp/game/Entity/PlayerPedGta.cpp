@@ -41,3 +41,4 @@ void ReApplyMoveAnims_hook(CPlayerPedGta* thiz) {
 void CPlayerPedGta::InjectHooks() {
    // CHook::Redirect("_ZN10CPlayerPed16ReApplyMoveAnimsEv", &ReApplyMoveAnims_hook);
 }
+

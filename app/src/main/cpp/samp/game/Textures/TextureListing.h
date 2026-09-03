@@ -20,3 +20,4 @@ class TextureListing
 #pragma pack(pop)
 
 VALIDATE_SIZE(TextureListing, 0x8);
+

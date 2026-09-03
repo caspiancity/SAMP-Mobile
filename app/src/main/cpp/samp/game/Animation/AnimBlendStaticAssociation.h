@@ -37,3 +37,4 @@ public:
 };
 
 VALIDATE_SIZE(CAnimBlendStaticAssociation, (VER_x32 ? 0x14 : 0x20));
+

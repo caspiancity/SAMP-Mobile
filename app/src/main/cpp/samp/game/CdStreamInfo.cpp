@@ -44,3 +44,4 @@ eCdStreamStatus CdStreamGetStatus(int32 streamId) {
 bool CdStreamRead(int32 streamId, void* lpBuffer, uint32 offsetAndHandle, int32 sectorCount) {
     return CHook::CallFunction<bool>(g_libGTASA + 0x3AD334, streamId, lpBuffer, offsetAndHandle, sectorCount);
 }
+

@@ -65,3 +65,4 @@ public:
     static inline MobileSettings ms_MobileSettings[eMobileSettings::MS_MAX];
 };
 
+

@@ -8,3 +8,4 @@
 void CCustomBuildingDNPipeline::InjectHooks() {
     CHook::Write(g_libGTASA + 0x8375E0, &m_fDNBalanceParam);
 }
+

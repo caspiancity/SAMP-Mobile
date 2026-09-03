@@ -78,3 +78,4 @@ enum eWeaponType : uint32_t {
     WEAPON_FLARE,
 };
 constexpr const auto NUM_WEAPONS{ (size_t)WEAPON_LAST_WEAPON + 1 };
+

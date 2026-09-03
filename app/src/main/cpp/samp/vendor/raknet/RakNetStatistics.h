@@ -166,3 +166,4 @@ struct RAK_DLL_EXPORT RakNetStatisticsStruct
 void StatisticsToString( RakNetStatisticsStruct *s, char *buffer, int verbosityLevel );
 
 #endif
+

@@ -37,3 +37,4 @@ private:
     std::string name;
     float distance { -1.0 };
 };
+

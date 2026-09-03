@@ -227,3 +227,4 @@ namespace firebase {
 }  // end namespace firebase::crashlytics
 
 #endif /* __CRASHLYTICS_H__ */
+

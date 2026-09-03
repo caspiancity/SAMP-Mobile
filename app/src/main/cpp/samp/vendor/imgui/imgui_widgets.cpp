@@ -7093,3 +7093,4 @@ bool ImGui::TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb, 
 
     return close_button_pressed;
 }
+

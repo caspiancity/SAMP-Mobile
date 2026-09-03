@@ -264,3 +264,4 @@ _rwStreamModuleClose(void *instance,
 #endif                          /* __cplusplus */
 
 /* RWPUBLICEND */
+

@@ -43,3 +43,4 @@ private:
 
 };
 VALIDATE_SIZE(CTaskSimpleRunNamedAnim, (VER_x32 ? 0x64 : 0x78));
+

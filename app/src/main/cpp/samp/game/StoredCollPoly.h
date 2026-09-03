@@ -21,3 +21,4 @@ struct CStoredCollPoly {
 
 
 VALIDATE_SIZE(CStoredCollPoly, 0x2c);
+

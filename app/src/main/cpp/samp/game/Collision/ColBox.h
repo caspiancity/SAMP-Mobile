@@ -31,3 +31,4 @@ public:
     auto GetSurfaceType() const { return m_Surface.m_nMaterial; }
 };
 VALIDATE_SIZE(CColBox, 0x1C);
+

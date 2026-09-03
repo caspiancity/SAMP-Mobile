@@ -16,3 +16,4 @@ typedef uint64_t spx_uint64_t;
 
 #endif // SPEEXDSP_CONFIG_TYPES_H
 
+

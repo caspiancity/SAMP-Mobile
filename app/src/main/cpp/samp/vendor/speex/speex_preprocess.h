@@ -217,3 +217,4 @@ int speex_preprocess_ctl(SpeexPreprocessState *st, int request, void *ptr);
 
 /** @}*/
 #endif
+

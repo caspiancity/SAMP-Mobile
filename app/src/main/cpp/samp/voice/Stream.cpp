@@ -235,3 +235,4 @@ const std::vector<ChannelPtr>& Stream::GetChannels() const noexcept
 {
     return this->channels;
 }
+

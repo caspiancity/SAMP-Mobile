@@ -9,3 +9,4 @@ void CTimeCycle::InjectHooks() {
     CHook::Write(g_libGTASA + 0x8397D0, &CTimeCycle::m_CurrentColours);
     CHook::Write(g_libGTASA + 0x83A828, &CTimeCycle::m_BelowHorizonGrey);
 }
+

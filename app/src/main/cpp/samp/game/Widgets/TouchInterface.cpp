@@ -47,3 +47,4 @@ void CTouchInterface::InjectHooks() {
         m_pWidgets[WIDGET_CAM_TOGGLE]->SetEnabled(true);
     }
 }
+

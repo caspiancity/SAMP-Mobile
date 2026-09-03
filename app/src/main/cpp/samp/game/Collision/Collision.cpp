@@ -682,3 +682,4 @@ CVector CCollision::GetClampedBaryCoordsIntoTriangle(CVector a, CVector b, CVect
 
     return { u, v, w }; // Point was in the triangle
 }
+

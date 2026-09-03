@@ -90,3 +90,4 @@ int speex_std_stereo_request_handler(SpeexBits *bits, void *state, void *data);
 
 /** @} */
 #endif
+

@@ -66,3 +66,4 @@ void TextureDatabaseRuntime::InjectHooks() {
 RwBool TextureAnnihilate(RwTexture *texture) {
     return CHook::CallFunction<RwBool>(g_libGTASA + 0x76C568, texture);
 }
+

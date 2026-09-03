@@ -43,3 +43,4 @@ public:
     static void EnsureCollisionIsInMemory(const CVector *pos);
 };
 
+

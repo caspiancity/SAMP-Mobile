@@ -20,3 +20,4 @@ int32 CBaseModelInfo::GetAnimFileIndex() {
 void CBaseModelInfo::DeleteRwObject() {
     CHook::CallFunction<void>(*(uintptr_t*)(vtable + (VER_x32 ? 0x24 : 0x24*2)), this);
 }
+

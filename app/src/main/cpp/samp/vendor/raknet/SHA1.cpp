@@ -324,3 +324,4 @@ unsigned char * CSHA1::GetHash( void ) const
 {
 	return ( unsigned char * ) m_digest;
 }
+

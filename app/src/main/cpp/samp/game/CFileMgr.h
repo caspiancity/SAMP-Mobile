@@ -40,3 +40,4 @@ public:
     static void SeekNextLine(FILE* file);
 };
 
+

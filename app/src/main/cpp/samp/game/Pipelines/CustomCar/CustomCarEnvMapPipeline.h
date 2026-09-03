@@ -102,3 +102,4 @@ public:
     static RwBool CustomPipeInstanceCB(void* object, RxOpenGLMeshInstanceData* instanceData, const RwBool instanceDLandVA, const RwBool reinstance);
     static void CustomPipeRenderCB(RwResEntry* repEntry, void* object, RwUInt8 type, RwUInt32 flags);
 };
+

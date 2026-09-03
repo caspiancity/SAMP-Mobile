@@ -266,3 +266,4 @@ void CCollisionData::SetSpheres(const CColSphere* spheres) {
         m_pSpheres[i] = spheres[i];
     }
 }
+

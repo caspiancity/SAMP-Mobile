@@ -17,3 +17,4 @@ void CColBox::Set(const CVector& sup, const CVector& inf, eSurfaceType material,
     m_Surface.m_nPiece = pieceType;
     m_Surface.m_nLighting = lighting;
 }
+

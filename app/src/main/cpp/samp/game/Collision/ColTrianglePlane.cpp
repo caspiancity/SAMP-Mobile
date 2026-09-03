@@ -54,3 +54,4 @@ void CColTrianglePlane::GetNormal(CVector& out) {
 void CColTrianglePlane::Set(const CollisionVector* vertices, const CColTriangle& triangle) {
     *this = CColTrianglePlane{ triangle, vertices };
 }
+

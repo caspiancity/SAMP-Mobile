@@ -44,3 +44,4 @@ public:
 };
 VALIDATE_SIZE(TextureDatabaseRuntime, (VER_x32 ? 0xC8 : 0x118));
 VALIDATE_SIZE(TDBArray<TextureDatabaseRuntime*>, (VER_x32 ? 0xC : 0x10));
+

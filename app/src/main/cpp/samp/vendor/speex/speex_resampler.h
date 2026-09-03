@@ -341,3 +341,4 @@ const char *speex_resampler_strerror(int err);
 #endif
 
 #endif
+

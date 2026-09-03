@@ -167,3 +167,4 @@ uint32_t CTimer::GetCurrentUnixTimeMoscow() {
     auto duration = std::chrono::system_clock::from_time_t(moscow_time).time_since_epoch();
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::seconds>(duration).count());
 }
+

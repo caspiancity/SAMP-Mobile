@@ -125,3 +125,4 @@ int32 CMatrixLinkList::GetNumUsed2()
 
     return result;
 }
+

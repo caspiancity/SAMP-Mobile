@@ -20,3 +20,4 @@ void CIplStore::AddIplsNeededAtPosn(const CVector *posn) {
 void CIplStore::RemoveIpl(int32 iplSlotIndex) {
     CHook::CallFunction<void>(g_libGTASA + 0x3AADE4, iplSlotIndex);
 }
+

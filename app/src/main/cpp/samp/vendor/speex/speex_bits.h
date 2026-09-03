@@ -172,3 +172,4 @@ void speex_bits_insert_terminator(SpeexBits *bits);
 
 /* @} */
 #endif
+

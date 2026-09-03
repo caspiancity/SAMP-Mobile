@@ -38,3 +38,4 @@ public:
 };
 
 VALIDATE_SIZE(CEventHandlerHistory, (VER_x32 ? 0x1C : 0x30));
+

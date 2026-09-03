@@ -30,3 +30,4 @@ CompressedVector CompressLargeVector(const CVector& vec);
 
 CVector UncompressFxVector(const CompressedVector& compressedVec);
 CVector CompressFxVector(const CompressedVector& compressedVec);
+

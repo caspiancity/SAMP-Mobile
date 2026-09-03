@@ -22,3 +22,4 @@ bool CTaskSimple::IsSimple() {
 bool CTaskSimple::SetPedPosition(CPedGTA* ped) {
     return false;
 }
+

@@ -1143,3 +1143,4 @@ static inline BOOL BASS_SetConfigPtr(DWORD option, const WCHAR *value)
 #endif
 
 #endif
+

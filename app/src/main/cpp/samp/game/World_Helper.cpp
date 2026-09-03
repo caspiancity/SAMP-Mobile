@@ -42,3 +42,4 @@ CVehicleGTA* FindPlayerVehicle(int32 playerId, bool bIncludeRemote) {
 
     return player->pVehicle;
 }
+

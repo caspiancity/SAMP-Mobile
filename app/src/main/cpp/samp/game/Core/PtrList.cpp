@@ -31,3 +31,4 @@ bool CPtrList::IsMemberOfList(void* data) const {
     }
     return false;
 }
+

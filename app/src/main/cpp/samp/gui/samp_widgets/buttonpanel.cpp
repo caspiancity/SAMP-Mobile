@@ -126,3 +126,4 @@ void ButtonPanel::performLayout()
         m_bTab->setPosition(ImVec2(openPos.x + openSize.x + 10.0f, openPos.y));
     }
 }
+

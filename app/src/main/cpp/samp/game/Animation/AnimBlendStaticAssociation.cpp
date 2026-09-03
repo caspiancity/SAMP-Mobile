@@ -45,3 +45,4 @@ void CAnimBlendStaticAssociation::FreeSequenceArray() {
         CMemoryMgr::Free(m_pSequenceArray);
     }
 }
+

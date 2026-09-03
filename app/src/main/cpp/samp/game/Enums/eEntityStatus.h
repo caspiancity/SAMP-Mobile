@@ -22,3 +22,4 @@ enum eEntityStatus : uint8_t {
     STATUS_IS_SIMPLE_TOWED,
     STATUS_GHOST
 };
+

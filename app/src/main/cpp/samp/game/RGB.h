@@ -15,3 +15,4 @@ public:
 
 
 #endif //LIVERUSSIA_RGB_H
+

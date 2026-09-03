@@ -23,3 +23,4 @@ struct _rxOpenGLAllInOnePrivateData
     /* per atomic/worldsector render callback */
     uintptr_t*    renderCB;
 };
+

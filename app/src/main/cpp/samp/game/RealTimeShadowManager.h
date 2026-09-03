@@ -35,3 +35,4 @@ public:
 VALIDATE_SIZE(CRealTimeShadowManager, (VER_x32 ? 0xB8 : 0x170));
 
 extern CRealTimeShadowManager& g_realTimeShadowMan;
+

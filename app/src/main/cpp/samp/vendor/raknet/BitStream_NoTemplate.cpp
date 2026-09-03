@@ -1873,3 +1873,4 @@ void BitStream::AssertCopyData( void )
 }
 
 #endif
+

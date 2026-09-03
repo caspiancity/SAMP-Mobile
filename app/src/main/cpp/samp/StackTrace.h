@@ -71,3 +71,4 @@ private:
 };
 
 #endif //LIVERUSSIA_CSTACKTRACE_H
+

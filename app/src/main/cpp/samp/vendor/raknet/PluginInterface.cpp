@@ -85,3 +85,4 @@ void PluginInterface::OnInternalPacket(InternalPacket *internalPacket, unsigned 
 #ifdef _MSC_VER
 #pragma warning( pop )
 #endif
+

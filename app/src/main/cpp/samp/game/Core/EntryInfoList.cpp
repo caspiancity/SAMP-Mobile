@@ -28,3 +28,4 @@ void CEntryInfoList::DeleteNode(CEntryInfoNode* pNode)
 
     delete pNode;
 }
+

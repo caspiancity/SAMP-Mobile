@@ -320,3 +320,4 @@ const SCRIPT_COMMAND set_char_weapon_skill = { 0x081A, "ii" };
 const SCRIPT_COMMAND is_actor_using_jetpack = {0x0A0C, "i"};
 
 const SCRIPT_COMMAND is_car_wrecked						= { 0x0119, "i" };
+

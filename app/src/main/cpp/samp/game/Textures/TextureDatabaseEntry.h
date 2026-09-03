@@ -37,3 +37,4 @@ public:
     RwTexture* LoadInstance(TextureListingContainer *container);
 };
 VALIDATE_SIZE(TextureDatabaseEntry, (VER_x32 ? 0x17 : 0x1F));
+

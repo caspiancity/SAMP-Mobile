@@ -243,3 +243,4 @@ uint32_t TranslateColorCodeToRGBA(uint iCode)
 
 	return 0xE2C063FF;
 }
+

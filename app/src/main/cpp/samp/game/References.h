@@ -24,3 +24,4 @@ public:
     static void   RemoveReferencesToPlayer();
     static void   PruneAllReferencesInWorld();
 };
+

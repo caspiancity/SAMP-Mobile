@@ -45,3 +45,4 @@ void CPtrListDoubleLink::DeleteNode(CPtrNodeDoubleLink* node) {
 
     delete node;
 }
+

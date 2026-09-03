@@ -10,3 +10,4 @@ enum OSDeviceForm : int32_t
     OSDF_Phone = 0x1,
     OSDF_MAX = 0x2,
 };
+

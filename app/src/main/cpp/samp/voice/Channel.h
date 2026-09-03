@@ -59,3 +59,4 @@ private:
 
 using ChannelPtr = std::unique_ptr<Channel>;
 #define MakeChannel std::make_unique<Channel>
+

@@ -85,3 +85,4 @@ public:
 };
 
 VALIDATE_SIZE(CLinkList<void*>, (VER_x32 ? 0x34 : 0x68));
+

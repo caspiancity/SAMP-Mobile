@@ -67,3 +67,4 @@ RwV3d* RtQuatTransformVectors(RwV3d* vectorsOut, const RwV3d* vectorsIn, const R
 RwReal RtQuatModulus(RtQuat* q) {
     return CHook::CallFunction<RwReal>(g_libGTASA + 0x78A9D8, q);
 }
+

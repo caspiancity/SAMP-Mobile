@@ -8,3 +8,4 @@ enum eTargetDoor {
     TARGET_DOOR_REAR_LEFT   = 11,
     TARGET_DOOR_UNK         = 18
 };
+

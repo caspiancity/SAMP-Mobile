@@ -212,3 +212,4 @@ CAnimBlendAssociation* RpAnimBlendGetNextAssociation(CAnimBlendAssociation* asso
 void RpAnimBlendKeyFrameInterpolate(void *pVoidOut, void *pVoidIn1, void *pVoidIn2, RwReal time, void *customData) {
     CHook::CallFunction<void>(g_libGTASA + 0x375B8C, pVoidOut, pVoidIn1, pVoidIn2, time, customData);
 }
+

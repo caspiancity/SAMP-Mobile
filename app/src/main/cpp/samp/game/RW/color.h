@@ -177,3 +177,4 @@ extern void *_rwColorClose(void *instance, RwInt32 offset, RwInt32 size);
 }
 #endif                          /* __cplusplus */
 
+

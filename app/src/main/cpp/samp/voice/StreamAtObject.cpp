@@ -23,3 +23,4 @@ void StreamAtObject::OnChannelCreate(const Channel& channel) noexcept
 {
 
 }
+

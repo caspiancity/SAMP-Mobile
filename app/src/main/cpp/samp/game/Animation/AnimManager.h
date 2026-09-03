@@ -85,3 +85,4 @@ private:
     static inline void LoadAnimFile_ANPK(RwStream* stream, bool compress, const char (*uncompressedAnims)[32]);
     static inline void LoadAnimFile_ANP23(RwStream* stream, bool compress, bool isANP3);
 };
+

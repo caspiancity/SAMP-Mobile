@@ -41,3 +41,4 @@ public:
 
 static_assert(sizeof(CClumpModelInfo) == (VER_x32 ? 0x3c : 0x50));
 
+

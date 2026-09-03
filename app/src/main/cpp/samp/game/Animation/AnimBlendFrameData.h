@@ -42,3 +42,4 @@ public:
     CVector& GetFrameTranslation() const { return m_pIFrame->translation; }
 };
 VALIDATE_SIZE(AnimBlendFrameData, (VER_x32 ? 0x18 : 0x20));
+

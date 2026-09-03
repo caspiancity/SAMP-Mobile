@@ -24,3 +24,4 @@ public:
 };
 
 VALIDATE_SIZE(CPtrListSingleLink, (VER_x32 ? 0x4 : 0x8));
+

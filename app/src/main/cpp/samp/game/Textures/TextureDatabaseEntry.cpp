@@ -8,3 +8,4 @@
 void TextureDatabaseEntry::InjectHooks() {
     //CHook::Redirect("_ZN20TextureDatabaseEntry12LoadInstanceERK23TextureListingContainer", &TextureDatabaseEntry__LoadInstance);
 }
+

@@ -136,3 +136,4 @@ bool CRect::Contains(const CRect& o) const {
     return (o.left >= left && o.right <= right)
            && (o.top <= top && o.bottom >= bottom);
 }
+

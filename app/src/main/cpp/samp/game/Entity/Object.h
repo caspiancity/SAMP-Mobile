@@ -91,3 +91,4 @@ public:
 
 VALIDATE_SIZE(CObjectGta, (VER_x32 ? 0x184 : 0x1F8));
 
+

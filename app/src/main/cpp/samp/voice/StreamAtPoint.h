@@ -31,3 +31,4 @@ private:
 
 using StreamAtPointPtr = std::unique_ptr<StreamAtPoint>;
 #define MakeStreamAtPoint std::make_unique<StreamAtPoint>
+

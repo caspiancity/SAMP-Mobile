@@ -161,3 +161,4 @@ void CColModel::operator delete(void* data) {
 void CColModel::InjectHooks() {
     //CHook::InlineHook(g_libGTASA, )
 }
+

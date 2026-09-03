@@ -143,3 +143,4 @@ bool CFirstPersonCamera::IsEnabled()
 {
     return m_bEnabled;
 }
+

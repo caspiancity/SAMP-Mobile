@@ -22,3 +22,4 @@ public:
 };
 
 VALIDATE_SIZE(CPolyBunch, (VER_x32 ? 0x68 : 0x70));
+

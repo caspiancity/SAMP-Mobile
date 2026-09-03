@@ -274,3 +274,4 @@ void LogCommandParser::OnTransportChange(TransportInterface *transport)
 #ifdef _MSC_VER
 #pragma warning( pop )
 #endif
+

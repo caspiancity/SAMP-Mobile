@@ -25,3 +25,4 @@ public:
 };
 
 VALIDATE_SIZE(CPtrNodeSingleLink, (VER_x32 ? 0x8 : 0x10));
+

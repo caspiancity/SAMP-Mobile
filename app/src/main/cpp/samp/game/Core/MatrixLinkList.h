@@ -39,3 +39,4 @@ public:
 VALIDATE_SIZE(CMatrixLinkList, (VER_x32 ? 0x1FC : 0x278));
 
 extern CMatrixLinkList gMatrixList;
+

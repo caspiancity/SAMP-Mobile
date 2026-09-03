@@ -22,3 +22,4 @@ public:
 
 
 static_assert(sizeof(CSimpleTransform) == 0x10, "Invalid size CSimpleTransform");
+

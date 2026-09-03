@@ -209,3 +209,4 @@ extern RwInt8 _rwMsbBit[];
 #ifdef    __cplusplus
 }
 #endif                          /* __cplusplus */
+

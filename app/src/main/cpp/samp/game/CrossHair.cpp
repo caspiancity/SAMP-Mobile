@@ -62,3 +62,4 @@ void CCrossHair::Render()
         return;
     }
 }
+

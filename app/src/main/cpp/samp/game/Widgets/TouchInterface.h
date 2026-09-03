@@ -358,3 +358,4 @@ enum WidgetIDs : int32_t
     WIDGET_SAVE_NOTIFICATION = 0xBD,
     NUM_WIDGETS = 0xBE,
 };
+

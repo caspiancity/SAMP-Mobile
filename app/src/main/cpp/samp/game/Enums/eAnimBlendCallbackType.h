@@ -12,3 +12,4 @@ enum eAnimBlendCallbackType : uint32_t {
     ANIM_BLEND_CALLBACK_FINISH = 1,
     ANIM_BLEND_CALLBACK_DELETE = 2
 };
+

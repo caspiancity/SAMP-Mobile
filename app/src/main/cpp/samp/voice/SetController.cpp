@@ -8,3 +8,4 @@ void SetController::Apply(const Channel& channel) const noexcept
 {
     BASS_ChannelSetAttribute(channel.GetHandle(), this->parameter, this->value);
 }
+

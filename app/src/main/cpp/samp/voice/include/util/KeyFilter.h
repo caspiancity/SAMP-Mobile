@@ -21,3 +21,4 @@ public:
 private:
     static std::array<bool, 256> statusKeys;
 };
+

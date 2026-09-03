@@ -14,3 +14,4 @@ struct CWidgetRegionLook : CWidgetRegion
 };
 
 VALIDATE_SIZE(CWidgetRegionLook, (VER_x32 ? 0x94 : 0xA8));
+

@@ -136,3 +136,4 @@ public:
 
 
 static_assert(sizeof(CBaseModelInfo) == (VER_x32 ? 0x38 : 0x48), "Invalid size CBaseModelInfo");
+

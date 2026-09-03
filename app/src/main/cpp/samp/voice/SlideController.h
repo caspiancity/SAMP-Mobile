@@ -28,3 +28,4 @@ private:
 
 using SlideControllerPtr = std::unique_ptr<SlideController>;
 #define MakeSlideController std::make_unique<SlideController>
+

@@ -117,3 +117,4 @@ enum HIDMapping : uint32_t
     HID_MAPPING_REPLAY = 0x6C,
     NUM_HID_MAPPINGS = 0x6D,
 };
+

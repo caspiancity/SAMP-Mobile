@@ -128,3 +128,4 @@ private:
     }
 };
 VALIDATE_SIZE(CShadowCamera, (VER_x32 ? 0x8 : 0x10));
+

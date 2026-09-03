@@ -39,3 +39,4 @@ void CFPSFix::PushThread(pid_t tid)
 
 	m_Threads.push_back(tid);
 }
+

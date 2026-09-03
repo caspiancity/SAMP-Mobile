@@ -56,3 +56,4 @@ private:
 
 VALIDATE_SIZE(CAnimBlendHierarchy, (VER_x32 ? 0x18 : 0x28));
 
+

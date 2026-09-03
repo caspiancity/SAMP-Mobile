@@ -124,3 +124,4 @@ bool PluginConfig::microEnable { kDefValMicroEnable };
 int PluginConfig::microVolume { kDefValMicroVolume };
 std::string PluginConfig::deviceName;
 
+

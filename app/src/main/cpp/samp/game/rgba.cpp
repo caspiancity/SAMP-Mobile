@@ -134,3 +134,4 @@ CRGBA& CRGBA::operator=(const CRGBA& rhs) {
 CRGBA CRGBA::ToRGB() const {
     return CRGBA(r, g, b, 255);
 }
+

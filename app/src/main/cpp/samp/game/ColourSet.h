@@ -108,3 +108,4 @@ public:
 };
 
 VALIDATE_SIZE(CColourSet, 0xDC);
+

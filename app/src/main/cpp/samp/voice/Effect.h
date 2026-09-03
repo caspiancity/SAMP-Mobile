@@ -34,3 +34,4 @@ private:
 
 using EffectPtr = std::unique_ptr<Effect>;
 #define MakeEffect std::make_unique<Effect>
+

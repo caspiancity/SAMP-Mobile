@@ -31,3 +31,4 @@ void CPtrNodeDoubleLink::AddToList(CPtrListDoubleLink* list) {
 
     list->m_node = reinterpret_cast<CPtrNode*>(this);
 }
+

@@ -38,3 +38,4 @@ bool CTask::IsTaskPtr(CTask* task) {
 void CTask::Serialize() {
 
 }
+

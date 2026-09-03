@@ -80,3 +80,4 @@ bool CBox::IsPointInside(const CVector& point) const {
            && point.y >= m_vecMin.y && point.y <= m_vecMax.y
            && point.z >= m_vecMin.z && point.z <= m_vecMax.z;
 }
+

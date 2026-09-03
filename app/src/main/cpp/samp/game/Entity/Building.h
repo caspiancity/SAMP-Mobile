@@ -25,3 +25,4 @@ VALIDATE_SIZE(CBuilding, (VER_x32 ? 0x3C : 0x60));
 bool IsBuildingPointerValid(CBuilding* building);
 
 extern int32 gBuildings;
+

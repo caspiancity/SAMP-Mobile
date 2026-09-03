@@ -25,3 +25,4 @@ static_assert(sizeof(CDummy) == (VER_x32 ? 0x3C : 0x60));
 
 
 bool IsDummyPointerValid(CDummy* dummy);
+

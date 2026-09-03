@@ -45,3 +45,4 @@ void CAnimBlendClumpData::LoadFramesIntoSPR() {
 void CAnimBlendClumpData::ForAllFramesInSPR(void (*callback)(AnimBlendFrameData*, void*), void* data, uint32 a3) {
     // NOP
 }
+

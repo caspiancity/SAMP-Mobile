@@ -88,3 +88,4 @@ struct CPlayerInfoGta {
 };
 VALIDATE_SIZE(CPlayerInfoGta, (VER_x32 ? 0x194 : 0x1D8));
 
+

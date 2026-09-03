@@ -14,3 +14,4 @@ struct RpHAnimBlendInterpFrame {
     CVector     translation;
 };
 VALIDATE_SIZE(RpHAnimBlendInterpFrame, 0x1C);
+

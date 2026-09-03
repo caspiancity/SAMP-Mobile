@@ -96,3 +96,4 @@ public:
     static CEntityGTA* LoadObjectInstance1(const char* line);
 };
 
+

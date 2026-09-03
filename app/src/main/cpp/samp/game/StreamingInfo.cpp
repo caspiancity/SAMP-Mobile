@@ -67,3 +67,4 @@ void CStreamingInfo::RemoveFromList() {
     m_nNextIndex = -1;
     m_nPrevIndex = -1;
 }
+

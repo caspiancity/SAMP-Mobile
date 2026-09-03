@@ -305,3 +305,4 @@ extern void        *_rwImageClose(void *instance, RwInt32 offset,
 
 #endif                          /* RWIMAGE_H */
 
+

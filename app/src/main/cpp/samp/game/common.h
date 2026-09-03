@@ -581,3 +581,4 @@ namespace notsa {
 };
 //! Macro for passing a string var to *scanf_s function.
 #define VERIFY notsa::detail::VerifyMacroImpl
+

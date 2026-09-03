@@ -56,3 +56,4 @@ public:
 };
 VALIDATE_SIZE(CPedIntelligence, (VER_x32 ? 0x298 : 0x440));
 
+

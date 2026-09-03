@@ -16,3 +16,4 @@ void CWidgetRadar__Update_hook(CWidgetRadar* thiz)
 void CWidgetRadar::InjectHooks() {
     //CHook::InlineHook("_ZN12CWidgetRadar10IsHeldDownEv", &CWidgetRadar__Update_hook, &CWidgetRadar__Update);
 }
+

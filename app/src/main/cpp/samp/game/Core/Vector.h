@@ -262,3 +262,4 @@ static CVector ProjectVector(const CVector& what, const CVector& onto) {
 CVector Multiply3x3(const CMatrix& m, const CVector& v);
 CVector Multiply3x3(const CVector& v, const CMatrix& m);
 CVector MultiplyMatrixWithVector(const CMatrix& mat, const CVector& vec);
+

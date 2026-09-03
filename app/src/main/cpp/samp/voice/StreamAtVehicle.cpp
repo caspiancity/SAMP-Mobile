@@ -59,3 +59,4 @@ void StreamAtVehicle::OnChannelCreate(const Channel& channel) noexcept
         reinterpret_cast<BASS_3DVECTOR*>(&pVehicleMatrix.pos),
         &kZeroVector, &kZeroVector);
 }
+

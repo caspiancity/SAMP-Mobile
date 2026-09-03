@@ -15,3 +15,4 @@ Timer::time_t Timer::Get() noexcept
 }
 
 std::atomic<Timer::time_t> Timer::timestamp { 0 };
+

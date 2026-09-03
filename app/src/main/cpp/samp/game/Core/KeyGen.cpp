@@ -114,3 +114,4 @@ uint32 CKeyGen::GetUppercaseKey(const char* str) {
     }
     return key;
 }
+

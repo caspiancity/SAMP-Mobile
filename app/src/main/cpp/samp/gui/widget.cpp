@@ -64,7 +64,7 @@ void Widget::setPosition(const ImVec2& position)
 	// relative-pos
 	m_position = position;
 
-	// пересчитываем абсолютную позицию для this и child
+	// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ this пїЅ child
 	this->updateAbsolutePosition();
 }
 
@@ -167,7 +167,7 @@ void Widget::touchEvent(const ImVec2& pos, TouchType type)
 		m_moveDelta = { 0.0f, 0.0f };
 	}
 
-	/* проходим по дочерним окнам */
+	/* пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ */
 	if (m_children.empty()) return;
 	for (auto child : m_children)
 	{

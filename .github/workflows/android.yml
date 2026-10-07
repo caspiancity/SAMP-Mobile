@@ -2,21 +2,19 @@ name: Build SAMP-Mobile
 
 on:
   push:
-    branches: [ "GTA-2.10" ]
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -24,8 +22,20 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK (NDK, CMake, licenses)
+        shell: bash
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+
+          NDK=$(grep -rhoE "ndkVersion\s*=?\s*['\"][0-9.]+['\"]" --include=*.gradle --include=*.kts . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || true)
+          CMK=$(grep -rhoE "version\s*=?\s*['\"][0-9]+\.[0-9]+\.[0-9]+['\"]" --include=*.gradle --include=*.kts . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || true)
+
+          PKGS="platform-tools"
+          [ -n "$NDK" ] && PKGS="$PKGS ndk;$NDK" || PKGS="$PKGS ndk;26.1.10909125"
+          [ -n "$CMK" ] && PKGS="$PKGS cmake;$CMK" || PKGS="$PKGS cmake;3.22.1"
+          echo "Installing: $PKGS"
+          "$SDKM" $PKGS || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -80,7 +90,6 @@ jobs:
 
           INC = re.compile(r'(#\s*include\s*)(["<])([^">\n]+)([">])')
           BLD = re.compile(r'[A-Za-z0-9_\-./]+\.(?:c|cc|cpp|cxx|h|hpp|inc|S|s)(?![A-Za-z0-9_])')
-
           SRC_EXT = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.inc', '.mm'}
 
           def fix_inc(m):
@@ -119,11 +128,15 @@ jobs:
           print('Total files fixed:', changed)
           PY
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Build (debug APK)
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Build debug APK
+        shell: bash
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace --no-daemon
+          else
+            gradle assembleDebug --stacktrace --no-daemon
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

@@ -1,4 +1,4 @@
-name: Build APACHE-ONLINE
+name: Build SAMP-Mobile
 
 on:
   push:
@@ -151,6 +151,22 @@ jobs:
 
       - name: Fix PRDownloader version
         run: sed -i 's/PRDownloader:1\.0\.1/PRDownloader:1.0.2/g' app/build.gradle
+
+      - name: Create keystore matching build.gradle
+        shell: bash
+        run: |
+          G=$(ls app/build.gradle app/build.gradle.kts 2>/dev/null | head -1)
+          SP=$(grep -oE "storePassword\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
+          KA=$(grep -oE "keyAlias\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
+          KP=$(grep -oE "keyPassword\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
+          SP=${SP:-123456}; KA=${KA:-key0}; KP=${KP:-$SP}
+          echo "alias=$KA"
+          mkdir -p "$GITHUB_WORKSPACE/../keys"
+          keytool -genkeypair \
+            -keystore "$GITHUB_WORKSPACE/../keys/new.jks" \
+            -alias "$KA" -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$SP" -keypass "$KP" \
+            -dname "CN=SAMP, OU=Dev, O=Dev, L=Baku, S=Baku, C=AZ"
 
       - name: Build debug APK
         shell: bash

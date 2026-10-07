@@ -155,18 +155,47 @@ jobs:
       - name: Create keystore matching build.gradle
         shell: bash
         run: |
-          G=$(ls app/build.gradle app/build.gradle.kts 2>/dev/null | head -1)
-          SP=$(grep -oE "storePassword\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
-          KA=$(grep -oE "keyAlias\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
-          KP=$(grep -oE "keyPassword\s*=?\s*['\"][^'\"]+['\"]" "$G" | head -1 | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\"")
-          SP=${SP:-123456}; KA=${KA:-key0}; KP=${KP:-$SP}
-          echo "alias=$KA"
-          mkdir -p "$GITHUB_WORKSPACE/../keys"
-          keytool -genkeypair \
-            -keystore "$GITHUB_WORKSPACE/../keys/new.jks" \
-            -alias "$KA" -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass "$SP" -keypass "$KP" \
-            -dname "CN=SAMP, OU=Dev, O=Dev, L=Baku, S=Baku, C=AZ"
+          python3 - <<'PY'
+          import re, os, subprocess
+
+          g_file = 'app/build.gradle'
+          if not os.path.exists(g_file) and os.path.exists('app/build.gradle.kts'):
+              g_file = 'app/build.gradle.kts'
+
+          sp, ka, kp = '123456', 'key0', '123456'
+
+          if os.path.exists(g_file):
+              with open(g_file, 'r', encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+
+              m_sp = re.search(r'storePassword\s*=?\s*[\'"]([^\'"]+)[\'"]', content)
+              m_ka = re.search(r'keyAlias\s*=?\s*[\'"]([^\'"]+)[\'"]', content)
+              m_kp = re.search(r'keyPassword\s*=?\s*[\'"]([^\'"]+)[\'"]', content)
+
+              if m_sp: sp = m_sp.group(1)
+              if m_ka: ka = m_ka.group(1)
+              if m_kp: kp = m_kp.group(1)
+              elif m_sp: kp = sp
+
+          print(f"Using keystore alias={ka}")
+
+          keys_dir = os.path.abspath(os.path.join(os.environ['GITHUB_WORKSPACE'], '..', 'keys'))
+          os.makedirs(keys_dir, exist_ok=True)
+          ks_path = os.path.join(keys_dir, 'new.jks')
+
+          cmd = [
+              'keytool', '-genkeypair',
+              '-keystore', ks_path,
+              '-alias', ka,
+              '-keyalg', 'RSA',
+              '-keysize', '2048',
+              '-validity', '10000',
+              '-storepass', sp,
+              '-keypass', kp,
+              '-dname', 'CN=SAMP, OU=Dev, O=Dev, L=Baku, S=Baku, C=AZ'
+          ]
+          subprocess.run(cmd, check=True)
+          PY
 
       - name: Build debug APK
         shell: bash

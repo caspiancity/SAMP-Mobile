@@ -1,38 +1,133 @@
-name: Build SA-MP Mobile (GTA 2.10)
+name: Build SAMP-Mobile
 
 on:
   push:
-    branches: [ "GTA-2.10", "main", "master" ]
-  pull_request:
     branches: [ "GTA-2.10" ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
-    # Windows runner nativ olaraq hərf həssaslığını (case-sensitivity) ləğv edir
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: 17
 
-      - name: Setup Android SDK & NDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK with Gradle
-        run: |
-          .\gradlew.bat assembleDebug --stacktrace
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Upload Debug APK
+      - name: Fix case-sensitivity (Windows-style paths)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from collections import defaultdict
+
+          ROOT = os.getcwd()
+          SKIP = {'.git', 'build', '.gradle', '.cxx', 'node_modules'}
+
+          files = []
+          for d, dn, fn in os.walk(ROOT):
+              dn[:] = [x for x in dn if x not in SKIP]
+              for f in fn:
+                  rel = os.path.relpath(os.path.join(d, f), ROOT)
+                  files.append(rel.replace(os.sep, '/'))
+
+          by_name = defaultdict(list)
+          for p in files:
+              by_name[p.rsplit('/', 1)[-1].lower()].append(p)
+
+          def resolve(ref):
+              clean = ref.replace('\\', '/')
+              prefix = ''
+              while True:
+                  if clean.startswith('./'):
+                      prefix += './'; clean = clean[2:]
+                  elif clean.startswith('../'):
+                      prefix += '../'; clean = clean[3:]
+                  elif clean.startswith('/'):
+                      prefix += '/'; clean = clean[1:]
+                  else:
+                      break
+              if not clean:
+                  return None
+              parts = clean.split('/')
+              lc = clean.lower()
+              matches = [c for c in by_name.get(parts[-1].lower(), [])
+                         if c.lower() == lc or c.lower().endswith('/' + lc)]
+              if not matches:
+                  return None
+              if any(m == clean or m.endswith('/' + clean) for m in matches):
+                  return prefix + clean if '\\' in ref else None
+              fixed = {'/'.join(m.split('/')[-len(parts):]) for m in matches}
+              if len(fixed) != 1:
+                  return None
+              return prefix + fixed.pop()
+
+          INC = re.compile(r'(#\s*include\s*)(["<])([^">\n]+)([">])')
+          BLD = re.compile(r'[A-Za-z0-9_\-./]+\.(?:c|cc|cpp|cxx|h|hpp|inc|S|s)(?![A-Za-z0-9_])')
+
+          SRC_EXT = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.inc', '.mm'}
+
+          def fix_inc(m):
+              ref = m.group(3)
+              if m.group(2) == '<' and '/' not in ref:
+                  return m.group(0)
+              new = resolve(ref)
+              return m.group(1) + m.group(2) + new + m.group(4) if new else m.group(0)
+
+          def fix_bld(m):
+              new = resolve(m.group(0))
+              return new if new else m.group(0)
+
+          changed = 0
+          for p in files:
+              name = os.path.basename(p)
+              ext = os.path.splitext(name)[1].lower()
+              if ext in SRC_EXT:
+                  rx, fn = INC, fix_inc
+              elif name == 'CMakeLists.txt' or ext in {'.cmake', '.mk', '.gradle', '.kts'}:
+                  rx, fn = BLD, fix_bld
+              else:
+                  continue
+              path = os.path.join(ROOT, p)
+              try:
+                  with open(path, 'r', encoding='utf-8', errors='surrogateescape', newline='') as f:
+                      old = f.read()
+              except Exception:
+                  continue
+              new = rx.sub(fn, old)
+              if new != old:
+                  with open(path, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
+                      f.write(new)
+                  changed += 1
+                  print('fixed:', p)
+          print('Total files fixed:', changed)
+          PY
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build (debug APK)
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SAMP-Mobile-Debug-APK
-          path: app/build/outputs/apk/**/*.apk
+          name: samp-mobile-apk
+          path: "**/build/outputs/apk/**/*.apk"
+          if-no-files-found: warn

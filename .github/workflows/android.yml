@@ -1,4 +1,4 @@
-name: Build SAMP-Mobile
+name: Build APACHE-ONLINE
 
 on:
   push:
@@ -128,15 +128,35 @@ jobs:
           print('Total files fixed:', changed)
           PY
 
+      - name: Add JitPack repo (init script)
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/jitpack.gradle <<'EOF'
+          gradle.settingsEvaluated { settings ->
+            try {
+              settings.dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+              }
+            } catch (Throwable ignored) {}
+          }
+          gradle.allprojects {
+            repositories {
+              google()
+              mavenCentral()
+              maven { url 'https://jitpack.io' }
+            }
+          }
+          EOF
+
+      - name: Fix PRDownloader version
+        run: sed -i 's/PRDownloader:1\.0\.1/PRDownloader:1.0.2/g' app/build.gradle
+
       - name: Build debug APK
         shell: bash
         run: |
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace --no-daemon
-          else
-            gradle assembleDebug --stacktrace --no-daemon
-          fi
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

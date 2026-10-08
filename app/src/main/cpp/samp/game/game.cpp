@@ -14,6 +14,22 @@
 #include "game/Models/ModelInfo.h"
 #include "game/Collision/Collision.h"
 
+// Settings obyektinin mövcudluğunu bildiririk
+extern CSettings* pSettings; 
+
+void ApplyFPSLimit(int iFPS)
+{
+    if (iFPS <= 0) iFPS = 60; // Hər ehtimala qarşı standart 60 FPS
+
+    // 32-bit və 64-bit mühərriklərdə RsGlobal.frameLimit offset-i
+    uintptr_t fpsAddr = g_libGTASA + (VER_x32 ? 0x00B53770 : 0x00E7B2C0);
+
+    // Yaddaşa yazma icazəsini açırıq və yeni FPS kilitini yazırıq
+    CHook::UnFuck(fpsAddr);
+    *(uint32_t*)fpsAddr = (uint32_t)iFPS;
+}
+
+
 void ApplySAMPPatchesInGame();
 void InitScripting();
 
@@ -82,13 +98,24 @@ void InstallWidgetHooks();
 
 void CGame::Initialize()
 {
-	FLog("CGame initializing..");
+    FLog("CGame initializing..");
 
     ApplySAMPPatchesInGame();
-	GameResetRadarColors();
+    GameResetRadarColors();
+
+    // Settings faylından oxunan FPS limitini mühərrikə tətbiq edirik
+    if (pSettings) 
+    {
+        ApplyFPSLimit(pSettings->Get().iFPSCount);
+    } 
+    else 
+    {
+        ApplyFPSLimit(60);
+    }
 
     szGameTextMessage = new uint16_t[1076];
 }
+
 // 0.3.7
 void CGame::SetMaxStats()
 {

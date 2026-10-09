@@ -20,6 +20,9 @@ extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
 
+extern bool g_bHideAllUI;
+extern bool g_bShowHandlingDlg;
+
 UI::UI(const ImVec2& display_size, const std::string& font_path)
 	: Widget(), ImGuiWrapper(display_size, font_path)
 {
@@ -92,18 +95,10 @@ bool UI::initialize()
     label4 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
     pUI->addChild(label4);
 
-	// mem
 	Label* d_label1;
-
 	d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(d_label1);
 	d_label1->setPosition(ImVec2(3.0, 3.0));
-
-
-    // ==== version ==== //
-    //d_label = new Label("", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-    //this->addChild(d_label);
-   // d_label->setPosition(ImVec2(3.0, 55.0));
 
 	return true;
 }
@@ -128,31 +123,84 @@ void UI::shutdown()
 	ImGuiWrapper::shutdown();
 }
 
+void RenderHandlingDialog()
+{
+	if (!g_bShowHandlingDlg) return;
+
+	CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+	if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+		g_bShowHandlingDlg = false;
+		return;
+	}
+
+	CVehicle* pVeh = nullptr;
+	if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+		CVehiclePool* pPool = pNetGame->GetVehiclePool();
+		VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+		if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+	}
+
+	if (!pVeh) return;
+
+	ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Vehicle Handling Editor", &g_bShowHandlingDlg))
+	{
+		static float fSpeed = pVeh->GetMaxSpeed();
+		static float fAccel = pVeh->GetAcceleration();
+		static float fBrake = pVeh->GetBrakePower();
+		static float fSteer = pVeh->GetSteeringAngle();
+		static float fMass = pVeh->GetMass();
+		static int iFarColor = 0;
+
+		ImGui::Text("Canli Handling Tenzimlemeleri");
+		ImGui::Separator();
+
+		ImGui::SliderFloat("Maks Suret (Velocity)", &fSpeed, 50.0f, 500.0f);
+		ImGui::SliderFloat("Tecil (Acceleration)", &fAccel, 1.0f, 100.0f);
+		ImGui::SliderFloat("Tormoz Gucu (Brake)", &fBrake, 1.0f, 50.0f);
+		ImGui::SliderFloat("Manevr Bucagi (Steering)", &fSteer, 10.0f, 90.0f);
+		ImGui::SliderFloat("Ceki/Kutle (Mass)", &fMass, 500.0f, 10000.0f);
+		ImGui::SliderInt("Far Rengi (Headlight)", &iFarColor, 0, 15);
+
+		ImGui::Spacing();
+		if (ImGui::Button("Tetbiq Et", ImVec2(120, 40))) {
+			pVeh->SetMaxSpeed(fSpeed);
+			pVeh->SetAcceleration(fAccel);
+			pVeh->SetBrakePower(fBrake);
+			pVeh->SetSteeringAngle(fSteer);
+			pVeh->SetMass(fMass);
+			pVeh->SetHeadlightColor((uint8_t)iFarColor);
+			pUI->chat()->addDebugMessage("{00FF00}[Handling]: Parametrler tetbiq edildi!");
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("Bagla", ImVec2(120, 40))) {
+			g_bShowHandlingDlg = false;
+		}
+	}
+	ImGui::End();
+}
+
 void UI::drawList()
 {
-	if (!visible()) return;
+	if (g_bHideAllUI) {
+		RenderHandlingDialog();
+		return;
+	}
 
-	/*Label* label;
-	label = new Label("1.0.11", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-	label->setPosition(ImVec2(0.0, 0.0));
-	this->addChild(label);*/
+	if (!visible()) return;
 
 	if (pPlayerTags) pPlayerTags->Render(renderer());
 	if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());
 	if (pNetGame && pNetGame->GetPlayerBubblePool()) pNetGame->GetPlayerBubblePool()->Render(renderer());
+
+	RenderHandlingDialog();
 
 	draw(renderer());
 }
 
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
-	/* 
-		� ������� ����������
-		1 - ����������
-		2 - ������
-		3 - ���
-	*/
-
 	if (m_keyboard->visible() && m_keyboard->contains(pos))
 	{
 		m_keyboard->touchEvent(pos, type);
@@ -177,28 +225,15 @@ enum eTouchType
 
 bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 {
+	if (g_bHideAllUI && type == TOUCH_PUSH) {
+		g_bHideAllUI = false;
+		if (pUI && pUI->chat()) {
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+		}
+		return true;
+	}
+
 	ImGuiIO& io = ImGui::GetIO();
-
-	/*
-	switch (type)
-	{
-	case 1://TOUCH_PUSH:
-		io.MousePos = ImVec2(x, y);
-		io.MouseDown[0] = true;
-		MyLog2("TOUCH_PUSH");
-		break;
-
-	case 2://TOUCH_POP:
-		io.MouseDown[0] = false;
-		m_bNeedClearMousePos = true;
-		MyLog2("TOUCH_POP");
-		break;
-
-	case 3://TOUCH_MOVE:
-		io.MousePos = ImVec2(x, y);
-		MyLog2("TOUCH_MOVE");
-		break;
-	}*/
 	VoiceButton* vbutton = pUI->voicebutton();
 	switch (type)
 	{
@@ -214,7 +249,6 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 
 	case TOUCH_MOVE:
 		io.MousePos = ImVec2(x, y);
-		//if (vbutton->countdown > 50) vbutton->countdown = 20;
 		break;
 	}
 
@@ -229,64 +263,19 @@ void UI::renderDebug()
     if(!pSettings->Get().iFPSCounter) return;
 
     char szStr[30];
-    char szStrMem[64];
-    char szStrPos[64];
 
     ImVec2 pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(540.0f));
 
     static float fps = 120.f;
-        static auto lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
-        if(CTimer::m_snTimeInMillisecondsNonClipped - lastTick > 500) {
-            lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
-            fps = std::clamp(CTimer::game_FPS, 10.f, (float) 120);
-        }
-        snprintf(&szStr[0], sizeof(szStr), "FPS: %.0f", fps);
+    static auto lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+    if(CTimer::m_snTimeInMillisecondsNonClipped - lastTick > 500) {
+        lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+        fps = std::clamp(CTimer::game_FPS, 10.f, (float) 120);
+    }
+    snprintf(&szStr[0], sizeof(szStr), "FPS: %.0f", fps);
 
-        label->setText(&szStr[0]);
-        label->setPosition(pos);
-
-        /*auto &msUsed = CStreaming::ms_memoryUsed;
-        auto &msAvailable = CStreaming::ms_memoryAvailable;
-
-        struct mallinfo memInfo = mallinfo();
-        int totalAllocatedMB  = memInfo.uordblks / (1024 * 1024);
-
-        snprintf(&szStrMem[0], sizeof(szStrMem), "MEM: %d mb (stream %d/%d) (Tex %d MB)",
-                 totalAllocatedMB,
-                 msUsed / (1024 * 1024),
-                 msAvailable / (1024 * 1024),
-                 TextureDatabaseRuntime::storedTexels / (1024 * 1024)
-        );
-
-        pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(1080.0f - UISettings::fontSize() * 9));
-
-        label2->setText(&szStrMem[0]);
-        label2->setPosition(pos);
-
-        if (pGame->FindPlayerPed()->m_pPed)
-        {
-            snprintf(&szStrPos[0], sizeof(szStrPos), "POS: %.2f, %.2f, %.2f", pGame->FindPlayerPed()->m_pPed->m_matrix->m_pos.x, pGame->FindPlayerPed()->m_pPed->m_matrix->m_pos.y, pGame->FindPlayerPed()->m_pPed->m_matrix->m_pos.z);
-            pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(1080.0f - UISettings::fontSize() * 8));
-            label3->setText(&szStrPos[0]);
-            label3->setPosition(pos);
-        }
-        //Log("pools = %d mem = %d", GetPedPoolGta()->GetNoOfUsedSpaces(), totalAllocatedMB);
-        char debugPools[250];
-        snprintf(&debugPools[0], sizeof(debugPools), "NSingle: %d; NDouble: %d; Peds: %d; Veh's: %d; Obj: %d; EntryInf: %d; Dummies: %d, Buildings: %d",
-                 GetPtrNodeSingleLinkPool()->GetNoOfUsedSpaces(),
-                 GetPtrNodeDoubleLinkPool()->GetNoOfUsedSpaces(),
-                 GetPedPoolGta()->GetNoOfUsedSpaces(),
-                 GetVehiclePoolGta()->GetNoOfUsedSpaces(),
-                 GetObjectPoolGta()->GetNoOfUsedSpaces(),
-                 GetEntryInfoNodePool()->GetNoOfUsedSpaces(),
-                 GetDummyPool()->GetNoOfUsedSpaces(),
-                 GetBuildingPool()->GetNoOfUsedSpaces()
-                 );
-
-        pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(1080.0f - UISettings::fontSize() * 1));
-
-        label4->setText(&debugPools[0]);
-        label4->setPosition(pos);*/
+    label->setText(&szStr[0]);
+    label->setPosition(pos);
 }
 
 void UI::PushToBufferedQueueTextDrawPressed(uint16_t textdrawId)
@@ -309,4 +298,3 @@ void UI::ProcessPushedTextdraws()
         m_BufferedCommandTextdraws.ReadUnlock();
     }
 }
-

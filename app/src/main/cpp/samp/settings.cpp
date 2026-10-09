@@ -28,13 +28,13 @@ CSettings::CSettings()
 	sprintf(buff, "__android_%d%d", rand() % 1000, rand() % 1000);
 	length = reader.Get("client", "name", buff).copy(m_Settings.szNickName, 24);
 	m_Settings.szNickName[length] = '\0';
-	length = reader.Get("client", "host", "188.127.241.74").copy(m_Settings.szHost, MAX_SETTINGS_STRING);
+	length = reader.Get("client", "host", "127.0.0.1").copy(m_Settings.szHost, MAX_SETTINGS_STRING);
 	m_Settings.szHost[length] = '\0';
 	length = reader.Get("client", "password", "").copy(m_Settings.szPassword, MAX_SETTINGS_STRING);
 	m_Settings.szPassword[length] = '\0';
     length = reader.Get("client", "version", "0.3.7").copy(m_Settings.szVersion, MAX_SETTINGS_STRING);
     m_Settings.szVersion[length] = '\0';
-	m_Settings.iPort = reader.GetInteger("client", "port", 3558);
+	m_Settings.iPort = reader.GetInteger("client", "port", 7777);
     m_Settings.bAutoAim = reader.GetBoolean("client", "autoaim", false);
 
 	// debug
@@ -76,7 +76,7 @@ CSettings::CSettings()
 
 	m_Settings.iDialog = reader.GetBoolean("gui", "Dialog", true);
 
-	m_Settings.bVoiceChatEnable = reader.GetBoolean("gui", "VoiceChatEnable", true);
+	m_Settings.bVoiceChatEnable = reader.GetBoolean("gui", "VoiceChatEnable", false);
 	m_Settings.iVoiceChatKey = reader.GetInteger("gui", "VoiceChatKey", 66);
 	m_Settings.fVoiceChatSize = reader.GetReal("gui", "VoiceChatSize", 30.0f);
 	m_Settings.fVoiceChatPosX = reader.GetReal("gui", "VoiceChatPosX", 1520.0f);
@@ -85,8 +85,8 @@ CSettings::CSettings()
 	m_Settings.iAndroidKeyboard = reader.GetBoolean("gui", "androidkeyboard", false);
 	m_Settings.iFirstPerson = reader.GetBoolean("gui", "firstperson", true);
 	m_Settings.iCutout = reader.GetBoolean("gui", "cutout", false);
-	m_Settings.iFPSCounter = reader.GetBoolean("gui", "fps", false);
-	m_Settings.iFPSCount = reader.GetInteger("gui", "FPSLimit", 60);
+	m_Settings.iFPSCounter = reader.GetBoolean("gui", "fps", true);
+	m_Settings.iFPSCount = reader.GetInteger("gui", "FPSLimit", 120);
 	m_Settings.iHPArmourText = reader.GetBoolean("gui", "hparmourtext", false);
 	m_Settings.iOutfitGuns = reader.GetBoolean("gui", "outfitguns", false);
 	m_Settings.iPCMoney = reader.GetBoolean("gui", "pcmoney", false);

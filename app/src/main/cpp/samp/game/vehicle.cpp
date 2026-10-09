@@ -785,6 +785,40 @@ void CVehicle::UpdateColor()
 	}
 }
 
+void CVehicle::SetMaxSpeed(float fSpeed)
+{
+	if (!m_pVehicle) return;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x14) = fSpeed;          // fMaxVelocity
+		*(float*)(pHandling + 0x18) = fSpeed / 10.0f;   // fEngineAcceleration
+	}
+}
+
+void CVehicle::SetBrakePower(float fBrake)
+{
+	if (!m_pVehicle) return;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x2C) = fBrake;         // fBrakeDeceleration
+	}
+}
+
+void CVehicle::SetSteeringAngle(float fAngle)
+{
+	if (!m_pVehicle) return;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x38) = fAngle;         // fSteeringLock
+	}
+}
+
+void CVehicle::SetHeadlightColor(uint8_t colorID)
+{
+	if (!m_pVehicle) return;
+	*(uint8_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x5A4 : 0x6E0)) = colorID;
+}
+
 bool CVehicle::UpdateLastDrivenTime()
 {
 	if(m_pVehicle)

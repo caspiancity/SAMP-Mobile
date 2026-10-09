@@ -73,9 +73,22 @@ void readVehiclesAudioSettings()
 
 void ApplyFPSPatch(uint8_t fps)
 {
+    if (fps == 0) fps = 60;
+
 #if VER_x32
-    CHook::WriteMemory(g_libGTASA + 0x005E49E0, (uintptr_t)& fps, 1);
-	CHook::WriteMemory(g_libGTASA + 0x005E492E, (uintptr_t)& fps, 1);
+    // 1. Oxunan FPS limitini yaddaş adreslərinə yazırıq
+    CHook::UnFuck(g_libGTASA + 0x005E49E0);
+    CHook::UnFuck(g_libGTASA + 0x005E492E);
+    CHook::WriteMemory(g_libGTASA + 0x005E49E0, (uintptr_t)&fps, 1);
+    CHook::WriteMemory(g_libGTASA + 0x005E492E, (uintptr_t)&fps, 1);
+
+    // 2. GTA SA daxili Frame Limiter-ini mütləq söndürürük (m_bFrameLimiter = false)
+    uintptr_t pFrameLimiter = g_libGTASA + (VER_2_1 ? 0x0095CD7D : 0x008C3B1C);
+    CHook::UnFuck(pFrameLimiter);
+    *(uint8_t*)pFrameLimiter = 0;
+
+    // 3. Render dövrəsindəki usleep/delay (kadr gözləmə) patch-i
+    CHook::NOP(g_libGTASA + 0x0053E90C, 2);
 #else
     CHook::WriteMemory(g_libGTASA + 0x70A38C, "\xE9\x0F\x1E\x32", 4);
     CHook::WriteMemory(g_libGTASA + 0x70A43C, "\xE8\x0F\x1E\x32", 4);
@@ -201,35 +214,14 @@ void ApplyGlobalPatches()
     // черные значки
     CHook::WriteMemory(g_libGTASA + 0x00442120, (uintptr_t)"\x2C\xE0", 2); // B 0x44217c
     CHook::WriteMemory(g_libGTASA + 0x0044217C, (uintptr_t)"\x30\x46", 2); // mov r0, r6
-
-    /*// CRadar::DrawEntityBlip (translate color)
-    CHook::WriteMemory(g_libGTASA + 0x004404C0, (uintptr_t)"\x3A\xE0", 2); // B 0x440538
-    CHook::WriteMemory(g_libGTASA + 0x00440538, (uintptr_t)"\x30\x46", 2); // mov r0, r6
-
-    // CRadar::DrawCoordBlip (translate color)
-    CHook::WriteMemory(g_libGTASA + 0x0043FB5E, (uintptr_t)"\x12\xE0", 2); // B 0x43fb86
-    CHook::WriteMemory(g_libGTASA + 0x0043FB86, (uintptr_t)"\x48\x46", 2); // mov r0, r9
-    CHook::WriteMemory(g_libGTASA + 0x002AB5C6, (uintptr_t)"\x00\x21", 2);*/
 #else
     // черные значки
     CHook::WriteMemory(g_libGTASA + 0x52737C, (uintptr_t)"\x1E\x00\x00\x14", 4); // B 0x5273F4
     CHook::WriteMemory(g_libGTASA + 0x5273F4, (uintptr_t)"\xE1\x03\x14\x2A", 4); // mov w1, w20
 
-    /*// CRadar::DrawEntityBlip (translate color)
-    CHook::WriteMemory(g_libGTASA + 0x5258D8, (uintptr_t)"\x22\x00\x00\x14", 4); // B 0x525960
-    CHook::WriteMemory(g_libGTASA + 0x525960, (uintptr_t)"\xE1\x03\x16\x2A", 4); // mov w1, W22
-
-    // CRadar::DrawCoordBlip (translate color)
-    CHook::WriteMemory(g_libGTASA + 0x524F58, (uintptr_t)"\xCC\xFF\xFF\x17", 4); // B 0x524E88
-    CHook::WriteMemory(g_libGTASA + 0x524E88, (uintptr_t)"\xE1\x03\x16\x2A", 4); // mov w1, W22*/
-
     // crash legend
     CHook::NOP(g_libGTASA + 0x36A690, 1);
 #endif
-
-    //ApplyShadowPatch();
-
-    //CDebugInfo::ApplyDebugPatches();
 
     CHook::RET("_ZN12CAudioEngine16StartLoadingTuneEv"); // звук загрузочного экрана
 
@@ -239,12 +231,12 @@ void ApplyGlobalPatches()
 
 #if VER_x32
     CHook::NOP(g_libGTASA + 0x003F61B6, 2);	// CCoronas::RenderSunReflection crash
-    CHook::NOP(g_libGTASA + 0x00584884, 2);	// не давать ган при выходе из тачки 	( клюшка, дробовик and etc )
-    CHook::NOP(g_libGTASA + 0x00584850, 2);	// не давать ган при выходе из тачки	( клюшка, дробовик and etc )
+    CHook::NOP(g_libGTASA + 0x00584884, 2);	// не давать ган при выходе из тачки
+    CHook::NOP(g_libGTASA + 0x00584850, 2);	// не давать ган при выходе из тачки
 #else
     CHook::NOP(g_libGTASA + 0x004D8700, 1);  // CCoronas::RenderSunReflection crash
-    CHook::NOP(g_libGTASA + 0x006A852C, 1);  // не давать ган при выходе из тачки   ( клюшка, дробовик and etc )
-    CHook::NOP(g_libGTASA + 0x006A84E0, 1);  // не давать ган при выходе из тачки  ( клюшка, дробовик and etc )
+    CHook::NOP(g_libGTASA + 0x006A852C, 1);  // не давать ган при выходе из тачки
+    CHook::NOP(g_libGTASA + 0x006A84E0, 1);  // не давать ган при выходе из тачки
 #endif
 
     CHook::RET("_ZN17CVehicleRecording4LoadEP8RwStreamii"); // CVehicleRecording::Load
@@ -265,7 +257,7 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN7CCamera8CamShakeEffff"); // CCamera::CamShake
     CHook::RET("_ZN7CEntity23PreRenderForGlassWindowEv"); // CEntity::PreRenderForGlassWindow
     CHook::RET("_ZN8CMirrors16RenderReflBufferEb"); // CMirrors::RenderReflBuffer
-    CHook::RET("_ZN4CHud23DrawBustedWastedMessageEv"); // CHud::DrawBustedWastedMessage // ПОТРАЧЕНО
+    CHook::RET("_ZN4CHud23DrawBustedWastedMessageEv"); // CHud::DrawBustedWastedMessage
     CHook::RET("_ZN4CHud14SetHelpMessageEPKcPtbbbj"); // CHud::SetHelpMessage
     CHook::RET("_ZN4CHud24SetHelpMessageStatUpdateEhtff"); // CHud::SetHelpMessageStatUpdate
     CHook::RET("_ZN6CCheat16ProcessCheatMenuEv"); // CCheat::ProcessCheatMenu
@@ -282,51 +274,41 @@ void ApplyGlobalPatches()
 
     CHook::RET("_ZN10CEntryExit19GenerateAmbientPedsERK7CVector"); // CEntryExit::GenerateAmbientPeds
     CHook::RET("_ZN8CCarCtrl31GenerateOneEmergencyServicesCarEj7CVector"); // CCarCtrl::GenerateOneEmergencyServicesCar
-    CHook::RET("_ZN11CPopulation17AddPedAtAttractorEiP9C2dEffect7CVectorP7CEntityi"); // CPopulation::AddPedAtAttractor crash. wtf stuff?
+    CHook::RET("_ZN11CPopulation17AddPedAtAttractorEiP9C2dEffect7CVectorP7CEntityi"); // CPopulation::AddPedAtAttractor
 
-    CHook::RET("_ZN7CDarkel26RegisterCarBlownUpByPlayerEP8CVehiclei"); // CDarkel__RegisterCarBlownUpByPlayer_hook
-    CHook::RET("_ZN7CDarkel25ResetModelsKilledByPlayerEi"); // CDarkel__ResetModelsKilledByPlayer_hook
-    CHook::RET("_ZN7CDarkel25QueryModelsKilledByPlayerEii"); // CDarkel__QueryModelsKilledByPlayer_hook
-    CHook::RET("_ZN7CDarkel27FindTotalPedsKilledByPlayerEi"); // CDarkel__FindTotalPedsKilledByPlayer_hook
-    CHook::RET("_ZN7CDarkel20RegisterKillByPlayerEPK4CPed11eWeaponTypebi"); // CDarkel__RegisterKillByPlayer_hook
-
-    //CHook::NOP(g_libGTASA + (VER_x32 ? 0x0046BE88 : 0x55774C), 1);	// CStreaming::ms_memoryAvailable = (int)v24
+    CHook::RET("_ZN7CDarkel26RegisterCarBlownUpByPlayerEP8CVehiclei");
+    CHook::RET("_ZN7CDarkel25ResetModelsKilledByPlayerEi");
+    CHook::RET("_ZN7CDarkel25QueryModelsKilledByPlayerEii");
+    CHook::RET("_ZN7CDarkel27FindTotalPedsKilledByPlayerEi");
+    CHook::RET("_ZN7CDarkel20RegisterKillByPlayerEPK4CPed11eWeaponTypebi");
 
 #if VER_x32
-    CHook::NOP(g_libGTASA + (VER_2_1 ? 0x0040BF26 : 0x3AC8B2), 2); 	// CMessages::AddBigMessage from CPlayerInfo::KillPlayer
+    CHook::NOP(g_libGTASA + (VER_2_1 ? 0x0040BF26 : 0x3AC8B2), 2); 	// CMessages::AddBigMessage
+    CHook::NOP(g_libGTASA + 0x004C5902, 2);  // CCamera::ClearPlayerWeaponMode
+    CHook::NOP(g_libGTASA + (VER_2_1 ? 0x003F395E : 0x39840A), 2);	// CStreaming::Shutdown
 
-    CHook::NOP(g_libGTASA + 0x004C5902, 2);  // CCamera::ClearPlayerWeaponMode from CPedSamp::ClearWeaponTarget
-    //CHook::NOP(g_libGTASA + 0x2FEE76, 2);	// CGarages::RespraysAreFree = true in CRunningScript::ProcessCommands800To899
-    CHook::NOP(g_libGTASA + (VER_2_1 ? 0x003F395E : 0x39840A), 2);	// CStreaming::Shutdown from CGame::Shutdown
-
-    //	CHook::WriteMemory(g_libGTASA + 0x2C3868, "\x00\x20\x70\x47", 4); 					// CGameLogic::IsCoopGameGoingOn
-
-    //CHook::WriteMemory(g_libGTASA + 0x001D16EA, "\x4F\xF4\x00\x10\x4F\xF4\x80\x06", 8); 	// RenderQueue::RenderQueue
-    //CHook::WriteMemory(g_libGTASA + 0x001D193A, "\x4F\xF4\x00\x16", 4); 	// RenderQueue::RenderQueue
-
-    CHook::WriteMemory(g_libGTASA + 0x003F4138, "\x03", 1); // RE3: Fix R* optimization that prevents peds to spawn
+    CHook::WriteMemory(g_libGTASA + 0x003F4138, "\x03", 1); // RE3: Fix R* optimization
 #else
-    CHook::NOP(g_libGTASA + 0x5C3258, 1);  // CCamera::ClearPlayerWeaponMode from CPlayerPed::ClearWeaponTarget
-    //CHook::WriteMemory(g_libGTASA + 0x266FC8, "\xF5\x03\x08\x32", 4); //  RenderQueue::RenderQueue
-    CHook::WriteMemory(g_libGTASA + 0x4D644C, "\x1F\x0D\x00\x71", 4); // RE3: Fix R* optimization that prevents peds to spawn
+    CHook::NOP(g_libGTASA + 0x5C3258, 1);  // CCamera::ClearPlayerWeaponMode
+    CHook::WriteMemory(g_libGTASA + 0x4D644C, "\x1F\x0D\x00\x71", 4);
 #endif
 
-    CHook::RET("_ZN10CPlayerPed14AnnoyPlayerPedEb"); // CPedSamp::AnnoyPlayerPed
-    CHook::RET("_ZN11CPopulation15AddToPopulationEffff");	// CPopulation::AddToPopulation
+    CHook::RET("_ZN10CPlayerPed14AnnoyPlayerPedEb");
+    CHook::RET("_ZN11CPopulation15AddToPopulationEffff");
 
-    CHook::RET("_ZN23CAEPedSpeechAudioEntity11AddSayEventEisjfhhh"); // CPed::Say
+    CHook::RET("_ZN23CAEPedSpeechAudioEntity11AddSayEventEisjfhhh");
 
-    CHook::RET("_ZN10CPedGroups7ProcessEv"); // CPedGroups::Process
-    CHook::RET("_ZN21CPedGroupIntelligence7ProcessEv"); // CPedGroupIntelligence::Process
-    CHook::RET("_ZN19CPedGroupMembership9SetLeaderEP4CPed"); // CPedGroupMembership::SetLeader
-    CHook::RET("_ZN21CPedGroupIntelligence5FlushEv"); // CPedGroupIntelligence::Flush
+    CHook::RET("_ZN10CPedGroups7ProcessEv");
+    CHook::RET("_ZN21CPedGroupIntelligence7ProcessEv");
+    CHook::RET("_ZN19CPedGroupMembership9SetLeaderEP4CPed");
+    CHook::RET("_ZN21CPedGroupIntelligence5FlushEv");
 
-    CHook::RET("_ZN22CRealTimeShadowManager4InitEv"); // CRealTimeShadowManager::Init
-    CHook::RET("_ZN22CRealTimeShadowManager6UpdateEv"); // CRealTimeShadowManager::Update
+    CHook::RET("_ZN22CRealTimeShadowManager4InitEv");
+    CHook::RET("_ZN22CRealTimeShadowManager6UpdateEv");
 
-    CHook::RET("_ZN22CRealTimeShadowManager20ReturnRealTimeShadowEP15CRealTimeShadow"); // CRealTimeShadowManager::ReturnRealTimeShadow from ~CPhysical
-	CHook::RET("_ZN8CShadows19RenderStaticShadowsEb"); // CShadows::RenderStaticShadows
-	CHook::RET("_ZN8CMirrors16BeforeMainRenderEv"); // CMirrors::BeforeMainRender(void)
+    CHook::RET("_ZN22CRealTimeShadowManager20ReturnRealTimeShadowEP15CRealTimeShadow");
+	CHook::RET("_ZN8CShadows19RenderStaticShadowsEb");
+	CHook::RET("_ZN8CMirrors16BeforeMainRenderEv");
     CHook::RET("_ZN8CMirrors17RenderReflectionsEv");
 
     CHook::RET("_ZN8CCarCtrl18GenerateRandomCarsEv");
@@ -334,7 +316,6 @@ void ApplyGlobalPatches()
 
 void InstallVehicleEngineLightPatches()
 {
-	// типо фикс задних фар
 	CHook::WriteMemory(g_libGTASA + 0x591272, (uintptr_t)"\x02", 1);
 	CHook::WriteMemory(g_libGTASA + 0x59128E, (uintptr_t)"\x02", 1);
 }

@@ -1,781 +1,301 @@
 #include "../main.h"
-#include "game.h"
+#include "../game/game.h"
 #include "../net/netgame.h"
-#include "vehicle.h"
-#include "Streaming.h"
+#include "../game/vehicle.h"
+#include "gui.h"
+#include "../playertags.h"
+#include "../net/playerbubblepool.h"
+#include "vendor/str_obfuscator/str_obfuscator.hpp"
+// voice
+#include "../voice_new/Plugin.h"
+#include "../voice_new/MicroIcon.h"
+#include "../voice_new/SpeakerList.h"
+#include "../voice_new/Network.h"
 
-extern CGame* pGame;
+#include "../gui/samp_widgets/voicebutton.h"
+#include "game/Textures/TextureDatabaseRuntime.h"
+#include "game/Streaming.h"
+#include "game/Pools.h"
+
+extern CGame* pGame; // DUZELDILDI: pGame obyekti fayla elave edildi
 extern CNetGame* pNetGame;
+extern CPlayerTags* pPlayerTags;
+extern UI* pUI;
 
-bool bInProcessDetachTrailer = false;
+extern bool g_bHideAllUI;
+extern bool g_bShowHandlingDlg;
 
-CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, bool bPreloaded, bool bSiren)
+UI::UI(const ImVec2& display_size, const std::string& font_path)
+	: Widget(), ImGuiWrapper(display_size, font_path)
 {
-	RwMatrix matEnt;
-	static CVehicleGTA* pCreatedTrain = nullptr;
-
-	m_pVehicle = nullptr;
-	m_dwGTAId = 0;
-	m_pTrailer = nullptr;
-
-	if ((iType != TRAIN_PASSENGER_LOCO) &&
-		(iType != TRAIN_FREIGHT_LOCO) &&
-		(iType != TRAIN_PASSENGER) &&
-		(iType != TRAIN_FREIGHT) &&
-		(iType != TRAIN_TRAM)) {
-
-        if (!CStreaming::TryLoadModel(iType))
-            throw std::runtime_error("Model not loaded");
-
-		ScriptCommand(&create_car, iType, fX, fY, fZ, &m_dwGTAId);
-		ScriptCommand(&set_car_z_angle, m_dwGTAId, fRotation);
-		ScriptCommand(&car_gas_tank_explosion, m_dwGTAId, 0);
-		ScriptCommand(&set_car_hydraulics, m_dwGTAId, 0);
-		ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 0);
-
-		m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
-
-		if (m_pVehicle) 
-		{
-			m_pVehicle->m_nDoorLock = (eCarLock)0;
-			m_bIsLocked = false;
-
-			m_pVehicle->GetMatrix(&matEnt);
-			matEnt.pos.x = fX;
-			matEnt.pos.y = fY;
-			matEnt.pos.z = fZ;
-
-			if( GetVehicleSubtype() != VEHICLE_SUBTYPE_BIKE &&
-				GetVehicleSubtype() != VEHICLE_SUBTYPE_PUSHBIKE)
-				matEnt.pos.z += 0.25f;
-
-			m_pVehicle->SetMatrix((CMatrix&)matEnt);
-			m_bPreloaded = bPreloaded;
-		}
-	}
-	else if ((iType == TRAIN_PASSENGER_LOCO) ||
-		(iType == TRAIN_FREIGHT_LOCO) ||
-		(iType == TRAIN_TRAM))
-	{
-		if (iType == TRAIN_PASSENGER_LOCO) iType = 5;
-		else if (iType == TRAIN_FREIGHT_LOCO) iType = 3;
-		else if (iType == TRAIN_TRAM) iType = 9;
-
-		uint32_t dwDirection = 0;
-		if (fRotation > 180.0f) {
-			dwDirection = 1;
-		}
-
-        if (!CStreaming::TryLoadModel(TRAIN_PASSENGER_LOCO))
-            throw std::runtime_error("Model not loaded");
-
-        if (!CStreaming::TryLoadModel(TRAIN_PASSENGER))
-            throw std::runtime_error("Model not loaded");
-
-        if (!CStreaming::TryLoadModel(TRAIN_FREIGHT_LOCO))
-            throw std::runtime_error("Model not loaded");
-
-        if (!CStreaming::TryLoadModel(TRAIN_FREIGHT))
-            throw std::runtime_error("Model not loaded");
-        if (!CStreaming::TryLoadModel(TRAIN_TRAM))
-            throw std::runtime_error("Model not loaded");
-
-		ScriptCommand(&create_train, iType, fX, fY, fZ, dwDirection, &m_dwGTAId);
-		m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
-
-		pCreatedTrain = m_pVehicle;
-
-		GamePrepareTrain(m_pVehicle);
-	}
-	else if ((iType == TRAIN_PASSENGER) ||
-		(iType == TRAIN_FREIGHT))
-	{
-		if (!pCreatedTrain)
-		{
-			m_pVehicle = nullptr;
-			return;
-		}
-
-		m_dwGTAId = GamePool_Vehicle_GetIndex(m_pVehicle);
-		pCreatedTrain = m_pVehicle;
-	}
-
-	m_bIsInvulnerable = false;
-	m_byteObjectiveVehicle = 0;
-	m_bSpecialMarkerEnabled = false;
-	m_dwMarkerID = 0;
-	m_iEngineState = -1;
-	m_iLightState = -1;
-	m_bDoorsLocked = false;
-	m_bHaveColor = false;
-	m_bHasBeenDriven = false;
-	m_dwTimeSinceLastDriven = GetTickCount();
-	memset(m_szPlateText, 0, sizeof(m_szPlateText));
+	UISettings::Initialize(display_size);
+	this->setFixedSize(display_size);
 }
 
-CVehicle::~CVehicle()
+bool UI::initialize()
 {
-	m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+	if (!ImGuiWrapper::initialize()) return false;
 
-	if (m_pVehicle) {
-        auto modelId = m_pVehicle->m_nModelIndex;
-		if(m_dwMarkerID)
-		{
-			pGame->DisableMarker(m_dwMarkerID);
-			m_dwMarkerID = 0;
-		}
+	m_splashScreen = new SplashScreen();
+	this->addChild(m_splashScreen);
+	m_splashScreen->setFixedSize(size());
+	m_splashScreen->setPosition(ImVec2(0.0f, 0.0f));
+	m_splashScreen->setVisible(true);
 
-		RemoveEveryoneFromVehicle();
+	m_chat = new Chat();
+	this->addChild(m_chat);
+	m_chat->setFixedSize(UISettings::chatSize());
+	m_chat->setPosition(UISettings::chatPos());
+	m_chat->setItemSize(UISettings::chatItemSize());
+	m_chat->setVisible(false);
 
-		if(SirenEnabled()) EnableSiren(false);
+	m_buttonPanel = new ButtonPanel();
+	this->addChild(m_buttonPanel);
+	m_buttonPanel->setFixedSize(UISettings::buttonPanelSize());
+	m_buttonPanel->setPosition(UISettings::buttonPanelPos());
+	m_buttonPanel->setVisible(false);
 
-		if (m_pTrailer) {
-			DetachTrailer();
-			m_pTrailer = nullptr;
-		}
+	m_voiceButton = new VoiceButton();
+	this->addChild(m_voiceButton);
+	m_voiceButton->setFixedSize(UISettings::buttonVoiceSize());
+	m_voiceButton->setPosition(UISettings::buttonVoicePos());
+	m_voiceButton->setVisible(false);
 
-		int iModel = m_pVehicle->m_nModelIndex;
-		if (iModel == 538 || iModel == 537)
-		{
-			ScriptCommand(&destroy_train, m_dwGTAId);
-		}
-		else
-		{
-			ScriptCommand(&destroy_car, m_dwGTAId);
-		}
+	m_spawn = new Spawn();
+	this->addChild(m_spawn);
+	m_spawn->setFixedSize(UISettings::spawnSize());
+	m_spawn->setPosition(UISettings::spawnPos());
+	m_spawn->setVisible(false);
 
-        CStreaming::RemoveModelIfNoRefs(modelId);
+	m_dialog = new Dialog();
+	this->addChild(m_dialog);
+	m_dialog->setVisible(false);
+	m_dialog->setMinSize(UISettings::dialogMinSize());
+	m_dialog->setMaxSize(UISettings::dialogMaxSize());
+
+	m_keyboard = new Keyboard();
+	this->addChild(m_keyboard);
+	m_keyboard->setFixedSize(UISettings::keyboardSize());
+	m_keyboard->setPosition(UISettings::keyboardPos());
+	m_keyboard->setVisible(false);
+
+	m_playerTabList = new PlayerTabList();
+	this->addChild(m_playerTabList);
+	m_playerTabList->setMinSize(UISettings::dialogMinSize());
+	m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
+	m_playerTabList->setVisible(false);
+
+    label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+    pUI->addChild(label);
+
+    label2 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+    pUI->addChild(label2);
+
+    label3 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+    pUI->addChild(label3);
+
+    label4 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+    pUI->addChild(label4);
+
+	Label* d_label1;
+	d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+	this->addChild(d_label1);
+	d_label1->setPosition(ImVec2(3.0, 3.0));
+
+	return true;
+}
+
+void UI::render()
+{
+	ImGuiWrapper::render();
+
+    renderDebug();
+
+    ProcessPushedTextdraws();
+
+	if (m_bNeedClearMousePos) {
+		ImGuiIO& io = ImGui::GetIO();
+		io.MousePos = ImVec2(-1, -1);
+		m_bNeedClearMousePos = false;
 	}
 }
 
-bool CVehicle::IsRCVehicle()
+void UI::shutdown()
 {
-	if (m_pVehicle)
-	{
-		if (GamePool_Vehicle_GetAt(m_dwGTAId))
-		{
-			int iModel = m_pVehicle->m_nModelIndex;
-			if (iModel == 441
-				|| iModel == 464
-				|| iModel == 465
-				|| iModel == 594
-				|| iModel == 501
-				|| iModel == 564) {
-				return true;
-			}
-		}
-	}
-
-	return false;
+	ImGuiWrapper::shutdown();
 }
 
-float CVehicle::GetHealth()
+void RenderHandlingDialog()
 {
-	if (m_pVehicle) {
-		return m_pVehicle->fHealth;
-	}
+	if (!g_bShowHandlingDlg) return;
 
-	return 0.0f;
-}
-
-void CVehicle::SetHealth(float fHealth)
-{
-	if (m_pVehicle) {
-		m_pVehicle->fHealth = fHealth;
-	}
-}
-
-int CVehicle::GetVehicleSubtype()
-{
-	if (m_pVehicle) {
-		return ::GetVehicleSubtype(m_pVehicle);
-	}
-
-	return 0;
-}
-
-void CVehicle::AddComponent(int iComponentID)
-{
-	if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
-	if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
-
-    if (!CStreaming::TryLoadModel(iComponentID))
-        throw std::runtime_error("Model not loaded");
-
-	if (!ScriptCommand(&is_component_available, iComponentID)) {
+	CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+	if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+		g_bShowHandlingDlg = false;
 		return;
 	}
 
-	uint32_t dwRet;
-	ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
-}
+	CVehicle* pVeh = nullptr;
+	if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+		CVehiclePool* pPool = pNetGame->GetVehiclePool();
+		VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+		if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+	}
 
-void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
-{
-	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+	if (!pVeh) return;
+
+	ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Vehicle Handling Editor", &g_bShowHandlingDlg))
 	{
-		if (GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		{
-			if (bytePaintJobID <= 3) {
-                if (m_dwGTAId) ScriptCommand(&change_car_skin, m_dwGTAId, bytePaintJobID);
-			}
+		static float fSpeed = pVeh->GetMaxSpeed();
+		static float fAccel = pVeh->GetAcceleration();
+		static float fBrake = pVeh->GetBrakePower();
+		static float fSteer = pVeh->GetSteeringAngle();
+		static float fMass = pVeh->GetMass();
+		static int iFarColor = 0;
+
+		ImGui::Text("Canli Handling Tenzimlemeleri");
+		ImGui::Separator();
+
+		ImGui::SliderFloat("Maks Suret (Velocity)", &fSpeed, 50.0f, 500.0f);
+		ImGui::SliderFloat("Tecil (Acceleration)", &fAccel, 1.0f, 100.0f);
+		ImGui::SliderFloat("Tormoz Gucu (Brake)", &fBrake, 1.0f, 50.0f);
+		ImGui::SliderFloat("Manevr Bucagi (Steering)", &fSteer, 10.0f, 90.0f);
+		ImGui::SliderFloat("Ceki/Kutle (Mass)", &fMass, 500.0f, 10000.0f);
+		ImGui::SliderInt("Far Rengi (Headlight)", &iFarColor, 0, 15);
+
+		ImGui::Spacing();
+		if (ImGui::Button("Tetbiq Et", ImVec2(120, 40))) {
+			pVeh->SetMaxSpeed(fSpeed);
+			pVeh->SetAcceleration(fAccel);
+			pVeh->SetBrakePower(fBrake);
+			pVeh->SetSteeringAngle(fSteer);
+			pVeh->SetMass(fMass);
+			pVeh->SetHeadlightColor((uint8_t)iFarColor);
+			pUI->chat()->addDebugMessage("{00FF00}[Handling]: Parametrler tetbiq edildi!");
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("Bagla", ImVec2(120, 40))) {
+			g_bShowHandlingDlg = false;
 		}
 	}
+	ImGui::End();
 }
 
-void CVehicle::SetColor(uint8_t byteColor1, uint8_t byteColor2)
+void UI::drawList()
 {
-	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
-	{
-		m_pVehicle->m_nPrimaryColor = byteColor1;
-		m_pVehicle->m_nSecondaryColor = byteColor2;
-	}
-
-	m_byteColor1 = byteColor1;
-	m_byteColor2 = byteColor2;
-	m_bHaveColor = true;
-}
-
-void CVehicle::DetachTrailer()
-{
-	bInProcessDetachTrailer = true;
-	if (m_pTrailer)
-	{
-		if (m_dwGTAId && GamePool_Vehicle_GetAt(m_dwGTAId))
-		{
-			if (m_pTrailer->m_pVehicle)
-				ScriptCommand(&detach_trailer_from_cab, m_pTrailer->m_dwGTAId, m_dwGTAId);
-		}
-	}
-}
-
-void CVehicle::SetTrailer(CVehicle* pTrailer)
-{
-	m_pTrailer = pTrailer;
-}
-
-void CVehicle::LinkToInterior(int iInterior)
-{
-	if(m_pVehicle)
-        m_pVehicle->SetInterior(iInterior);
-}
-
-void CVehicle::SetDamageStatus(uint32_t dwPanelDamageStatus, uint32_t dwDoorDamageStatus, uint8_t byteLightDamageStatus)
-{
-
-}
-
-void CVehicle::SetTireDamageStatus(uint8_t byteTireDamageStatus)
-{
-
-}
-
-void CVehicle::RemoveEveryoneFromVehicle()
-{
-	if (!m_pVehicle) return;
-	if (!GamePool_Vehicle_GetAt(m_dwGTAId)) return;
-
-    if (m_pVehicle->pDriver)
-    {
-        m_pVehicle->pDriver->RemoveFromVehicle();
-    }
-
-    for (int i = 0; i < 7; i++)
-    {
-        if (m_pVehicle->m_apPassengers[i] != nullptr)
-        {
-            m_pVehicle->m_apPassengers[i]->RemoveFromVehicle();
-        }
-    }
-}
-
-CVehicle* CVehicle::GetTrailer()
-{
-	if (m_pVehicle)
-	{
-        CVehicleGTA* pTrailer = m_pVehicle->m_pTrailer;
-		if (pTrailer)
-		{
-			if (pNetGame)
-			{
-				CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-				if (pVehiclePool) {
-					VEHICLEID TrailerID = pVehiclePool->FindIDFromGtaPtr(pTrailer);
-					if (TrailerID != INVALID_VEHICLE_ID)
-					{
-						return pVehiclePool->GetAt(TrailerID);
-					}
-				}
-			}
-		}
-	}
-
-	return nullptr;
-}
-
-CVehicle* CVehicle::GetTractor()
-{
-	if (!m_pVehicle) return nullptr;
-
-	int iSubType = ::GetVehicleSubtype(m_pVehicle);
-	if (iSubType == VEHICLE_SUBTYPE_BIKE
-		|| iSubType == VEHICLE_SUBTYPE_BOAT
-		|| iSubType == VEHICLE_SUBTYPE_TRAIN
-		|| iSubType == VEHICLE_SUBTYPE_PUSHBIKE)
-	{
-		return nullptr;
-	}
-
-    CVehicleGTA* pTractor = m_pVehicle->m_pTowingVehicle;
-	if (pTractor)
-	{
-		if (pNetGame)
-		{
-			CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
-			if (pVehiclePool)
-			{
-				VEHICLEID TrailerID = pVehiclePool->FindIDFromGtaPtr(pTractor);
-				if (TrailerID != INVALID_VEHICLE_ID)
-				{
-					return pVehiclePool->GetAt(TrailerID);
-				}
-			}
-		}
-	}
-
-	return nullptr;
-}
-
-float CVehicle::GetTrainSpeed()
-{
-	return 0.0f;
-}
-
-uint16_t CVehicle::GetHydraThrusters()
-{
-	return 0.0f;
-}
-
-bool CVehicle::IsLandingGearNotUp()
-{
-	return 0;
-}
-
-float CVehicle::GetBikeLean()
-{
-	return 0.0f;
-}
-
-bool CVehicle::IsATrainPart()
-{
-	if (m_pVehicle)
-	{
-		int iModelIndex = m_pVehicle->m_nModelIndex;
-		if (iModelIndex == 538 || iModelIndex == 570 || iModelIndex == 537 ||
-			iModelIndex == 569 || iModelIndex == 449) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool CVehicle::VerifyInstance()
-{
-	return GamePool_Vehicle_GetAt(m_dwGTAId) != nullptr;
-}
-
-void CVehicle::SetDoorState(int state)
-{
-	if (state)
-	{
-		m_pVehicle->m_nDoorLock = (eCarLock)2;
-		m_bDoorsLocked = true;
-	}
-	else
-	{
-		m_pVehicle->m_nDoorLock =(eCarLock) 0;
-		m_bDoorsLocked = false;
-	}
-}
-
-void CVehicle::SetComponentOpenState(int iDoor, int iComponent, float fDoorOpenRatio)
-{
-	if (GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-	{
-		ScriptCommand(&set_car_door_rotation_to, m_dwGTAId, iDoor, iComponent, fDoorOpenRatio);
-	}
-}
-
-void CVehicle::OpenWindow(uint8_t component) {}
-void CVehicle::CloseWindow(uint8_t component) {}
-
-void CVehicle::AttachTrailer()
-{
-	if (m_pTrailer) {
-		ScriptCommand(&put_trailer_on_cab, m_pTrailer->m_dwGTAId, m_dwGTAId);
-	}
-}
-
-void CVehicle::RemoveComponent(int iComponentID)
-{
-	if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
+	if (g_bHideAllUI) {
+		RenderHandlingDialog();
 		return;
-
-	ScriptCommand(&remove_component, m_dwGTAId, iComponentID);
-}
-
-void CVehicle::SetZAngle(float fAngle)
-{
-	if (GamePool_Vehicle_GetAt(m_dwGTAId)) {
-		ScriptCommand(&set_car_z_angle, m_dwGTAId, fAngle);
 	}
+
+	if (!visible()) return;
+
+	if (pPlayerTags) pPlayerTags->Render(renderer());
+	if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());
+	if (pNetGame && pNetGame->GetPlayerBubblePool()) pNetGame->GetPlayerBubblePool()->Render(renderer());
+
+	RenderHandlingDialog();
+
+	draw(renderer());
 }
 
-bool CVehicle::IsDriverLocalPlayer()
+void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
-	if (m_pVehicle && m_pVehicle->pDriver == GamePool_FindPlayerPed())
+	if (m_keyboard->visible() && m_keyboard->contains(pos))
+	{
+		m_keyboard->touchEvent(pos, type);
+		return;
+	}
+
+	if (m_dialog->visible() && m_dialog->contains(pos))
+	{
+		m_dialog->touchEvent(pos, type);
+		return;
+	}
+
+	Widget::touchEvent(pos, type);
+}
+
+enum eTouchType
+{
+	TOUCH_POP = 1,
+	TOUCH_PUSH = 2,
+	TOUCH_MOVE = 3
+};
+
+bool UI::OnTouchEvent(int type, bool multi, int x, int y)
+{
+	if (g_bHideAllUI && type == TOUCH_PUSH) {
+		g_bHideAllUI = false;
+		if (pUI && pUI->chat()) {
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+		}
 		return true;
+	}
 
-	return false;
-}
-
-void CVehicle::SetInvulnerable(bool bInv)
-{
-	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+	ImGuiIO& io = ImGui::GetIO();
+	VoiceButton* vbutton = pUI->voicebutton();
+	switch (type)
 	{
-		if (bInv)
-		{
-			ScriptCommand(&set_car_immunities, m_dwGTAId, 1, 1, 1, 1, 1);
-			ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 0);
-			m_bIsInvulnerable = true;
-		}
-		else
-		{
-			ScriptCommand(&set_car_immunities, m_dwGTAId, 0, 0, 0, 0, 0);
-			ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 1);
-			m_bIsInvulnerable = false;
-		}
-	}
-}
+	case TOUCH_PUSH:
+		io.MousePos = ImVec2(x, y);
+		io.MouseDown[0] = true;
+		break;
 
-bool CVehicle::HasSunk()
-{
-	if (m_pVehicle) {
-		return ScriptCommand(&has_car_sunk, m_dwGTAId);
+	case TOUCH_POP:
+		io.MouseDown[0] = false;
+		m_bNeedClearMousePos = true;
+		break;
+
+	case TOUCH_MOVE:
+		io.MousePos = ImVec2(x, y);
+		break;
 	}
 
-	return false;
+	return true;
 }
 
-bool CVehicle::HasADriver()
+#include "../settings.h"
+extern CSettings* pSettings;
+void UI::renderDebug()
 {
-	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
-	{
-		if (m_pVehicle->pDriver)
-		{
-			if (m_pVehicle->pDriver->IsInVehicle() &&
-				m_pVehicle->pDriver->m_nPedType == (ePedType)0)
-				return true;
-		}
-	}
+    if(!pSettings->Get().iFPSCounter) return;
 
-	return false;
+    char szStr[30];
+
+    ImVec2 pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(540.0f));
+
+    static float fps = 120.f;
+    static auto lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+    if(CTimer::m_snTimeInMillisecondsNonClipped - lastTick > 500) {
+        lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+        fps = std::clamp(CTimer::game_FPS, 10.f, (float) 120);
+    }
+    snprintf(&szStr[0], sizeof(szStr), "FPS: %.0f", fps);
+
+    label->setText(&szStr[0]);
+    label->setPosition(pos);
 }
 
-void CVehicle::ApplyEngineState(int iState)
+void UI::PushToBufferedQueueTextDrawPressed(uint16_t textdrawId)
 {
-	if (!m_pVehicle) return;
-	m_iEngineState = iState;
-    m_pVehicle->m_nVehicleFlags.bEngineOn = iState;
+    BUFFERED_COMMAND_TEXTDRAW* pCmd = m_BufferedCommandTextdraws.WriteLock();
+
+    pCmd->textdrawId = textdrawId;
+
+    m_BufferedCommandTextdraws.WriteUnlock();
 }
 
-void CVehicle::ApplyLightState(int iState)
+void UI::ProcessPushedTextdraws()
 {
-	if (!m_pVehicle) return;
-	m_iLightState = iState;
-    m_pVehicle->m_nVehicleFlags.bLightsOn = iState;
-}
-
-void CVehicle::ProcessMarkers()
-{
-	if(!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
-		return;
-
-	if(m_byteObjectiveVehicle)
-	{
-		if(!m_bSpecialMarkerEnabled)
-		{
-			if(m_dwMarkerID)
-			{
-				pGame->DisableMarker(m_dwMarkerID);
-				m_dwMarkerID = 0;
-			}
-
-			ScriptCommand(&tie_marker_to_car, m_dwGTAId, 1, 3, &m_dwMarkerID);
-			ScriptCommand(&set_marker_color, m_dwMarkerID, 1006);
-			ScriptCommand(&show_on_radar, m_dwMarkerID, 3);
-			m_bSpecialMarkerEnabled = true;
-		}
-
-		return;
-	}
-
-	if(m_byteObjectiveVehicle && m_bSpecialMarkerEnabled)
-	{
-		if(m_dwMarkerID)
-		{
-			pGame->DisableMarker(m_dwMarkerID);
-			m_dwMarkerID = 0;
-			m_bSpecialMarkerEnabled = false;
-		}
-	}
-
-	if(m_pVehicle->GetDistanceFromLocalPlayerPed() < 200.0f && GetTractor() == NULL &&
-	   !IsOccupied())
-	{
-		if(!m_dwMarkerID)
-		{
-			ScriptCommand(&tie_marker_to_car, m_dwGTAId, 1, 2, &m_dwMarkerID);
-			ScriptCommand(&set_marker_color, m_dwMarkerID, 1004);
-		}
-	}
-
-	else if(IsOccupied() || GetTractor() != NULL ||
-            m_pVehicle->GetDistanceFromLocalPlayerPed() >= 200.0f)
-	{
-		if(m_dwMarkerID)
-		{
-			pGame->DisableMarker(m_dwMarkerID);
-			m_dwMarkerID = 0;
-		}
-	}
-}
-
-bool CVehicle::IsOccupied()
-{
-	if (m_pVehicle)
-	{
-		if (m_pVehicle &&
-			(m_pVehicle->m_apPassengers[0] ||
-			m_pVehicle->m_apPassengers[1] ||
-			m_pVehicle->m_apPassengers[2] ||
-			m_pVehicle->m_apPassengers[3] ||
-			m_pVehicle->m_apPassengers[4] ||
-			m_pVehicle->m_apPassengers[5] ||
-			m_pVehicle->m_apPassengers[6])) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool CVehicle::IsATowTruck()
-{
-	if(!m_pVehicle) return false;
-	return m_pVehicle->m_nModelIndex == 525;
-}
-
-bool CVehicle::IsATrailer()
-{
-	if(!m_pVehicle) return false;
-
-  	int nModel = m_pVehicle->m_nModelIndex;
-	return (nModel == 435 ||
-		nModel == 450 || 
-		nModel == 584 || 
-		nModel == 591 || 
-		nModel == 606 || 
-		nModel == 607 || 
-		nModel == 608 || 
-		nModel == 610 || 
-		nModel == 611
-	);
-}
-
-void CVehicle::UpdateDamageStatus(uint32_t dwPanelDamage, uint32_t dwDoorDamage, uint8_t byteLightDamage)
-{
-	if(m_pVehicle)
-	{
-		if(GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		{
-			if(!dwPanelDamage && !dwDoorDamage && !byteLightDamage)
-			{
-				if(GetPanelDamageStatus() || GetDoorDamageStatus() || GetLightDamageStatus())
-				{
-					(( void (*)(CVehicleGTA*))(g_libGTASA+(VER_x32 ? 0x55D5C0+1:0x67DF0C)))(m_pVehicle);
-					return;
-				}
-			}
-
-			SetDoorDamageStatus(dwDoorDamage);
-			SetPanelDamageStatus(dwPanelDamage);
-			SetLightDamageStatus(byteLightDamage);
-
-			(( void (*)(CVehicleGTA*))(g_libGTASA+(VER_x32 ? 0x55D886+1:0x67E368)))(m_pVehicle);
-		}
-	}
-}
-
-void CVehicle::SetPanelDamageStatus(uint32_t dwPanelStatus) {}
-uint32_t CVehicle::GetPanelDamageStatus() { return 0; }
-void CVehicle::SetDoorDamageStatus(uint32_t dwDoorStatus) {}
-uint32_t CVehicle::GetDoorDamageStatus() { return 0; }
-void CVehicle::SetLightDamageStatus(uint8_t byteLightStatus) {}
-uint8_t CVehicle::GetLightDamageStatus() { return 0; }
-void CVehicle::SetWheelPoppedStatus(uint8_t byteWheelStatus) {}
-uint8_t CVehicle::GetWheelPoppedStatus() { return 0; }
-
-bool CVehicle::SirenEnabled()
-{
-	if(!m_pVehicle)
-		return m_pVehicle->m_nVehicleFlags.bSirenOrAlarm;
-
-	return false;
-}
-
-void CVehicle::EnableSiren(bool bState)
-{
-	if(!m_pVehicle) return;
-
-	m_pVehicle->m_nVehicleFlags.bSirenOrAlarm = (int)bState;
-}
-
-void CVehicle::UpdateColor()
-{
-	if(m_pVehicle)
-	{
-		if(m_bHaveColor)
-		{
-			if(!m_bHasBeenDriven)
-			{
-				if(m_pVehicle->m_nPrimaryColor != m_byteColor1 || m_pVehicle->m_nSecondaryColor != m_byteColor2)
-				{
-					m_pVehicle->m_nPrimaryColor = m_byteColor1;
-					m_pVehicle->m_nSecondaryColor = m_byteColor2;
-				}
-			}
-		}
-	}
-}
-
-bool CVehicle::UpdateLastDrivenTime()
-{
-	if(m_pVehicle)
-	{
-		if(m_pVehicle->pDriver)
-		{
-			m_bHasBeenDriven = true;
-			m_dwTimeSinceLastDriven = GetTickCount();
-			return true;
-		}
-	}
-
-	return false;
-}
-
-// ===== HER MASIN UCUN FERDI HANDLING VE FAR FUNKSIYALARI =====
-
-void CVehicle::EnsureUniqueHandling()
-{
-	if (!m_pVehicle) return;
-
-	uintptr_t vehAddr = (uintptr_t)m_pVehicle;
-	uintptr_t** ppHandling = (uintptr_t**)(vehAddr + (VER_x32 ? 0x384 : 0x4B0)); // DUZELDILDI: uintptr_t** tipi teyin edildi
-
-	if (ppHandling && *ppHandling) {
-		uintptr_t pOldHandling = *ppHandling;
-		uintptr_t pNewHandling = (uintptr_t)malloc(0xE0);
-		if (pNewHandling) {
-			memcpy((void*)pNewHandling, (void*)pOldHandling, 0xE0);
-			*ppHandling = pNewHandling;
-		}
-	}
-}
-
-void CVehicle::SetMaxSpeed(float fSpeed)
-{
-	if (!m_pVehicle) return;
-	EnsureUniqueHandling();
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x9C) = fSpeed;
-	}
-}
-
-void CVehicle::SetAcceleration(float fAccel)
-{
-	if (!m_pVehicle) return;
-	EnsureUniqueHandling();
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x8C) = fAccel;
-	}
-}
-
-void CVehicle::SetBrakePower(float fBrake)
-{
-	if (!m_pVehicle) return;
-	EnsureUniqueHandling();
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x94) = fBrake;
-	}
-}
-
-void CVehicle::SetSteeringAngle(float fAngle)
-{
-	if (!m_pVehicle) return;
-	EnsureUniqueHandling();
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0xAC) = fAngle;
-	}
-}
-
-void CVehicle::SetMass(float fMass)
-{
-	if (!m_pVehicle) return;
-	EnsureUniqueHandling();
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x04) = fMass;
-	}
-}
-
-void CVehicle::SetHeadlightColor(uint8_t colorID)
-{
-	if (!m_pVehicle) return;
-	*(uint8_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x588 : 0x6C0)) = colorID;
-}
-
-float CVehicle::GetMaxSpeed() {
-	if (!m_pVehicle) return 0.0f;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	return pHandling ? *(float*)(pHandling + 0x9C) : 0.0f;
-}
-
-float CVehicle::GetAcceleration() {
-	if (!m_pVehicle) return 0.0f;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	return pHandling ? *(float*)(pHandling + 0x8C) : 0.0f;
-}
-
-float CVehicle::GetBrakePower() {
-	if (!m_pVehicle) return 0.0f;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	return pHandling ? *(float*)(pHandling + 0x94) : 0.0f;
-}
-
-float CVehicle::GetSteeringAngle() {
-	if (!m_pVehicle) return 0.0f;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	return pHandling ? *(float*)(pHandling + 0xAC) : 0.0f;
-}
-
-float CVehicle::GetMass() {
-	if (!m_pVehicle) return 0.0f;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	return pHandling ? *(float*)(pHandling + 0x04) : 0.0f;
+    BUFFERED_COMMAND_TEXTDRAW* pCmd = nullptr;
+    while (pCmd = m_BufferedCommandTextdraws.ReadLock())
+    {
+        RakNet::BitStream bs;
+        bs.Write(pCmd->textdrawId);
+        pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bs, HIGH_PRIORITY, RELIABLE_SEQUENCED, 0, false, UNASSIGNED_NETWORK_ID, 0);
+        m_BufferedCommandTextdraws.ReadUnlock();
+    }
 }

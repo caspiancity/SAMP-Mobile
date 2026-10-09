@@ -68,13 +68,7 @@ EGLBoolean hooked_eglSwapInterval(EGLDisplay dpy, EGLint interval) {
 }
 
 void DisableVSync() {
-    void* eglLib = dlopen("libEGL.so", RTLD_LAZY);
-    if (eglLib) {
-        void* swapAddr = dlsym(eglLib, "eglSwapInterval");
-        if (swapAddr) {
-            CHook::Redirect((uintptr_t)swapAddr, (void*)hooked_eglSwapInterval);
-        }
-    }
+    CHook::Redirect("eglSwapInterval", (void*)hooked_eglSwapInterval);
 }
 
 void ReadSettingFile()

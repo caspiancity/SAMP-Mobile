@@ -682,7 +682,7 @@ void CVehicle::EnsureUniqueHandling()
 	if (!m_pVehicle) return;
 
 	uintptr_t vehAddr = (uintptr_t)m_pVehicle;
-	uintptr_t* ppHandling = (uintptr_t**)(vehAddr + (VER_x32 ? 0x384 : 0x4B0));
+	uintptr_t** ppHandling = (uintptr_t**)(vehAddr + (VER_x32 ? 0x384 : 0x4B0)); // DUZELDILDI: uintptr_t** tipi teyin edildi
 
 	if (ppHandling && *ppHandling) {
 		uintptr_t pOldHandling = *ppHandling;
@@ -700,7 +700,7 @@ void CVehicle::SetMaxSpeed(float fSpeed)
 	EnsureUniqueHandling();
 	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
 	if (pHandling) {
-		*(float*)(pHandling + 0x9C) = fSpeed; // fMaxVelocity
+		*(float*)(pHandling + 0x9C) = fSpeed;
 	}
 }
 
@@ -710,7 +710,7 @@ void CVehicle::SetAcceleration(float fAccel)
 	EnsureUniqueHandling();
 	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
 	if (pHandling) {
-		*(float*)(pHandling + 0x8C) = fAccel; // fEngineAcceleration
+		*(float*)(pHandling + 0x8C) = fAccel;
 	}
 }
 
@@ -720,7 +720,7 @@ void CVehicle::SetBrakePower(float fBrake)
 	EnsureUniqueHandling();
 	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
 	if (pHandling) {
-		*(float*)(pHandling + 0x94) = fBrake; // fBrakeDeceleration
+		*(float*)(pHandling + 0x94) = fBrake;
 	}
 }
 
@@ -730,7 +730,7 @@ void CVehicle::SetSteeringAngle(float fAngle)
 	EnsureUniqueHandling();
 	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
 	if (pHandling) {
-		*(float*)(pHandling + 0xAC) = fAngle; // fSteeringLock
+		*(float*)(pHandling + 0xAC) = fAngle;
 	}
 }
 
@@ -740,7 +740,7 @@ void CVehicle::SetMass(float fMass)
 	EnsureUniqueHandling();
 	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
 	if (pHandling) {
-		*(float*)(pHandling + 0x04) = fMass; // fMass
+		*(float*)(pHandling + 0x04) = fMass;
 	}
 }
 

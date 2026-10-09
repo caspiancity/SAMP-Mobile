@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstring>
+#include <cstdlib>
 #include "Entity/CVehicleGTA.h"
+
 class CVehicle
 {
 public:
@@ -19,12 +21,6 @@ public:
 	void SetPlateText(const char* szPlateText) { strncpy(m_szPlateText, szPlateText, 32); }
 	void SetZAngle(float fAngle);
 	void ProcessMarkers();
-	// Client-side Handling və Far funksiyaları
-	void SetMaxSpeed(float fSpeed);
-	void SetBrakePower(float fBrake);
-	void SetSteeringAngle(float fAngle);
-	void SetHeadlightColor(uint8_t colorID);
-
 	bool IsOccupied();
 
 	void AttachTrailer();
@@ -65,6 +61,21 @@ public:
 	void UpdateColor();
 	bool UpdateLastDrivenTime();
 
+	// Ferdi Handling ve Far funksiyalari
+	void EnsureUniqueHandling();
+	void SetMaxSpeed(float fSpeed);
+	void SetAcceleration(float fAccel);
+	void SetBrakePower(float fBrake);
+	void SetSteeringAngle(float fAngle);
+	void SetMass(float fMass);
+	void SetHeadlightColor(uint8_t colorID);
+
+	float GetMaxSpeed();
+	float GetAcceleration();
+	float GetBrakePower();
+	float GetSteeringAngle();
+	float GetMass();
+
 public:
     CVehicleGTA* m_pVehicle;
 	CVehicle* m_pTrailer;
@@ -101,5 +112,5 @@ public:
 	bool IsLandingGearNotUp();
 
 	bool			m_bHasBeenDriven;
-	uint32_t		m_dwTimeSinceLastDriven;\
+	uint32_t		m_dwTimeSinceLastDriven;
 };

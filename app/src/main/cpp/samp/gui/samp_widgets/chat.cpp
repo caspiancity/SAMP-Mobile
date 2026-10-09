@@ -3,6 +3,7 @@
 #include "../../game/game.h"
 #include "../../net/netgame.h"
 #include <algorithm>
+#include <sstream>
 #include "../settings.h"
 #include "java/jniutil.h"
 
@@ -100,10 +101,88 @@ void Chat::touchPopEvent()
 	pUI->keyboard()->show(this);
 }
 
+// Client komandalarını emal edən köməkçi funksiya
+bool ProcessClientCommands(const std::string& input)
+{
+	if (input.empty() || input[0] != '/') return false;
+
+	std::stringstream ss(input);
+	std::string cmd;
+	ss >> cmd;
+
+	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+
+	if (cmd == "/far" || cmd == "/suret" || cmd == "/manevr" || cmd == "/tormoz")
+	{
+		CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+		if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+			pUI->chat()->addDebugMessage("{FF0000}[Client]: Xəta: Avtomobildə deyilsiniz!");
+			return true;
+		}
+
+		CVehicle* pVeh = nullptr;
+		if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+			CVehiclePool* pPool = pNetGame->GetVehiclePool();
+			VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+			if (vehID != INVALID_VEHICLE_ID) {
+				pVeh = pPool->GetAt(vehID);
+			}
+		}
+
+		if (!pVeh) {
+			pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapılmadı!");
+			return true;
+		}
+
+		float val = 0.0f;
+		int intVal = 0;
+
+		if (cmd == "/far") {
+			if (!(ss >> intVal)) {
+				pUI->chat()->addDebugMessage("{FF0000}[Client]: İstifadə: /far [rəng_id (0-15)]");
+				return true;
+			}
+			pVeh->SetHeadlightColor((uint8_t)intVal);
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Far rəngi dəyişdirildi: %d", intVal);
+		}
+		else if (cmd == "/suret") {
+			if (!(ss >> val)) {
+				pUI->chat()->addDebugMessage("{FF0000}[Client]: İstifadə: /suret [maks_sürət (məs: 220)]");
+				return true;
+			}
+			pVeh->SetMaxSpeed(val);
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Maksimum sürət dəyişdirildi: %.1f", val);
+		}
+		else if (cmd == "/manevr") {
+			if (!(ss >> val)) {
+				pUI->chat()->addDebugMessage("{FF0000}[Client]: İstifadə: /manevr [dönmə_bucağı (məs: 45)]");
+				return true;
+			}
+			pVeh->SetSteeringAngle(val);
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Manevr bucağı dəyişdirildi: %.1f", val);
+		}
+		else if (cmd == "/tormoz") {
+			if (!(ss >> val)) {
+				pUI->chat()->addDebugMessage("{FF0000}[Client]: İstifadə: /tormoz [güc (məs: 20)]");
+				return true;
+			}
+			pVeh->SetBrakePower(val);
+			pUI->chat()->addDebugMessage("{00FF00}[Client]: Tormoz gücü dəyişdirildi: %.1f", val);
+		}
+
+		return true; // Client komandası icra olundu, serverə göndərilmir
+	}
+
+	return false; // Standart server komandasıdır
+}
+
 void Chat::keyboardEvent(const std::string& input)
 {
 	if (input.length() > 0 && pNetGame)
 	{
+		// Əvvəlcə client komandasını yoxlayırıq
+		if (ProcessClientCommands(input)) return;
+
 		if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
 		else pNetGame->SendChatMessage(input.c_str());
 	}

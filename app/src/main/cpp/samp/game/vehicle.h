@@ -19,6 +19,12 @@ public:
 	void SetPlateText(const char* szPlateText) { strncpy(m_szPlateText, szPlateText, 32); }
 	void SetZAngle(float fAngle);
 	void ProcessMarkers();
+	// Client-side Handling və Far funksiyaları
+	void SetMaxSpeed(float fSpeed);
+	void SetBrakePower(float fBrake);
+	void SetSteeringAngle(float fAngle);
+	void SetHeadlightColor(uint8_t colorID);
+
 	bool IsOccupied();
 
 	void AttachTrailer();

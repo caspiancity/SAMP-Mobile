@@ -52,9 +52,6 @@ CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, boo
 			m_pVehicle->SetMatrix((CMatrix&)matEnt);
 			m_bPreloaded = bPreloaded;
 		}
-
-		//Remove();
-		//pGame->RemoveModel(iType, false);
 	}
 	else if ((iType == TRAIN_PASSENGER_LOCO) ||
 		(iType == TRAIN_FREIGHT_LOCO) ||
@@ -107,17 +104,12 @@ CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, boo
 	m_byteObjectiveVehicle = 0;
 	m_bSpecialMarkerEnabled = false;
 	m_dwMarkerID = 0;
-	//_this->field_6D = 0;
-	//_this->field_69 = GetTickCount();
 	m_iEngineState = -1;
 	m_iLightState = -1;
 	m_bDoorsLocked = false;
 	m_bHaveColor = false;
 	m_bHasBeenDriven = false;
 	m_dwTimeSinceLastDriven = GetTickCount();
-	//_this->field_71 = 0;
-	//_this->field_75 = 0;
-	//_this->field_8F = 0;
 	memset(m_szPlateText, 0, sizeof(m_szPlateText));
 }
 
@@ -155,7 +147,7 @@ CVehicle::~CVehicle()
         CStreaming::RemoveModelIfNoRefs(modelId);
 	}
 }
-// 0.3.7
+
 bool CVehicle::IsRCVehicle()
 {
 	if (m_pVehicle)
@@ -176,7 +168,7 @@ bool CVehicle::IsRCVehicle()
 
 	return false;
 }
-// 0.3.7
+
 float CVehicle::GetHealth()
 {
 	if (m_pVehicle) {
@@ -185,14 +177,14 @@ float CVehicle::GetHealth()
 
 	return 0.0f;
 }
-// 0.3.7
+
 void CVehicle::SetHealth(float fHealth)
 {
 	if (m_pVehicle) {
 		m_pVehicle->fHealth = fHealth;
 	}
 }
-// 0.3.7
+
 int CVehicle::GetVehicleSubtype()
 {
 	if (m_pVehicle) {
@@ -201,7 +193,7 @@ int CVehicle::GetVehicleSubtype()
 
 	return 0;
 }
-// 0.3.7
+
 void CVehicle::AddComponent(int iComponentID)
 {
 	if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
@@ -217,7 +209,7 @@ void CVehicle::AddComponent(int iComponentID)
 	uint32_t dwRet;
 	ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
 }
-// 0.3.7
+
 void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
 {
 	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -230,7 +222,7 @@ void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
 		}
 	}
 }
-// 0.3.7
+
 void CVehicle::SetColor(uint8_t byteColor1, uint8_t byteColor2)
 {
 	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -243,7 +235,7 @@ void CVehicle::SetColor(uint8_t byteColor1, uint8_t byteColor2)
 	m_byteColor2 = byteColor2;
 	m_bHaveColor = true;
 }
-// 0.3.7
+
 void CVehicle::DetachTrailer()
 {
 	bInProcessDetachTrailer = true;
@@ -256,12 +248,12 @@ void CVehicle::DetachTrailer()
 		}
 	}
 }
-// 0.3.7
+
 void CVehicle::SetTrailer(CVehicle* pTrailer)
 {
 	m_pTrailer = pTrailer;
 }
-// 0.3.7
+
 void CVehicle::LinkToInterior(int iInterior)
 {
 	if(m_pVehicle)
@@ -277,15 +269,11 @@ void CVehicle::SetTireDamageStatus(uint8_t byteTireDamageStatus)
 {
 
 }
-// 0.3.7
+
 void CVehicle::RemoveEveryoneFromVehicle()
 {
 	if (!m_pVehicle) return;
 	if (!GamePool_Vehicle_GetAt(m_dwGTAId)) return;
-
-    if (!m_pVehicle) return;
-    if(!m_dwGTAId)return;
-    if (!GamePool_Vehicle_GetAt(m_dwGTAId)) return;
 
     if (m_pVehicle->pDriver)
     {
@@ -300,7 +288,7 @@ void CVehicle::RemoveEveryoneFromVehicle()
         }
     }
 }
-// 0.3.7
+
 CVehicle* CVehicle::GetTrailer()
 {
 	if (m_pVehicle)
@@ -324,7 +312,7 @@ CVehicle* CVehicle::GetTrailer()
 
 	return nullptr;
 }
-// 0.3.7
+
 CVehicle* CVehicle::GetTractor()
 {
 	if (!m_pVehicle) return nullptr;
@@ -357,41 +345,27 @@ CVehicle* CVehicle::GetTractor()
 
 	return nullptr;
 }
-// 0.3.7
+
 float CVehicle::GetTrainSpeed()
 {
-	//if (m_pVehicle) {
-	//	return m_pVehicle->fTrainSpeed;
-	//}
-	
 	return 0.0f;
 }
-// 0.3.7 (dword -> word)
+
 uint16_t CVehicle::GetHydraThrusters()
 {
-	//if (m_pVehicle) {
-	//	return m_pVehicle->wHydraThrusters;
-	//}
-
 	return 0.0f;
 }
 
 bool CVehicle::IsLandingGearNotUp()
 {
-	//if(m_pVehicle)
-		//return m_pVehicle->fPlaneLandingGear != 0.0f;
-
 	return 0;
 }
 
 float CVehicle::GetBikeLean()
 {
-	//if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
-		//return m_pVehicle->fBikeLean;
-
 	return 0.0f;
 }
-// 0.3.7
+
 bool CVehicle::IsATrainPart()
 {
 	if (m_pVehicle)
@@ -405,12 +379,12 @@ bool CVehicle::IsATrainPart()
 
 	return false;
 }
-// 0.3.7
+
 bool CVehicle::VerifyInstance()
 {
 	return GamePool_Vehicle_GetAt(m_dwGTAId) != nullptr;
 }
-// 0.3.7
+
 void CVehicle::SetDoorState(int state)
 {
 	if (state)
@@ -430,31 +404,19 @@ void CVehicle::SetComponentOpenState(int iDoor, int iComponent, float fDoorOpenR
 	if (GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
 	{
 		ScriptCommand(&set_car_door_rotation_to, m_dwGTAId, iDoor, iComponent, fDoorOpenRatio);
-	
 	}
 }
 
-void CVehicle::OpenWindow(uint8_t component)
-{
-	if (m_pVehicle) {
+void CVehicle::OpenWindow(uint8_t component) {}
+void CVehicle::CloseWindow(uint8_t component) {}
 
-	}
-}
-
-void CVehicle::CloseWindow(uint8_t component)
-{
-	if (m_pVehicle) {
-
-	}
-}
-// 0.3.7
 void CVehicle::AttachTrailer()
 {
 	if (m_pTrailer) {
 		ScriptCommand(&put_trailer_on_cab, m_pTrailer->m_dwGTAId, m_dwGTAId);
 	}
 }
-// 0.3.7
+
 void CVehicle::RemoveComponent(int iComponentID)
 {
 	if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -462,14 +424,14 @@ void CVehicle::RemoveComponent(int iComponentID)
 
 	ScriptCommand(&remove_component, m_dwGTAId, iComponentID);
 }
-// 0.3.7
+
 void CVehicle::SetZAngle(float fAngle)
 {
 	if (GamePool_Vehicle_GetAt(m_dwGTAId)) {
 		ScriptCommand(&set_car_z_angle, m_dwGTAId, fAngle);
 	}
 }
-// 0.3.7
+
 bool CVehicle::IsDriverLocalPlayer()
 {
 	if (m_pVehicle && m_pVehicle->pDriver == GamePool_FindPlayerPed())
@@ -477,7 +439,7 @@ bool CVehicle::IsDriverLocalPlayer()
 
 	return false;
 }
-// 0.3.7
+
 void CVehicle::SetInvulnerable(bool bInv)
 {
 	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -496,7 +458,7 @@ void CVehicle::SetInvulnerable(bool bInv)
 		}
 	}
 }
-// 0.3.7
+
 bool CVehicle::HasSunk()
 {
 	if (m_pVehicle) {
@@ -505,7 +467,7 @@ bool CVehicle::HasSunk()
 
 	return false;
 }
-// 0.3.7
+
 bool CVehicle::HasADriver()
 {
 	if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -524,22 +486,17 @@ bool CVehicle::HasADriver()
 void CVehicle::ApplyEngineState(int iState)
 {
 	if (!m_pVehicle) return;
-
 	m_iEngineState = iState;
-
     m_pVehicle->m_nVehicleFlags.bEngineOn = iState;
 }
 
 void CVehicle::ApplyLightState(int iState)
 {
 	if (!m_pVehicle) return;
-	//if(iState > 1)
-	//	return;
-
 	m_iLightState = iState;
     m_pVehicle->m_nVehicleFlags.bLightsOn = iState;
 }
-// 0.3.7
+
 void CVehicle::ProcessMarkers()
 {
 	if(!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
@@ -570,7 +527,6 @@ void CVehicle::ProcessMarkers()
 		{
 			pGame->DisableMarker(m_dwMarkerID);
 			m_dwMarkerID = 0;
-
 			m_bSpecialMarkerEnabled = false;
 		}
 	}
@@ -595,7 +551,7 @@ void CVehicle::ProcessMarkers()
 		}
 	}
 }
-// 0.3.7
+
 bool CVehicle::IsOccupied()
 {
 	if (m_pVehicle)
@@ -648,7 +604,6 @@ void CVehicle::UpdateDamageStatus(uint32_t dwPanelDamage, uint32_t dwDoorDamage,
 			{
 				if(GetPanelDamageStatus() || GetDoorDamageStatus() || GetLightDamageStatus())
 				{
-					// CAutoMobile::Fix
 					(( void (*)(CVehicleGTA*))(g_libGTASA+(VER_x32 ? 0x55D5C0+1:0x67DF0C)))(m_pVehicle);
 					return;
 				}
@@ -658,99 +613,19 @@ void CVehicle::UpdateDamageStatus(uint32_t dwPanelDamage, uint32_t dwDoorDamage,
 			SetPanelDamageStatus(dwPanelDamage);
 			SetLightDamageStatus(byteLightDamage);
 
-			// CAutomobile::SetupDamageAfterLoad
 			(( void (*)(CVehicleGTA*))(g_libGTASA+(VER_x32 ? 0x55D886+1:0x67E368)))(m_pVehicle);
 		}
 	}
 }
 
-void CVehicle::SetPanelDamageStatus(uint32_t dwPanelStatus)
-{
-	//if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		//m_pVehicle->dwPanelStatus = dwPanelStatus;
-}
-
-uint32_t CVehicle::GetPanelDamageStatus()
-{
-	//if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		//return m_pVehicle->dwPanelStatus;
-
-	return 0;
-}
-
-void CVehicle::SetDoorDamageStatus(uint32_t dwDoorStatus)
-{
-	/*if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-	{
-		m_pVehicle->byteDoorStatus[0] = dwDoorStatus & 7;
-		m_pVehicle->byteDoorStatus[1] = (dwDoorStatus >> 8) & 7;
-		m_pVehicle->byteDoorStatus[2] = (dwDoorStatus >> 16) & 7;
-		m_pVehicle->byteDoorStatus[3] = (dwDoorStatus >> 24) & 7;
-	}*/
-}
-
-uint32_t CVehicle::GetDoorDamageStatus()
-{
-	/*if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-	{
-		uint32_t dwDoorStatus = (m_pVehicle->byteDoorStatus[0] | (m_pVehicle->byteDoorStatus[1] << 8) | (m_pVehicle->byteDoorStatus[2] << 16) | (m_pVehicle->byteDoorStatus[3] << 24));
-		return dwDoorStatus;
-	}*/
-
-	return 0;
-}
-
-void CVehicle::SetLightDamageStatus(uint8_t byteLightStatus)
-{
-	//if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		//m_pVehicle->dwLightStatus = (uint32_t)byteLightStatus;
-}
-
-uint8_t CVehicle::GetLightDamageStatus()
-{
-	//if(m_pVehicle && GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		//return (uint8_t)m_pVehicle->dwLightStatus;
-
-	return 0;
-}
-
-void CVehicle::SetWheelPoppedStatus(uint8_t byteWheelStatus)
-{
-	/*if(m_pVehicle)
-	{
-		if(GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		{
-			m_pVehicle->byteWheelStatus[3] = byteWheelStatus & 1;
-			m_pVehicle->byteWheelStatus[2] = (byteWheelStatus >> 1) & 1;
-			m_pVehicle->byteWheelStatus[1] = (byteWheelStatus >> 2) & 1;
-			m_pVehicle->byteWheelStatus[0] = (byteWheelStatus >> 3) & 1;
-		}
-		else if(GetVehicleSubtype() == VEHICLE_SUBTYPE_BIKE)
-		{
-			m_pVehicle->byteBikeWheelStatus[1] = byteWheelStatus & 1;
-			m_pVehicle->byteBikeWheelStatus[0] = (byteWheelStatus >> 1) & 1;
-		}
-	}*/
-}
-
-uint8_t CVehicle::GetWheelPoppedStatus()
-{
-	/*if(m_pVehicle)
-	{
-		if(GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
-		{
-			uint8_t byteWheelStatus = (m_pVehicle->byteWheelStatus[3] | (m_pVehicle->byteWheelStatus[2] << 1) | (m_pVehicle->byteWheelStatus[1] << 2) | (m_pVehicle->byteWheelStatus[0] << 3));
-			return byteWheelStatus;
-		}
-		else if(GetVehicleSubtype() == VEHICLE_SUBTYPE_BIKE)
-		{
-			uint8_t byteWheelStatus = (m_pVehicle->byteBikeWheelStatus[1] | (m_pVehicle->byteBikeWheelStatus[0] << 1));
-			return byteWheelStatus;
-		}
-	}*/
-
-	return 0;
-}
+void CVehicle::SetPanelDamageStatus(uint32_t dwPanelStatus) {}
+uint32_t CVehicle::GetPanelDamageStatus() { return 0; }
+void CVehicle::SetDoorDamageStatus(uint32_t dwDoorStatus) {}
+uint32_t CVehicle::GetDoorDamageStatus() { return 0; }
+void CVehicle::SetLightDamageStatus(uint8_t byteLightStatus) {}
+uint8_t CVehicle::GetLightDamageStatus() { return 0; }
+void CVehicle::SetWheelPoppedStatus(uint8_t byteWheelStatus) {}
+uint8_t CVehicle::GetWheelPoppedStatus() { return 0; }
 
 bool CVehicle::SirenEnabled()
 {
@@ -785,40 +660,6 @@ void CVehicle::UpdateColor()
 	}
 }
 
-void CVehicle::SetMaxSpeed(float fSpeed)
-{
-	if (!m_pVehicle) return;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x14) = fSpeed;          // fMaxVelocity
-		*(float*)(pHandling + 0x18) = fSpeed / 10.0f;   // fEngineAcceleration
-	}
-}
-
-void CVehicle::SetBrakePower(float fBrake)
-{
-	if (!m_pVehicle) return;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x2C) = fBrake;         // fBrakeDeceleration
-	}
-}
-
-void CVehicle::SetSteeringAngle(float fAngle)
-{
-	if (!m_pVehicle) return;
-	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
-	if (pHandling) {
-		*(float*)(pHandling + 0x38) = fAngle;         // fSteeringLock
-	}
-}
-
-void CVehicle::SetHeadlightColor(uint8_t colorID)
-{
-	if (!m_pVehicle) return;
-	*(uint8_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x5A4 : 0x6E0)) = colorID;
-}
-
 bool CVehicle::UpdateLastDrivenTime()
 {
 	if(m_pVehicle)
@@ -832,4 +673,109 @@ bool CVehicle::UpdateLastDrivenTime()
 	}
 
 	return false;
+}
+
+// ===== HER MASIN UCUN FERDI HANDLING VE FAR FUNKSIYALARI =====
+
+void CVehicle::EnsureUniqueHandling()
+{
+	if (!m_pVehicle) return;
+
+	uintptr_t vehAddr = (uintptr_t)m_pVehicle;
+	uintptr_t* ppHandling = (uintptr_t**)(vehAddr + (VER_x32 ? 0x384 : 0x4B0));
+
+	if (ppHandling && *ppHandling) {
+		uintptr_t pOldHandling = *ppHandling;
+		uintptr_t pNewHandling = (uintptr_t)malloc(0xE0);
+		if (pNewHandling) {
+			memcpy((void*)pNewHandling, (void*)pOldHandling, 0xE0);
+			*ppHandling = pNewHandling;
+		}
+	}
+}
+
+void CVehicle::SetMaxSpeed(float fSpeed)
+{
+	if (!m_pVehicle) return;
+	EnsureUniqueHandling();
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x9C) = fSpeed; // fMaxVelocity
+	}
+}
+
+void CVehicle::SetAcceleration(float fAccel)
+{
+	if (!m_pVehicle) return;
+	EnsureUniqueHandling();
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x8C) = fAccel; // fEngineAcceleration
+	}
+}
+
+void CVehicle::SetBrakePower(float fBrake)
+{
+	if (!m_pVehicle) return;
+	EnsureUniqueHandling();
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x94) = fBrake; // fBrakeDeceleration
+	}
+}
+
+void CVehicle::SetSteeringAngle(float fAngle)
+{
+	if (!m_pVehicle) return;
+	EnsureUniqueHandling();
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0xAC) = fAngle; // fSteeringLock
+	}
+}
+
+void CVehicle::SetMass(float fMass)
+{
+	if (!m_pVehicle) return;
+	EnsureUniqueHandling();
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	if (pHandling) {
+		*(float*)(pHandling + 0x04) = fMass; // fMass
+	}
+}
+
+void CVehicle::SetHeadlightColor(uint8_t colorID)
+{
+	if (!m_pVehicle) return;
+	*(uint8_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x588 : 0x6C0)) = colorID;
+}
+
+float CVehicle::GetMaxSpeed() {
+	if (!m_pVehicle) return 0.0f;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	return pHandling ? *(float*)(pHandling + 0x9C) : 0.0f;
+}
+
+float CVehicle::GetAcceleration() {
+	if (!m_pVehicle) return 0.0f;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	return pHandling ? *(float*)(pHandling + 0x8C) : 0.0f;
+}
+
+float CVehicle::GetBrakePower() {
+	if (!m_pVehicle) return 0.0f;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	return pHandling ? *(float*)(pHandling + 0x94) : 0.0f;
+}
+
+float CVehicle::GetSteeringAngle() {
+	if (!m_pVehicle) return 0.0f;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	return pHandling ? *(float*)(pHandling + 0xAC) : 0.0f;
+}
+
+float CVehicle::GetMass() {
+	if (!m_pVehicle) return 0.0f;
+	uintptr_t pHandling = *(uintptr_t*)((uintptr_t)m_pVehicle + (VER_x32 ? 0x384 : 0x4B0));
+	return pHandling ? *(float*)(pHandling + 0x04) : 0.0f;
 }

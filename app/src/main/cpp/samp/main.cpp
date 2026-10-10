@@ -3,6 +3,7 @@
 #include <syscall.h>
 #include <signal.h>
 #include <ucontext.h>
+#include <time.h>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -18,7 +19,6 @@
 #include "java/jniutil.h"
 #include <dlfcn.h>
 #include "StackTrace.h"
-#include <time.h>
 
 // voice
 #include "voice_new/Plugin.h"
@@ -67,10 +67,8 @@ void FLog(const char* fmt, ...);
 int work = 0;
 
 // ===== VSync bypass (Uncapped Max FPS) =====
-// Evvelki variant eglSwapInterval-i hook edirdi, amma orijinal funksiya hec vaxt
-// cagirilmirdi (orig_eglSwapInterval == nullptr idi), buna gore interval
-// heรง vaxt 0-a qoyulmurdu. Indi render thread-inde eglSwapInterval(dpy, 0)
-// birbasa cagirilir ve oyun onu geri 1-e qaytarsa, periodik olaraq yeniden tetbiq olunur.
+// Render thread-inde eglSwapInterval(dpy, 0) birbasa cagirilir.
+// Oyun onu geri 1-e qaytarsa, her 120 kadrda yeniden tetbiq olunur.
 typedef EGLDisplay (*eglGetCurrentDisplay_t)(void);
 typedef EGLContext (*eglGetCurrentContext_t)(void);
 typedef EGLBoolean (*eglSwapInterval_t)(EGLDisplay, EGLint);
@@ -103,6 +101,27 @@ static void ApplyUncappedFPS()
     if (dpy == EGL_NO_DISPLAY) return;
 
     pSwapInterval(dpy, 0);
+}
+
+// ===== FPS olcen (samp_log.txt-e "MainLoop FPS: N" yazir) =====
+static void LogMainLoopFPS()
+{
+    static uint64_t last = 0;
+    static int frames = 0;
+
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t now = (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+
+    if (last == 0) last = now;
+
+    frames++;
+    if (now - last >= 1000)
+    {
+        FLog("MainLoop FPS: %d", frames);
+        frames = 0;
+        last = now;
+    }
 }
 
 void ReadSettingFile()
@@ -144,9 +163,7 @@ void DoDebugStuff()
 }
 
 // ===== Crash handler =====
-// Evvel 4 eyni handler var idi ve her biri ONCE kohne handler-i cagirirdi
-// (crashlytics/sistem prosesi oldururdu, log yazilmamis qalirdi).
-// Ayrica struct sigaction-lar sifirlanmamisdi. Indi: bir handler, evvel log, sonra zencir.
+// Bir handler: evvel log, sonra kohne handler-e zencir.
 static struct sigaction g_oldActions[NSIG];
 static volatile sig_atomic_t g_bInCrash = 0;
 
@@ -316,25 +333,11 @@ extern "C" {
     }
 }
 
-
-static void LogMainLoopFPS()
-{
-    static uint64_t last = 0;
-    static int frames = 0;
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t now = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
-    frames++;
-    if (now - last >= 1000) {
-        FLog("MainLoop FPS: %d", frames);
-        frames = 0;
-        last = now;
-    }
-}
-
 void MainLoop()
 {
     if (!pGame || pGame->bIsGameExiting) return;
+
+    LogMainLoopFPS();
 
     DoInitStuff();
 
@@ -428,7 +431,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
 uint32_t GetTickCount()
 {
     return CTimer::m_snTimeInMillisecondsNonClipped;
-}        
+}
 
 void FLog(const char* fmt, ...)
 {

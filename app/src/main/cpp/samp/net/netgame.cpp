@@ -47,13 +47,6 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 {
 	FLog("CNetGame initializing..");
 
-	// voice
-	//Network::OnRaknetConnect(szHostOrIp, iPort);
-
-	//MyLog2("Voice connect %s:%d", szHostOrIp, iPort);
-	//MyLog2("Voice connect %s:%d", szHostOrIp, iPort);
-	//MyLog2("Voice connect %s:%d", szHostOrIp, iPort);
-
 	m_pNetSet = new NET_SETTINGS;
 	memset(m_szHostName, 0, 256);
 	memset(m_szHostOrIp, 0, 256);
@@ -102,14 +95,12 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
     if(pSettings)
         sampVer = pSettings->Get().szVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{FFFFFF}2.1 Client started", sampVer);
+	if (pUI) pUI->chat()->addDebugMessage("{FFD700}[APACHE ONLINE]: {00FFFF}2.1 Müştəri Başladıldı! {00FF00}QOŞULDU! {FF00FF}Versiya: %s", sampVer);
 }
+
 // 0.3.7
 CNetGame::~CNetGame()
 {
-	// voice
-	//Network::OnRaknetDisconnect();
-
 	m_pRakClient->Disconnect(0);
 	UnregisterRPCs(m_pRakClient);
 	UnregisterScriptRPCs(m_pRakClient);
@@ -216,8 +207,6 @@ void CNetGame::Process()
 		pGame->SetWorldTime(m_pNetSet->byteWorldTime_Hour, m_pNetSet->byteWorldTime_Minute);
 	}
 
-	//pGame->PreloadObjectsAnims();
-
 	if (GetGameState() == GAMESTATE_CONNECTED) {
 		ProcessPools();
 	}
@@ -255,7 +244,6 @@ void CNetGame::UpdateNetwork()
 
             case ID_DISCONNECTION_NOTIFICATION:
                 Packet_DisconnectionNotification(pkt);
-                //SetGameState(GAMESTATE_WAIT_CONNECT);
                 break;
 
             case ID_CONNECTION_LOST:
@@ -321,11 +309,6 @@ void CNetGame::UpdateNetwork()
                 break;
         }
 
-		// voice
-		/*if (!Network::OnRaknetReceive(*pkt)) {
-			return;
-		}*/
-
 		m_pRakClient->DeallocatePacket(pkt);
 	}
 }
@@ -333,7 +316,7 @@ void CNetGame::UpdateNetwork()
 void CNetGame::Packet_CustomRPC(Packet *p) {
 
     RakNet::BitStream bs((unsigned char *) p->data, p->length, false);
-    bs.IgnoreBits(8); // skip packet id
+    bs.IgnoreBits(8);
 
     uint32_t rpcID;
     bs.Read(rpcID);
@@ -380,9 +363,6 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
             bsParams.Write(iVersion);
 
             m_pRakClient->Send(&bsParams, SYSTEM_PRIORITY, RELIABLE, 0);
-
-//			bsParams.Write(iVersion);
-//			m_pRakClient->RPC(&RPC_CustomHash, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
             break;
         }
     }
@@ -391,7 +371,6 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
 // 0.3.7
 void CNetGame::ShutdownForGameModeRestart()
 {
-	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
 	Network::OnRaknetDisconnect();
@@ -409,7 +388,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	GetPlayerPool()->GetLocalPlayer()->ToggleSpectating(false);
 	GameResetStats();
 
-	if (pAudioStream) { //add new
+	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
 
@@ -451,12 +430,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	pGame->SetWantedLevel(0);
 	pGame->EnableClock(false);
 
-	// voice
-	//SpeakerList::Hide();
-	//MicroIcon::Hide();
-	//Network::OnRaknetDisconnect();
-
-	if (pUI) pUI->chat()->addInfoMessage("The server is restarting..");
+	if (pUI) pUI->chat()->addInfoMessage("{FF4500}[APACHE SERVER]: {FFD700}Server yenidən başladılır... Zəhmət olmasa gözləyin!");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -474,6 +448,7 @@ void CNetGame::ProcessPools()
 		GetPickupPool()->Process();
 	}
 }	
+
 // 0.3.7
 void CNetGame::ProcessLoadingScreen()
 {
@@ -490,23 +465,23 @@ void CNetGame::ProcessLoadingScreen()
 	pGame->SetWorldWeather(1);
 	pGame->DisplayHUD(false);
 }
+
 // 0.3.7
 void CNetGame::ProcessConnecting()
 {
-	if (GetTickCount() - m_dwLastConnectAttempt > 1000/*3000*/)
+	if (GetTickCount() - m_dwLastConnectAttempt > 1000)
 	{
-		//if (pUI) pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
-		if (pUI) pUI->chat()->addDebugMessage("Connecting to Server...");
+		if (pUI) pUI->chat()->addDebugMessage("{00BFFF}[APACHE QOŞULMA]: {32CD32}Serverə qoşulur... QOŞULDU! Gözləyin!");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
-		// voice fix voice not connect when restart
 		Network::OnRaknetConnect(m_szHostOrIp, m_iPort);
 
 		m_dwLastConnectAttempt = GetTickCount();
 		SetGameState(GAMESTATE_CONNECTING);
 	}
 }
+
 // 0.3.7
 void gen_auth_key(char buf[260], char* auth_in);
 void CNetGame::Packet_AuthKey(Packet *pkt)
@@ -532,35 +507,32 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 	bsKey.Write(szAuthKey, byteAuthKeyLen);
 	m_pRakClient->Send(&bsKey, SYSTEM_PRIORITY, RELIABLE, 0);
 }
+
 // 0.3.7
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("The server didn't respond. Retrying..");
-	if (pAudioStream) { //add new
+	if (pUI) pUI->chat()->addDebugMessage("{FF6347}[APACHE XƏBƏRDARLIQ]: {FFA500}Server cavab vermədi! Yenidən qoşulma cəhdi...");
+	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
-	SpeakerList::Hide(); //add new
+	SpeakerList::Hide();
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
-
-	//SpeakerList::Hide();
-	//MicroIcon::Hide();
 }
+
 // 0.3.7
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("The server is full. Retrying...");
-	SpeakerList::Hide(); //addnew
+	if(pUI) pUI->chat()->addDebugMessage("{FF4500}[APACHE DOLU]: {FF8C00}Server tam doludur! Yenidən cəhd olunur...");
+	SpeakerList::Hide();
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
-
-	//SpeakerList::Hide();
-	//MicroIcon::Hide();
 }
+
 // 0.3.7
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Server closed the connection.");
+	if (pUI) pUI->chat()->addDebugMessage("{B22222}[APACHE QIRILDI]: {FF0000}Server bağlantını dayandırdı!");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -569,6 +541,7 @@ void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 	SpeakerList::Hide();
 	MicroIcon::Hide();
 }
+
 // 0.3.7
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
@@ -578,15 +551,15 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	int iVersion = 4057;
 	uint8_t byteMod = 1;
 
-	bsSuccAuth.IgnoreBits(8);	// packetId
-	bsSuccAuth.IgnoreBits(32);	// binaryAddress
-	bsSuccAuth.IgnoreBits(16);	// port
+	bsSuccAuth.IgnoreBits(8);
+	bsSuccAuth.IgnoreBits(32);
+	bsSuccAuth.IgnoreBits(16);
 
 	bsSuccAuth.Read(MyPlayerID);
 	bsSuccAuth.Read(uiChallenge);
 	uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("Connected. Joining the game...");
+	if (pUI) pUI->chat()->addDebugMessage("{00FF7F}[APACHE APACHE ONLINE]: {00FFFF}QOŞULDU! {7FFF00}Uğurla bağlandı, oyuna daxil olunur...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
@@ -595,7 +568,6 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	uint8_t byteClientVerLen = strlen(SAMP_VERSION);
     if(pSettings)
         byteClientVerLen = strlen(pSettings->Get().szVersion);
-
 
 	RakNet::BitStream bsSend;
 	bsSend.Write(iVersion);
@@ -606,7 +578,6 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSend.Write(byteAuthBSLen);
 	bsSend.Write(AUTH_BS, byteAuthBSLen);
 	bsSend.Write(byteClientVerLen);
-	//bsSend.Write(SAMP_VERSION, byteClientVerLen);
     if(pSettings)
         bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
     else
@@ -616,26 +587,29 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 
-	// voice
 	SpeakerList::Hide();
 	MicroIcon::Hide();
 }
+
 // 0.3.7
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Failed to initialize encryption.");
+	if (pUI) pUI->chat()->addDebugMessage("{8B0000}[APACHE XƏTA]: {FF0000}Şifrələmə (Encryption) xətası baş verdi!");
 }
+
 // 0.3.7
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("You are banned from this server.");
+	if (pUI) pUI->chat()->addDebugMessage("{8B0000}[APACHE BAN]: {FF0000}Siz bu serverdən bloklanmısınız (Banned)!");
 }
+
 // 0.3.7
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("Wrong server password.");
+	if (pUI) pUI->chat()->addDebugMessage("{FF8C00}[APACHE ŞİFRƏ]: {FF4500}Server şifrəsi səhvdir, qaqaş!");
 	m_pRakClient->Disconnect(0);
 }
+
 // 0.3.7
 void CNetGame::Packet_ConnectionLost(Packet *pkt)
 {
@@ -643,7 +617,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 		m_pRakClient->Disconnect(0);
 	}
 
-	if (pUI) pUI->chat()->addDebugMessage("Lost connection to the server. Reconnecting..");
+	if (pUI) pUI->chat()->addDebugMessage("{FF1493}[APACHE QOPDU]: {FF69B4}Serverlə əlaqə kəsildi! Yenidən qoşulmağa çalışılır...");
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();
@@ -664,6 +638,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 	SpeakerList::Hide();
 	MicroIcon::Hide();
 }
+
 // 0.3.7
 void CNetGame::Packet_PlayerSync(Packet *pkt)
 {
@@ -746,6 +721,7 @@ void CNetGame::Packet_PlayerSync(Packet *pkt)
 		pRemotePlayer->StoreOnFootFullSyncData(&ofSync, 0);
 	}
 }
+
 // 0.3.7
 void CNetGame::Packet_VehicleSync(Packet* pkt)
 {
@@ -773,12 +749,10 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 	bsData.Read((char*)& icSync.vecPos, sizeof(CVector));
 	bsData.ReadVector(icSync.vecMoveSpeed.x, icSync.vecMoveSpeed.y, icSync.vecMoveSpeed.z);
 
-	// car health
 	uint16_t wTempVehicleHealth;
 	bsData.Read(wTempVehicleHealth);
 	icSync.fCarHealth = (float)wTempVehicleHealth;
 
-	// health/armour
 	uint8_t byteHealthArmour;
 	uint8_t byteArmTemp = 0, byteHlTemp = 0;
 
@@ -794,23 +768,18 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 	else if (byteHlTemp == 0) icSync.bytePlayerHealth = 0;
 	else icSync.bytePlayerHealth = byteHlTemp * 7;
 
-	// current weapon
 	uint8_t byteTempWeapon;
 	bsData.Read(byteTempWeapon);
 	icSync.byteCurrentWeapon ^= (byteTempWeapon ^ icSync.byteCurrentWeapon) & 0x3F;
 
 	bool bCheck;
 
-	// siren
 	bsData.Read(bCheck);
 	if (bCheck) icSync.byteSirenOn = 1;
-	// landinggear
 	bsData.Read(bCheck);
 	if (bCheck) icSync.byteLandingGearState = 1;
-	// train speed
 	bsData.Read(bCheck);
 	if (bCheck) bsData.Read(icSync.fTrainSpeed);
-	// triler id
 	bsData.Read(bCheck);
 	if (bCheck) bsData.Read(icSync.TrailerID);
 
@@ -819,6 +788,7 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 		pRemotePlayer->StoreInCarFullSyncData(&icSync, 0);
 	}
 }
+
 // 0.3.7
 void CNetGame::Packet_AimSync(Packet* pkt)
 {
@@ -835,6 +805,7 @@ void CNetGame::Packet_AimSync(Packet* pkt)
 	if (pPlayer)
 		pPlayer->StoreAimFullSyncData(&aimSync);
 }
+
 // 0.3.7
 void CNetGame::Packet_BulletSync(Packet* pkt)
 {
@@ -854,8 +825,8 @@ void CNetGame::Packet_BulletSync(Packet* pkt)
 	CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
 	if (pRemotePlayer)
 		pRemotePlayer->StoreBulletFullSyncData(&btSync);
-
 }
+
 // 0.3.7
 void CNetGame::Packet_PassengerSync(Packet* pkt)
 {
@@ -921,36 +892,6 @@ void CNetGame::Packet_MarkerSync(Packet *pkt)
 	}
 }
 
-/*
-void CNetGame::Packet_VoiceChannelOpenReply(Packet* pkt)
-{
-	FLog("Packet_VoiceChannelOpenReply");
-
-	if (!pVoice || !GetGameState() == GAMESTATE_CONNECTED) return;
-
-	GetPlayerPool()->GetLocalPlayer()->VoiceChannelAccept();
-}*/
-
-/*
-void CNetGame::Packet_VoiceData(Packet* pkt)
-{
-	if (!pVoice || !GetGameState() == GAMESTATE_CONNECTED) return;
-
-	PLAYERID playerId;
-	int size;
-	unsigned char data[MAX_VOICE_PACKET_SIZE];
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
-	bsData.IgnoreBits(8);
-	bsData.Read(playerId);
-	bsData.Read(size);
-	bsData.Read((char*)data, size);
-
-	if (GetPlayerPool()->GetSlotState(playerId)) {
-		pVoice->Push(playerId, data, size);
-	}
-}*/
-
-// 0.3.7
 void CNetGame::UpdatePlayerScoresAndPings()
 {
 	static uint32_t dwLastUpdateTick = 0;
@@ -1002,6 +943,7 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	bsParams.Write(szCommand, iStrlen);
 	m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
 }
+
 // 0.3.7
 void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPosZ, uint8_t byteType, uint32_t dwColor, uint8_t byteStyle)
 {
@@ -1011,12 +953,14 @@ void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fP
 
 	m_dwMapIcon[byteIconID] = pGame->CreateRadarMarkerIcon(byteType, fPosX, fPosY, fPosZ, dwColor, byteStyle);
 }
+
 // 0.3.7
 void CNetGame::DisableMapIcon(uint8_t byteIconID)
 {
 	ScriptCommand(&disable_marker, m_dwMapIcon[byteIconID]);
 	m_dwMapIcon[byteIconID] = 0;
 }
+
 // 0.3.7
 void CNetGame::ResetVehiclePool()
 {
@@ -1026,6 +970,7 @@ void CNetGame::ResetVehiclePool()
 
 	m_pPools->pVehiclePool = new CVehiclePool();
 }
+
 // 0.3.7
 void CNetGame::ResetActorPool()
 {
@@ -1035,6 +980,7 @@ void CNetGame::ResetActorPool()
 
 	m_pPools->pActorPool = new CActorPool();
 }
+
 // 0.3.7
 void CNetGame::ResetTextDrawPool()
 {
@@ -1044,6 +990,7 @@ void CNetGame::ResetTextDrawPool()
 
 	m_pPools->pTextDrawPool = new CTextDrawPool();
 }
+
 // 0.3.7
 void CNetGame::ResetGangZonePool()
 {
@@ -1053,6 +1000,7 @@ void CNetGame::ResetGangZonePool()
 
 	m_pPools->pGangZonePool = new CGangZonePool();
 }
+
 // 0.3.7
 void CNetGame::Reset3DTextLabelPool()
 {
@@ -1062,6 +1010,7 @@ void CNetGame::Reset3DTextLabelPool()
 
 	m_pPools->pTextLabelPool = new C3DTextLabelPool();
 }
+
 // 0.3.7
 void CNetGame::ResetMapIcons()
 {
@@ -1073,6 +1022,7 @@ void CNetGame::ResetMapIcons()
 		}
 	}
 }
+
 // 0.3.7
 void CNetGame::ResetPickupPool()
 {
@@ -1082,6 +1032,7 @@ void CNetGame::ResetPickupPool()
 
 	m_pPools->pPickupPool = new CPickupPool();
 }
+
 // 0.3.7
 void CNetGame::ResetObjectPool()
 {
@@ -1091,6 +1042,7 @@ void CNetGame::ResetObjectPool()
 
 	m_pPools->pObjectPool = new CObjectPool();
 }
+
 // 0.3.7
 void CNetGame::ResetMenuPool()
 {
@@ -1100,6 +1052,7 @@ void CNetGame::ResetMenuPool()
 
 	m_pPools->pMenuPool = new CMenuPool();
 }
+
 // 0.3.7
 void CNetGame::InitGameLogic()
 {

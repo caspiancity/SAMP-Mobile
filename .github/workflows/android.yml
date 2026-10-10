@@ -9,6 +9,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -152,7 +154,22 @@ jobs:
       - name: Fix PRDownloader version
         run: sed -i 's/PRDownloader:1\.0\.1/PRDownloader:1.0.2/g' app/build.gradle
 
-      - name: Create keystore matching build.gradle
+      - name: Restore keystore from repo
+        id: ks
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/../keys"
+          if [ -f keystore/new.jks ]; then
+            cp keystore/new.jks "$GITHUB_WORKSPACE/../keys/new.jks"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Using saved keystore"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No saved keystore, will create one"
+          fi
+
+      - name: Create keystore (first time only)
+        if: steps.ks.outputs.exists != 'true'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -196,6 +213,18 @@ jobs:
           ]
           subprocess.run(cmd, check=True)
           PY
+
+      - name: Save keystore to repo (first time only)
+        if: steps.ks.outputs.exists != 'true' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          mkdir -p keystore
+          cp "$GITHUB_WORKSPACE/../keys/new.jks" keystore/new.jks
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add keystore/new.jks
+          git commit -m "Add persistent signing keystore [skip ci]"
+          git push || echo "::warning::Could not push keystore (check Workflow permissions)"
 
       - name: Build debug APK
         shell: bash

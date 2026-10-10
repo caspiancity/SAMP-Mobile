@@ -5,7 +5,56 @@
 #include "Coronas.h"
 #include "../vendor/armhook/patch.h"
 #include "TxdStore.h"
+#include "game/vehicle_tuning.h"   // YENI: far rengi override
 
+// ---------------------------------------------------------------------------
+//  Far rengi: CCoronas::RegisterCorona (eCoronaType varianti) hook-u
+//
+//  Oyun far koronasini CVehicle::DoHeadLightEffect icinde sert yazilmis reng ile
+//  qeydiyyata alir. Masinin strukturunda far rengi sahesi YOXDUR (CVehicleGTA-ya bax),
+//  buna gore reng ancaq qeydiyyat anında deyisdirile biler.
+// ---------------------------------------------------------------------------
+namespace
+{
+    // BIZIM kodun (arxa/geri isiqlar) cagirisi olanda true - onlar boyanmamalidir
+    bool s_bInternalCorona = false;
+
+    struct InternalCoronaScope
+    {
+        InternalCoronaScope()  { s_bInternalCorona = true; }
+        ~InternalCoronaScope() { s_bInternalCorona = false; }
+    };
+
+    using RegisterCoronaByType_t = void (*)(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha,
+                                            const CVector* posn, float radius, float farClip, eCoronaType coronaType,
+                                            eCoronaFlareType flareType, bool enableReflection, bool checkObstacles,
+                                            int32 _param_not_used, float angle, bool longDistance, float nearClip,
+                                            uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
+
+    RegisterCoronaByType_t RegisterCoronaByType_orig = nullptr;
+
+    void RegisterCoronaByType_hook(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha,
+                                   const CVector* posn, float radius, float farClip, eCoronaType coronaType,
+                                   eCoronaFlareType flareType, bool enableReflection, bool checkObstacles,
+                                   int32 _param_not_used, float angle, bool longDistance, float nearClip,
+                                   uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+    {
+        // yalniz oyunun oz far koronalari (bizim DoTailLightEffect-den gelenler s_bInternalCorona ile suzulur)
+        if (coronaType == eCoronaType::CORONATYPE_HEADLIGHT && attachTo && !s_bInternalCorona)
+        {
+            uint8_t r, g, b;
+            // CVehicleGTA tek varislik zənciri ile CEntityGTA-dan toreyir -> eyni unvan
+            if (VehicleTuning::GetHeadlight(reinterpret_cast<CVehicleGTA*>(attachTo), r, g, b))
+            {
+                red = r; green = g; blue = b;
+            }
+        }
+
+        RegisterCoronaByType_orig(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flareType,
+                                  enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip,
+                                  fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+    }
+}
 
 // Creates corona by texture
 void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
@@ -14,6 +63,7 @@ void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 
 
 // Creates corona by type
 void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn, float radius, float farClip, eCoronaType coronaType, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
+    InternalCoronaScope scope; // bizim cagirislar hook terefinden boyanmasin
     CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174), id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flareType, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 }
 void (*CCoronas__Init)();
@@ -25,6 +75,12 @@ void CCoronas::InjectHooks() {
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00675F6C : 0x849F60), &CCoronas::MoonSize);
 
    // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);
+
+    // YENI: far rengi hook-u (eCoronaType varianti - yuxaridaki CallFunction ile eyni unvan)
+    // Diqqet: CHook::InlineHook-un unvan (uintptr_t) uzre overload-u sende ferqli ola biler.
+    // x32-de "+ 1" (thumb) - InlineHook ozu thumb-i idare edirse "+ 1"-i sil.
+    CHook::InlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
+                      &RegisterCoronaByType_hook, &RegisterCoronaByType_orig);
 }
 
 // Initialises coronas
@@ -48,7 +104,7 @@ void CCoronas::Init() {
     }
 
     for (auto & corona : aCoronas) {
-        corona = CRegisteredCorona{}; // ������������� �������� �� ���������
+        corona = CRegisteredCorona{}; // reset to default values (comment was garbled: save file as UTF-8)
     }
 }
 

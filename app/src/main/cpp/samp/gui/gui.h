@@ -101,13 +101,17 @@ private:
     Label* label3;
     Label* label4;
 
-    float 		m_fFontSize;
+    float 		m_fFontSize = 0.0f;
 
-	bool m_bNeedClearMousePos = false;
-
-	// YENI: toxunma buraxilisi gecikdirilir ki ImGui basmani en azi 1 kadr gorsun
-	bool m_bPendingRelease = false;
-	int  m_nDownFrames = 0;
+	// --- ImGui toxunus vəziyyəti (qısa toxunuşun itməməsi üçün) ---
+	// Basma+buraxma BIR kadrda baş verəndə ImGui klik görmürdü.
+	// Indi buraxma, basma ən azı 2 kadr görünənə qədər gecikdirilir.
+	int  m_iDownFrames = 2;          // son basmadan bəri neçə kadr keçib
+	bool m_bReleasePending = false;  // buraxma gözləyir
+	int  m_iClearMouseFrames = 0;    // 0-dan böyükdürsə sonda mouse pos təmizlənəcək
 
     DataStructures::SingleProducerConsumer<BUFFERED_COMMAND_TEXTDRAW> m_BufferedCommandTextdraws;
 };
+
+// Handling dialoqu açıqdırsa və nöqtə onun içindədirsə true (alt widget-lər toxunuşu görməsin).
+bool UI_IsPointInHandlingDlg(const ImVec2& p);

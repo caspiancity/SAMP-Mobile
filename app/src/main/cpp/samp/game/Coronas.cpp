@@ -2,86 +2,102 @@
 // Created by x1y2z on 21.05.2023.
 //
 
-#pragma once
+#include "Coronas.h"
+#include "../vendor/armhook/patch.h"
+#include "TxdStore.h"
 
-#include "common.h"
-#include "RegisteredCorona.h"
-#include "../Entity/CEntityGTA.h"
 
-class CCoronas {
-public:
-    static inline float SunScreenX;
-    static inline float SunScreenY;
-    // are there any obstacles between sun and camera
-    static inline bool SunBlockedByClouds;
-//    // change coronas brightness immediately
-//    static bool& bChangeBrightnessImmediately;
-//    // num of registered coronas in frame
-//    static uint32& NumCoronas;
-//    // coronas intensity multiplier
-//    static float& LightsMult;
-    // this is used to control moon size when you shooting it with sniper
-    static inline uint32 MoonSize = 3;
-    // Coronas array. count: MAX_NUM_CORONAS (default: 64)
-    static constexpr int32 MAX_NUM_CORONAS = 64;
-    static inline CRegisteredCorona aCoronas[MAX_NUM_CORONAS];
+// Creates corona by texture
+void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A3AAC + 1 : 0x6C71D0), id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flareType, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
+
+// Creates corona by type
+void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn, float radius, float farClip, eCoronaType coronaType, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174), id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flareType, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
+void (*CCoronas__Init)();
+
+// ============================================================================
+//  FAR RENGI HOOK-U
 //
-//    static uint16 (&ms_aEntityLightsOffsets)[8];
+//  Oyun on farin koronasini (CORONATYPE_HEADLIGHT) DoVehicleLights -> DoHeadLightEffect
+//  icinde RegisterCorona(eCoronaType) ile qeyde alir. Reng bayt-ofsetinde deyil,
+//  mehz bu cagirisin r/g/b parametrlerindedir. Buna gore burada hook qoyub, yalniz
+//  custom reng teyin olunmus masinin on far koronasinin rengini evez edirik.
 //
-//    inline static struct { // NOTSA
-//        bool DisableWetRoadReflections;
-//        bool AlwaysRenderWetRoadReflections; // Ignored if if `DisableReflections == false`
-//    } s_DebugSettings{};
+//  Mehdudiyyet: yerdeki isiq konusu (DoHeadLightBeam) boyanmir, yalniz koronalar.
+// ============================================================================
+using RegisterCoronaTypeFn = void (*)(uint32, CEntityGTA*, uint8, uint8, uint8, uint8, const CVector*,
+                                      float, float, eCoronaType, eCoronaFlareType, bool, bool, int32,
+                                      float, bool, float, uint8, float, bool, bool);
 
-    // ------------------------------------------------------------------
-    // FAR RENGI: kontekst.
-    // CVehicleGTA.cpp -> DoVehicleLights hook-u bunu doldurur,
-    // Coronas.cpp -> RegisterCorona hook-u oxuyub rengi evez edir.
-    //   vehicle : hazirda isiqlari cekilen masin (yoxdursa nullptr)
-    //   active  : bu masinda custom far rengi var
-    //   inTail  : arxa far funksiyasinin icindeyik (onlari boyama!)
-    // ------------------------------------------------------------------
-    struct HeadlightOverride {
-        const void* vehicle = nullptr;
-        bool  active = false;
-        bool  inTail = false;
-        uint8 r = 255, g = 255, b = 255;
-    };
-    static inline HeadlightOverride s_HeadlightOverride;
+static RegisterCoronaTypeFn CCoronas__RegisterCorona_Type = nullptr;
 
-public:
-    static void InjectHooks();
+static void RegisterCorona_Type_hook(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha,
+                                     const CVector* posn, float radius, float farClip, eCoronaType coronaType,
+                                     eCoronaFlareType flareType, bool enableReflection, bool checkObstacles,
+                                     int32 _param_not_used, float angle, bool longDistance, float nearClip,
+                                     uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+{
+    const auto& ho = CCoronas::s_HeadlightOverride;
 
-    static void Init();
-    static void Shutdown();
-    static void Update();
-    static void Render();
-    static void RenderReflections();
-    static void RenderSunReflection();
-    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn,
-                               float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used,
-                               float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
-    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn,
-                               float radius, float farClip, eCoronaType coronaType, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used,
-                               float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
+    if (ho.active && !ho.inTail
+        && coronaType == eCoronaType::CORONATYPE_HEADLIGHT
+        && attachTo != nullptr
+        && static_cast<const void*>(attachTo) == ho.vehicle)
+    {
+        red   = ho.r;
+        green = ho.g;
+        blue  = ho.b;
+    }
 
-    static void UpdateCoronaCoors(uint32 id, const CVector& posn, float farClip, float angle);
-    static void DoSunAndMoon();
-};
+    CCoronas__RegisterCorona_Type(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType,
+                                  flareType, enableReflection, checkObstacles, _param_not_used, angle,
+                                  longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
 
-extern uint32 MAX_CORONAS;
-constexpr int32 CORONA_TEXTURES_COUNT = 10;
-//static inline RwTexture* gpCoronaTexture[CORONA_TEXTURES_COUNT];
+void CCoronas::InjectHooks() {
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679A84 : 0x851528), &CCoronas::SunScreenX);
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679784 : 0x850F20), &CCoronas::SunScreenY);
 
-static inline const char* aCoronaSpriteNames[] = {
-        "coronastar",
-        "coronamoon",
-        "coronasun",
-        "coronaboom",
-        "coronaplace",
-        "coronaarc",
-        "coronastatus",
-        "coronaright",
-        "coronalef",
-        "corona"
-};
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679F40 : 0x851E90), &CCoronas::SunBlockedByClouds);
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00675F6C : 0x849F60), &CCoronas::MoonSize);
+
+    // Far rengi: RegisterCorona(eCoronaType) hook-u.
+    // DIQQET: bu setir patch.h-daki CHook::InlineHook-un UNVAN (uintptr_t) variantini teleb edir.
+    // Eger yalniz symbol variantı varsa, patch.h-i mene gonder ve ya InlineHook-a unvan overload-u elave et.
+    CHook::InlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
+                      &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type);
+
+   // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);
+}
+
+// Initialises coronas
+// 0x6FAA70
+
+void CCoronas::Init() {
+    {
+        CCoronas__Init();
+        FLog("CCoronas::Init()");
+
+        CTxdStore::ScopedTXDSlot txd{"particle"};
+        //for (auto&& [tex, name, maskName] : rng::zip_view{ gpCoronaTexture, aCoronastar, coronaTexturesAlphaMasks }) { // TODO: C++23
+        //    if (!tex) {
+        //        tex = RwTextureRead(name, maskName);
+        //    }
+        //}
+//        for (auto i = 0; i < CORONA_TEXTURES_COUNT; i++) {
+//           gpCoronaTexture[i] = CUtil::LoadTextureFromDB("txd", "coronamoon");
+//
+//        }
+    }
+
+    for (auto & corona : aCoronas) {
+        corona = CRegisteredCorona{}; // reset every corona to its default state
+    }
+}
+
+void CCoronas::Render() {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A23B8 + 1 : 0x6C5CD4) );
+}

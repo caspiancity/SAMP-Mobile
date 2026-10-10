@@ -13,6 +13,7 @@ public:
 	void clear() { m_input.clear(); m_caption.clear(); }
 
 	void addCharToInput(char value);
+	void addStringToInput(const std::string& value);
 	void popCharFromInput();
 
 	void setInputString(const std::string& string) { m_input = string; m_caption = Encoding::cp2utf(string); }
@@ -38,7 +39,7 @@ protected:
 		SHIFT_OFF,
 		BACKSPACE,
 		NUM,
-		LANG_RU,
+		LANG_AZE,
 		LANG_ENG,
 		SPACE,
 		SEND
@@ -49,8 +50,8 @@ public:
 	{
 		ENG_LOWER,
 		ENG_UPPER,
-		RU_LOWER,
-		RU_UPPER,
+		AZE_LOWER,
+		AZE_UPPER,
 		NUM
 	};
 
@@ -69,20 +70,24 @@ public:
 		{
 		public:
 			Key(const std::string& caption, char value);
+			Key(const std::string& caption, const std::string& valueStr);
 			Key(ExtendedKey extended_key);
 
 			virtual void draw(ImGuiRenderer* renderer) override;
-
 			virtual void touchPopEvent() override;
 
 			char value() const { return m_value; }
+			const std::string& valueStr() const { return m_valueStr; }
 
 		private:
 			ExtendedKey m_extendedKey;
 			char m_value;
+			std::string m_valueStr;
+			bool m_isStringValue;
 		};
 
 		KeyboardLayout::Row::Key* addKey(const std::string& caption, char value);
+		KeyboardLayout::Row::Key* addKey(const std::string& caption, const std::string& valueStr);
 		KeyboardLayout::Row::Key* addKey(ExtendedKey extended_key);
 	};
 
@@ -91,7 +96,7 @@ public:
 	virtual void performLayout() override;
 
 protected:
-	Row* m_rows[5/*4*/];
+	Row* m_rows[5];
 };
 
 class KeyboardLayoutLowerENG : public KeyboardLayout
@@ -108,17 +113,17 @@ public:
 	virtual void performLayout() override;
 };
 
-class KeyboardLayoutLowerRU : public KeyboardLayout
+class KeyboardLayoutLowerAZE : public KeyboardLayout
 {
 public:
-	KeyboardLayoutLowerRU();
+	KeyboardLayoutLowerAZE();
 	virtual void performLayout() override;
 };
 
-class KeyboardLayoutUpperRU : public KeyboardLayout
+class KeyboardLayoutUpperAZE : public KeyboardLayout
 {
 public:
-	KeyboardLayoutUpperRU();
+	KeyboardLayoutUpperAZE();
 	virtual void performLayout() override;
 };
 
@@ -172,8 +177,8 @@ private:
 	KeyboardInput* m_input;
 	KeyboardLayoutLowerENG* m_layoutLowerENG;
 	KeyboardLayoutUpperENG* m_layoutUpperENG;
-	KeyboardLayoutLowerRU* m_layoutLowerRU;
-	KeyboardLayoutUpperRU* m_layoutUpperRU;
+	KeyboardLayoutLowerAZE* m_layoutLowerAZE;
+	KeyboardLayoutUpperAZE* m_layoutUpperAZE;
 	KeyboardLayoutNUM* m_layoutNUM;
 	Widget* m_caller;
 

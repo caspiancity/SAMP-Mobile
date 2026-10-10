@@ -10,13 +10,11 @@
 #include "../voice_new/Network.h"
 #include "java/jniutil.h"
 
-//#define AUTH_BS "39FB2DEEDB49ACFB8D4EECE6953D2507988CCCF4410"//main
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
 
 extern UI* pUI;
 extern CGame* pGame;
 extern CAudioStream* pAudioStream;
-//extern CVoice* pVoice;
 
 int iNetModeNormalOnFootSendRate = 30;
 int iNetModeNormalInCarSendRate = 30;
@@ -51,7 +49,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
 	memset(m_szHostName, 0, 256);
 	memset(m_szHostOrIp, 0, 256);
 
-	strcpy(m_szHostName, "SA-MP");
+	strcpy(m_szHostName, "APACHE ONLINE");
 	strncpy(m_szHostOrIp, szHostOrIp, sizeof(m_szHostOrIp));
 	m_iPort = iPort;
 
@@ -95,10 +93,9 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
     if(pSettings)
         sampVer = pSettings->Get().szVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{FFD700}[APACHE ONLINE]: {00FFFF}2.1 Müştəri Başladıldı! {00FF00}QOŞULDU! {FF00FF}Versiya: %s", sampVer);
+	if (pUI) pUI->chat()->addDebugMessage("{FF8000}[APACHE ONLINE] {00FFFF}Kliyent versiyası {FFFFFF}%s {00FFFF}uğurla başladıldı!", sampVer);
 }
 
-// 0.3.7
 CNetGame::~CNetGame()
 {
 	m_pRakClient->Disconnect(0);
@@ -368,7 +365,6 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
     }
 }
 
-// 0.3.7
 void CNetGame::ShutdownForGameModeRestart()
 {
 	SpeakerList::Hide();
@@ -430,7 +426,7 @@ void CNetGame::ShutdownForGameModeRestart()
 	pGame->SetWantedLevel(0);
 	pGame->EnableClock(false);
 
-	if (pUI) pUI->chat()->addInfoMessage("{FF4500}[APACHE SERVER]: {FFD700}Server yenidən başladılır... Zəhmət olmasa gözləyin!");
+	if (pUI) pUI->chat()->addInfoMessage("{FF0000}[APACHE ONLINE] {FFFF00}Server yenidən başladılır...");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -449,7 +445,6 @@ void CNetGame::ProcessPools()
 	}
 }	
 
-// 0.3.7
 void CNetGame::ProcessLoadingScreen()
 {
 	CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
@@ -466,12 +461,11 @@ void CNetGame::ProcessLoadingScreen()
 	pGame->DisplayHUD(false);
 }
 
-// 0.3.7
 void CNetGame::ProcessConnecting()
 {
 	if (GetTickCount() - m_dwLastConnectAttempt > 1000)
 	{
-		if (pUI) pUI->chat()->addDebugMessage("{00BFFF}[APACHE QOŞULMA]: {32CD32}Serverə qoşulur... QOŞULDU! Gözləyin!");
+		if (pUI) pUI->chat()->addDebugMessage("{00FF00}[APACHE ONLINE] {FFFFFF}Serverə qoşululur...");
 
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 		
@@ -482,7 +476,6 @@ void CNetGame::ProcessConnecting()
 	}
 }
 
-// 0.3.7
 void gen_auth_key(char buf[260], char* auth_in);
 void CNetGame::Packet_AuthKey(Packet *pkt)
 {
@@ -508,10 +501,9 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 	m_pRakClient->Send(&bsKey, SYSTEM_PRIORITY, RELIABLE, 0);
 }
 
-// 0.3.7
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF6347}[APACHE XƏBƏRDARLIQ]: {FFA500}Server cavab vermədi! Yenidən qoşulma cəhdi...");
+	if (pUI) pUI->chat()->addDebugMessage("{FF3333}[APACHE ONLINE] {FFFFFF}Serverdən cavab gəlmədi. Yenidən cəhd edilir...");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -520,19 +512,17 @@ void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 }
 
-// 0.3.7
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("{FF4500}[APACHE DOLU]: {FF8C00}Server tam doludur! Yenidən cəhd olunur...");
+	if(pUI) pUI->chat()->addDebugMessage("{FF9900}[APACHE ONLINE] {FFFFFF}Server doludur. Yenidən cəhd olunur...");
 	SpeakerList::Hide();
 	MicroIcon::Hide();
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 }
 
-// 0.3.7
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{B22222}[APACHE QIRILDI]: {FF0000}Server bağlantını dayandırdı!");
+	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Server bağlantını kəsdi.");
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
 	}
@@ -542,7 +532,6 @@ void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 	MicroIcon::Hide();
 }
 
-// 0.3.7
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
 	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
@@ -559,7 +548,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSuccAuth.Read(uiChallenge);
 	uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{00FF7F}[APACHE APACHE ONLINE]: {00FFFF}QOŞULDU! {7FFF00}Uğurla bağlandı, oyuna daxil olunur...");
+	if (pUI) pUI->chat()->addDebugMessage("{00FF00}[APACHE ONLINE] {FFFFFF}Bağlantı uğurludur! Oyuna daxil olunur...");
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
@@ -578,6 +567,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	bsSend.Write(byteAuthBSLen);
 	bsSend.Write(AUTH_BS, byteAuthBSLen);
 	bsSend.Write(byteClientVerLen);
+
     if(pSettings)
         bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
     else
@@ -591,33 +581,29 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 	MicroIcon::Hide();
 }
 
-// 0.3.7
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{8B0000}[APACHE XƏTA]: {FF0000}Şifrələmə (Encryption) xətası baş verdi!");
+	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Şifrələməni başlatmaq alınmadı.");
 }
 
-// 0.3.7
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{8B0000}[APACHE BAN]: {FF0000}Siz bu serverdən bloklanmısınız (Banned)!");
+	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Sən bu serverdən ban olunmusan!");
 }
 
-// 0.3.7
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF8C00}[APACHE ŞİFRƏ]: {FF4500}Server şifrəsi səhvdir, qaqaş!");
+	if (pUI) pUI->chat()->addDebugMessage("{FF3333}[APACHE ONLINE] {FFFFFF}Server şifrəsi səhvdir.");
 	m_pRakClient->Disconnect(0);
 }
 
-// 0.3.7
 void CNetGame::Packet_ConnectionLost(Packet *pkt)
 {
 	if (m_pRakClient) {
 		m_pRakClient->Disconnect(0);
 	}
 
-	if (pUI) pUI->chat()->addDebugMessage("{FF1493}[APACHE QOPDU]: {FF69B4}Serverlə əlaqə kəsildi! Yenidən qoşulmağa çalışılır...");
+	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Server ilə əlaqə itdi. Yenidən qoşululur...");
 	ShutdownForGameModeRestart();
 
 	CPlayerPool *pPlayerPool = GetPlayerPool();
@@ -639,7 +625,6 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
 	MicroIcon::Hide();
 }
 
-// 0.3.7
 void CNetGame::Packet_PlayerSync(Packet *pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
@@ -722,7 +707,6 @@ void CNetGame::Packet_PlayerSync(Packet *pkt)
 	}
 }
 
-// 0.3.7
 void CNetGame::Packet_VehicleSync(Packet* pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
@@ -789,7 +773,6 @@ void CNetGame::Packet_VehicleSync(Packet* pkt)
 	}
 }
 
-// 0.3.7
 void CNetGame::Packet_AimSync(Packet* pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
@@ -806,7 +789,6 @@ void CNetGame::Packet_AimSync(Packet* pkt)
 		pPlayer->StoreAimFullSyncData(&aimSync);
 }
 
-// 0.3.7
 void CNetGame::Packet_BulletSync(Packet* pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
@@ -825,9 +807,9 @@ void CNetGame::Packet_BulletSync(Packet* pkt)
 	CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
 	if (pRemotePlayer)
 		pRemotePlayer->StoreBulletFullSyncData(&btSync);
+
 }
 
-// 0.3.7
 void CNetGame::Packet_PassengerSync(Packet* pkt)
 {
 	RakNet::BitStream bsData(pkt->data, pkt->length, false);
@@ -849,7 +831,6 @@ void CNetGame::Packet_PassengerSync(Packet* pkt)
 	}
 }
 
-// 0.3.7
 void CNetGame::Packet_MarkerSync(Packet *pkt)
 {
 	if(m_iGameState != GAMESTATE_CONNECTED) return;
@@ -944,7 +925,6 @@ void CNetGame::SendChatCommand(const char* szCommand)
 	m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
 }
 
-// 0.3.7
 void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPosZ, uint8_t byteType, uint32_t dwColor, uint8_t byteStyle)
 {
 	if (m_dwMapIcon[byteIconID] != 0) {
@@ -954,14 +934,12 @@ void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fP
 	m_dwMapIcon[byteIconID] = pGame->CreateRadarMarkerIcon(byteType, fPosX, fPosY, fPosZ, dwColor, byteStyle);
 }
 
-// 0.3.7
 void CNetGame::DisableMapIcon(uint8_t byteIconID)
 {
 	ScriptCommand(&disable_marker, m_dwMapIcon[byteIconID]);
 	m_dwMapIcon[byteIconID] = 0;
 }
 
-// 0.3.7
 void CNetGame::ResetVehiclePool()
 {
 	if (m_pPools->pVehiclePool) {
@@ -971,7 +949,6 @@ void CNetGame::ResetVehiclePool()
 	m_pPools->pVehiclePool = new CVehiclePool();
 }
 
-// 0.3.7
 void CNetGame::ResetActorPool()
 {
 	if (m_pPools->pActorPool) {
@@ -981,7 +958,6 @@ void CNetGame::ResetActorPool()
 	m_pPools->pActorPool = new CActorPool();
 }
 
-// 0.3.7
 void CNetGame::ResetTextDrawPool()
 {
 	if (m_pPools->pTextDrawPool) {
@@ -991,7 +967,6 @@ void CNetGame::ResetTextDrawPool()
 	m_pPools->pTextDrawPool = new CTextDrawPool();
 }
 
-// 0.3.7
 void CNetGame::ResetGangZonePool()
 {
 	if (m_pPools->pGangZonePool) {
@@ -1001,7 +976,6 @@ void CNetGame::ResetGangZonePool()
 	m_pPools->pGangZonePool = new CGangZonePool();
 }
 
-// 0.3.7
 void CNetGame::Reset3DTextLabelPool()
 {
 	if (m_pPools->pTextLabelPool) {
@@ -1011,7 +985,6 @@ void CNetGame::Reset3DTextLabelPool()
 	m_pPools->pTextLabelPool = new C3DTextLabelPool();
 }
 
-// 0.3.7
 void CNetGame::ResetMapIcons()
 {
 	for (int i = 0; i < MAX_MAP_ICONS; i++)
@@ -1023,7 +996,6 @@ void CNetGame::ResetMapIcons()
 	}
 }
 
-// 0.3.7
 void CNetGame::ResetPickupPool()
 {
 	if (m_pPools->pPickupPool) {
@@ -1033,7 +1005,6 @@ void CNetGame::ResetPickupPool()
 	m_pPools->pPickupPool = new CPickupPool();
 }
 
-// 0.3.7
 void CNetGame::ResetObjectPool()
 {
 	if (m_pPools->pObjectPool) {
@@ -1043,7 +1014,6 @@ void CNetGame::ResetObjectPool()
 	m_pPools->pObjectPool = new CObjectPool();
 }
 
-// 0.3.7
 void CNetGame::ResetMenuPool()
 {
 	if (m_pPools->pMenuPool) {
@@ -1053,13 +1023,8 @@ void CNetGame::ResetMenuPool()
 	m_pPools->pMenuPool = new CMenuPool();
 }
 
-// 0.3.7
 void CNetGame::InitGameLogic()
 {
-	if (m_pNetSet->bManualVehicleEngineAndLight) {
-		//InstallVehicleEngineLightPatches();
-	}
-
 	m_pNetSet->fWorldBounds[0] = 20000.0f;
 	m_pNetSet->fWorldBounds[1] = -20000.0f;
 	m_pNetSet->fWorldBounds[2] = 20000.0f;

@@ -18,6 +18,7 @@
 #include "java/jniutil.h"
 #include <dlfcn.h>
 #include "StackTrace.h"
+#include <time.h>
 
 // voice
 #include "voice_new/Plugin.h"
@@ -312,6 +313,22 @@ extern "C" {
         }
 
         pEnv->ReleaseByteArrayElements(str, pMsg, JNI_ABORT);
+    }
+}
+
+
+static void LogMainLoopFPS()
+{
+    static uint64_t last = 0;
+    static int frames = 0;
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t now = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
+    frames++;
+    if (now - last >= 1000) {
+        FLog("MainLoop FPS: %d", frames);
+        frames = 0;
+        last = now;
     }
 }
 

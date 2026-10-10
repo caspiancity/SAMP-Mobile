@@ -10,6 +10,7 @@
 #include "game/Models/ModelInfo.h"
 #include "game/Entity/CPedGTA.h"
 #include "game/Entity/CEntityGTA.h"
+#include "game/vehicle_tuning.h"
 
 void CVehicleGTA::RenderDriverAndPassengers() {
     if(IsRCVehicleModelID())
@@ -34,17 +35,18 @@ void CVehicleGTA::SetDriver(CPedGTA* driver) {
     ApplyTurnForceToOccupantOnEntry(driver);
 }
 
+// DUZELDILDI: kohne versiya hec vaxt "bos yer" yoxlamirdi, hemise 1-ci oturacaga yazirdi ve false qaytarirdi.
 bool CVehicleGTA::AddPassenger(CPedGTA* passenger) {
     ApplyTurnForceToOccupantOnEntry(passenger);
 
     // Now, find a seat and place them into it
-    const auto seats = GetMaxPassengerSeats();
-
-    for(auto & emptySeat : m_apPassengers) {
-        emptySeat = passenger;
-        CEntityGTA::RegisterReference(emptySeat);
-        m_nNumPassengers++;
-        return false;
+    for (auto& emptySeat : GetMaxPassengerSeats()) {
+        if (!emptySeat) {
+            emptySeat = passenger;
+            CEntityGTA::RegisterReference(emptySeat);
+            m_nNumPassengers++;
+            return true;
+        }
     }
 
     // No empty seats
@@ -147,18 +149,41 @@ bool CVehicle__GetVehicleLightsStatus_hook(CVehicleGTA *pVehicle)
     return pVehicle->GetLightsStatus();
 }
 
+// ---------------------------------------------------------------------------
+// DoVehicleLights: masinin butun isiqlari bu funksiyanin icinde cekilir.
+// Burada (1) isiqlar motor sondukde de yansin deye bEngineOn=1 edirik (kohne davranis),
+// (2) far rengi konteksti qururuq: bu cagirinin icindeki ON far koronalari
+//     Coronas.cpp-deki RegisterCorona hook-unda custom renge boyanir.
+// ---------------------------------------------------------------------------
 void (*CVehicle__DoVehicleLights)(CVehicleGTA* thiz, CMatrix *matVehicle, uint32 nLightFlags);
 void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint32 nLightFlags)
 {
     uint8_t old = thiz->m_nVehicleFlags.bEngineOn;
     thiz->m_nVehicleFlags.bEngineOn = 1;
+
+    auto& ho = CCoronas::s_HeadlightOverride;
+    ho.vehicle = thiz;
+    ho.inTail  = false;
+    ho.active  = CVehicleTuning::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
+
     CVehicle__DoVehicleLights(thiz, matVehicle, nLightFlags);
+
+    ho.vehicle = nullptr;
+    ho.active  = false;
+    ho.inTail  = false;
+
     thiz->m_nVehicleFlags.bEngineOn = old;
 }
 
-bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMatrix* matVehicle, int isRight, int forcedOff, uint32_t nLightFlags, int lightsOn) {
+// DUZELDILDI: parametr tipleri oyundaki real imza ile uygunlasdirildi
+// (_ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh -> int, CMatrix&, uchar, uchar, uint, uchar).
+// int ile oxuyanda x64-de yuxari bitlerde zibil ola bilerdi.
+bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMatrix* matVehicle, uint8_t isRight, uint8_t forcedOff, uint32_t nLightFlags, uint8_t lightsOn) {
 
     constexpr int REVERSE_LIGHT_OFFSET = 5;
+
+    // Arxa far koronalari ON far rengi ile boyanmasin
+    CCoronas::s_HeadlightOverride.inTail = true;
 
     auto pModelInfoStart = CModelInfo::GetVehicleModelInfo(thisVehicle->m_nModelIndex);
 
@@ -215,6 +240,8 @@ bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMat
                 false
         );
     }
+
+    CCoronas::s_HeadlightOverride.inTail = false;
     return true;
 }
 

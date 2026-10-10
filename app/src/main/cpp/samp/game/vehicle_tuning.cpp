@@ -21,8 +21,7 @@
 #include <unordered_map>
 
 // ---------------------------------------------------------------------------
-// tHandlingData.h-da sahe adlari ferqlidirse YALNIZ bu 3 setri deyis.
-// (cTransmission sahələri cTransmission.h-dan goturulub, onlar deqiqdir.)
+// Sahe adlari tHandlingData.h ile TEYID OLUNUB (m_fMass, m_fBrakeDeceleration, m_fSteeringLock).
 // ---------------------------------------------------------------------------
 #define HND_MASS(h)   ((h)->m_fMass)
 #define HND_BRAKE(h)  ((h)->m_fBrakeDeceleration)
@@ -157,6 +156,8 @@ namespace
         HND_BRAKE(e.copy) = HND_BRAKE(e.orig) * kBrk;
         HND_STEER(e.copy) = HND_STEER(e.orig) * kStr;
         HND_MASS(e.copy)  = HND_MASS(e.orig)  * kMas;
+        e.copy->m_fMassRecpr = e.orig->m_fMassRecpr / kMas;   // 1/kutle ayrica saxlanir
+        e.copy->m_fTurnMass  = e.orig->m_fTurnMass  * kMas;   // firlanma ataletı kutle ile birge artmali
 
         // Fizika kutlesi handling-den AYRI saxlanir -> onu da yenile.
         veh->m_fMass = e.baseMass * kMas;

@@ -1,6 +1,12 @@
 #include <jni.h>
 #include <pthread.h>
 #include <syscall.h>
+#include <signal.h>
+#include <ucontext.h>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <inttypes.h>
 #include <EGL/egl.h>
 
 #include "main.h"
@@ -59,20 +65,49 @@ void FLog(const char* fmt, ...);
 
 int work = 0;
 
-// ===== EGL VSync Bypass (For Uncapped Max FPS) =====
-typedef EGLBoolean (*eglSwapInterval_t)(EGLDisplay dpy, EGLint interval);
-eglSwapInterval_t orig_eglSwapInterval = nullptr;
+// ===== VSync bypass (Uncapped Max FPS) =====
+// Evvelki variant eglSwapInterval-i hook edirdi, amma orijinal funksiya hec vaxt
+// cagirilmirdi (orig_eglSwapInterval == nullptr idi), buna gore interval
+// heรง vaxt 0-a qoyulmurdu. Indi render thread-inde eglSwapInterval(dpy, 0)
+// birbasa cagirilir ve oyun onu geri 1-e qaytarsa, periodik olaraq yeniden tetbiq olunur.
+typedef EGLDisplay (*eglGetCurrentDisplay_t)(void);
+typedef EGLContext (*eglGetCurrentContext_t)(void);
+typedef EGLBoolean (*eglSwapInterval_t)(EGLDisplay, EGLint);
 
-EGLBoolean hooked_eglSwapInterval(EGLDisplay dpy, EGLint interval) {
-    return orig_eglSwapInterval ? orig_eglSwapInterval(dpy, 0) : EGL_TRUE;
-}
+static void ApplyUncappedFPS()
+{
+    static eglGetCurrentDisplay_t pGetDisplay = nullptr;
+    static eglGetCurrentContext_t pGetContext = nullptr;
+    static eglSwapInterval_t pSwapInterval = nullptr;
+    static bool bResolved = false;
+    static uint32_t uFrame = 0;
 
-void DisableVSync() {
-    CHook::Redirect("eglSwapInterval", (void*)hooked_eglSwapInterval);
+    if (!bResolved)
+    {
+        bResolved = true;
+        pGetDisplay = (eglGetCurrentDisplay_t)dlsym(RTLD_DEFAULT, "eglGetCurrentDisplay");
+        pGetContext = (eglGetCurrentContext_t)dlsym(RTLD_DEFAULT, "eglGetCurrentContext");
+        pSwapInterval = (eglSwapInterval_t)dlsym(RTLD_DEFAULT, "eglSwapInterval");
+    }
+
+    if (!pGetDisplay || !pGetContext || !pSwapInterval) return;
+
+    // her 120 kadrda bir (ilk kadrda da) tetbiq et
+    if ((uFrame++ % 120) != 0) return;
+
+    // yalniz EGL context-i olan thread-de ise dussun
+    if (pGetContext() == EGL_NO_CONTEXT) return;
+
+    EGLDisplay dpy = pGetDisplay();
+    if (dpy == EGL_NO_DISPLAY) return;
+
+    pSwapInterval(dpy, 0);
 }
 
 void ReadSettingFile()
 {
+    if (pSettings) return;
+
     pSettings = new CSettings();
 
     if (pSettings)
@@ -84,7 +119,7 @@ void ReadSettingFile()
 int hashing(const char* str) {
     int hashing = 5381;
     int c;
-    while (c = *str++) {
+    while ((c = *str++)) {
         hashing = ((hashing << 5) + hashing) + c;
         if (hashing < 0) hashing = 100;
     }
@@ -107,90 +142,84 @@ void DoDebugStuff()
     }
 }
 
-struct sigaction act_old;
-struct sigaction act1_old;
-struct sigaction act2_old;
-struct sigaction act3_old;
+// ===== Crash handler =====
+// Evvel 4 eyni handler var idi ve her biri ONCE kohne handler-i cagirirdi
+// (crashlytics/sistem prosesi oldururdu, log yazilmamis qalirdi).
+// Ayrica struct sigaction-lar sifirlanmamisdi. Indi: bir handler, evvel log, sonra zencir.
+static struct sigaction g_oldActions[NSIG];
+static volatile sig_atomic_t g_bInCrash = 0;
 
 extern int g_iLastProcessedSkinCollision, g_iLastProcessedEntityCollision, g_iLastRenderedObject;
 extern uintptr_t g_dwLastRetAddrCrash;
 
-void handler(int signum, siginfo_t *info, void* contextPtr)
+static const char* GetSignalName(int signum)
 {
-    ucontext* context = (ucontext_t*)contextPtr;
-
-    if (act_old.sa_sigaction)
+    switch (signum)
     {
-        act_old.sa_sigaction(signum, info, contextPtr);
+    case SIGSEGV: return "SIGSEGV";
+    case SIGABRT: return "SIGABRT";
+    case SIGFPE:  return "SIGFPE";
+    case SIGBUS:  return "SIGBUS";
+    default:      return "SIGNAL";
     }
-
-    if(info->si_signo == SIGSEGV)
-    {
-        FLog("SIGSEGV | Fault address: 0x%x", info->si_addr);
-        PRINT_CRASH_STATES(context);
-        CStackTrace::printBacktrace();
-    }
-    return;
 }
 
-void handler1(int signum, siginfo_t *info, void* contextPtr)
+static void CrashHandler(int signum, siginfo_t *info, void* contextPtr)
 {
-    ucontext* context = (ucontext_t*)contextPtr;
+    ucontext_t* context = (ucontext_t*)contextPtr;
 
-    if (act1_old.sa_sigaction)
+    if (!g_bInCrash)
     {
-        act1_old.sa_sigaction(signum, info, contextPtr);
-    }
+        g_bInCrash = 1;
 
-    if(info->si_signo == SIGABRT)
-    {
-        FLog("SIGABRT | Fault address: 0x%x", info->si_addr);
+        FLog("%s | Fault address: %p", GetSignalName(signum), info ? info->si_addr : nullptr);
         PRINT_CRASH_STATES(context);
         CStackTrace::printBacktrace();
     }
-    return;
+
+    struct sigaction& old = g_oldActions[signum];
+
+    if ((old.sa_flags & SA_SIGINFO) && old.sa_sigaction)
+    {
+        old.sa_sigaction(signum, info, contextPtr);
+        return;
+    }
+
+    if (!(old.sa_flags & SA_SIGINFO) &&
+        old.sa_handler != SIG_DFL &&
+        old.sa_handler != SIG_IGN &&
+        old.sa_handler != nullptr)
+    {
+        old.sa_handler(signum);
+        return;
+    }
+
+    // Kohne handler yoxdur -> default-a qaytar ki, proses sonsuz dovre dusmesin
+    signal(signum, SIG_DFL);
 }
 
-void handler2(int signum, siginfo_t *info, void* contextPtr)
+static void InstallCrashHandlers()
 {
-    ucontext* context = (ucontext_t*)contextPtr;
+    const int signals[] = { SIGSEGV, SIGABRT, SIGFPE, SIGBUS };
 
-    if (act2_old.sa_sigaction)
+    for (int sig : signals)
     {
-        act2_old.sa_sigaction(signum, info, contextPtr);
+        struct sigaction act;
+        memset(&act, 0, sizeof(act));
+        act.sa_sigaction = CrashHandler;
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = SA_SIGINFO;
+        sigaction(sig, &act, &g_oldActions[sig]);
     }
-
-    if(info->si_signo == SIGFPE)
-    {
-        FLog("SIGFPE | Fault address: 0x%x", info->si_addr);
-        PRINT_CRASH_STATES(context);
-        CStackTrace::printBacktrace();
-    }
-    return;
-}
-
-void handler3(int signum, siginfo_t *info, void* contextPtr)
-{
-    ucontext* context = (ucontext_t*)contextPtr;
-
-    if (act3_old.sa_sigaction)
-    {
-        act3_old.sa_sigaction(signum, info, contextPtr);
-    }
-
-    if(info->si_signo == SIGBUS)
-    {
-        FLog("SIGBUS | Fault address: 0x%x", info->si_addr);
-        PRINT_CRASH_STATES(context);
-        CStackTrace::printBacktrace();
-    }
-    return;
 }
 
 void DoInitStuff()
 {
     if (bGameInited == false)
     {
+        // UI hazir deyilse (InitGui hele cagirilmayib) gozle
+        if (!pUI) return;
+
         pPlayerTags = new CPlayerTags();
         pSnapShotHelper = new CSnapShotHelper();
         pMaterialTextGenerator = new MaterialTextGenerator();
@@ -260,7 +289,7 @@ extern "C" {
 
     JNIEXPORT void JNICALL Java_com_samp_mobile_game_SAMP_onEventBackPressed(JNIEnv *pEnv, jobject thiz)
     {
-        if(pSettings)
+        if(pSettings && pJavaWrapper)
         {
             if(pSettings->Get().iAndroidKeyboard)
                 pJavaWrapper->HideKeyboard();
@@ -269,9 +298,11 @@ extern "C" {
 
     JNIEXPORT void JNICALL Java_com_samp_mobile_game_ui_dialog_DialogManager_sendDialogResponse(JNIEnv* pEnv, jobject thiz, jint i3, jint i, jint i2, jbyteArray str)
     {
-        jboolean isCopy = true;
+        if (!str) return;
 
-        jbyte* pMsg = pEnv->GetByteArrayElements(str, &isCopy);
+        jbyte* pMsg = pEnv->GetByteArrayElements(str, nullptr);
+        if (!pMsg) return;
+
         jsize length = pEnv->GetArrayLength(str);
 
         std::string szStr((char*)pMsg, length);
@@ -286,7 +317,7 @@ extern "C" {
 
 void MainLoop()
 {
-    if (pGame->bIsGameExiting) return;
+    if (!pGame || pGame->bIsGameExiting) return;
 
     DoInitStuff();
 
@@ -301,6 +332,8 @@ void MainLoop()
     if (pAudioStream) {
         pAudioStream->Process();
     }
+
+    ApplyUncappedFPS();
 }
 
 void InitGui()
@@ -324,7 +357,7 @@ void InitGui()
 
 void SetUpGLHooks();
 
-jint JNI_OnLoad(JavaVM* vm, void* reserved)
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
 {
     javaVM = vm;
     LOGI("SA-MP library loaded! Build time: " __DATE__ " " __TIME__);
@@ -343,23 +376,23 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 
     firebase::crashlytics::Initialize();
 
-    uintptr_t libgtasa = CUtil::FindLib("libGTASA.so");
-    uintptr_t libsamp = CUtil::FindLib("libsamp.so");
+    uintptr_t libgtasa = g_libGTASA;
+    uintptr_t libsamp = g_libSAMP;
     uintptr_t libc = CUtil::FindLib("libc.so");
 
-    FLog("libGTASA.so: 0x%x", libgtasa);
-    FLog("libsamp.so: 0x%x", libsamp);
-    FLog("libc.so: 0x%x", libc);
+    FLog("libGTASA.so: 0x%" PRIxPTR, libgtasa);
+    FLog("libsamp.so: 0x%" PRIxPTR, libsamp);
+    FLog("libc.so: 0x%" PRIxPTR, libc);
 
     char str[100];
 
-    sprintf(str, "0x%x", libgtasa);
+    snprintf(str, sizeof(str), "0x%" PRIxPTR, libgtasa);
     firebase::crashlytics::SetCustomKey("libGTASA.so", str);
 
-    sprintf(str, "0x%x", libsamp);
+    snprintf(str, sizeof(str), "0x%" PRIxPTR, libsamp);
     firebase::crashlytics::SetCustomKey("libsamp.so", str);
 
-    sprintf(str, "0x%x", libc);
+    snprintf(str, sizeof(str), "0x%" PRIxPTR, libc);
     firebase::crashlytics::SetCustomKey("libc.so", str);
 
     CHook::InitHookStuff();
@@ -370,32 +403,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 
     pGame = new CGame();
 
-    struct sigaction act;
-    act.sa_sigaction = handler;
-    sigemptyset(&act.sa_mask);
-    act.sa_flags = SA_SIGINFO;
-    sigaction(SIGSEGV, &act, &act_old);
-
-    struct sigaction act1;
-    act1.sa_sigaction = handler1;
-    sigemptyset(&act1.sa_mask);
-    act1.sa_flags = SA_SIGINFO;
-    sigaction(SIGABRT, &act1, &act1_old);
-
-    struct sigaction act2;
-    act2.sa_sigaction = handler2;
-    sigemptyset(&act2.sa_mask);
-    act2.sa_flags = SA_SIGINFO;
-    sigaction(SIGFPE, &act2, &act2_old);
-
-    struct sigaction act3;
-    act3.sa_sigaction = handler3;
-    sigemptyset(&act3.sa_mask);
-    act3.sa_flags = SA_SIGINFO;
-    sigaction(SIGBUS, &act3, &act3_old);
-
-    // Disable VSync for unlocking maximum FPS
-    DisableVSync();
+    InstallCrashHandlers();
 
     return JNI_VERSION_1_6;
 }
@@ -413,7 +421,7 @@ void FLog(const char* fmt, ...)
 
     if (flLog == nullptr && pszStorage != nullptr)
     {
-        sprintf(buffer, "%s/samp_log.txt", pszStorage);
+        snprintf(buffer, sizeof(buffer), "%s/samp_log.txt", pszStorage);
         flLog = fopen(buffer, "a");
     }
 
@@ -442,7 +450,7 @@ void ChatLog(const char* fmt, ...)
 
     if (flLog == nullptr && pszStorage != nullptr)
     {
-        sprintf(buffer, "%s/chat_log.txt", pszStorage);
+        snprintf(buffer, sizeof(buffer), "%s/chat_log.txt", pszStorage);
         flLog = fopen(buffer, "a");
     }
 
@@ -468,7 +476,7 @@ void MyLog(const char* fmt, ...)
 
     if (flLog == nullptr && pszStorage != nullptr)
     {
-        sprintf(buffer, "%s/samp_log.txt", pszStorage);
+        snprintf(buffer, sizeof(buffer), "%s/samp_log.txt", pszStorage);
         flLog = fopen(buffer, "a");
     }
 
@@ -494,7 +502,7 @@ void MyLog2(const char* fmt, ...)
 
     if (flLog == nullptr && pszStorage != nullptr)
     {
-        sprintf(buffer, "%s/samp_log.txt", pszStorage);
+        snprintf(buffer, sizeof(buffer), "%s/samp_log.txt", pszStorage);
         flLog = fopen(buffer, "a");
     }
 
@@ -521,7 +529,7 @@ void LogVoice(const char* fmt, ...)
 
     if (flLog == nullptr && pszStorage != nullptr)
     {
-        sprintf(buffer, "%sSAMP/%s", pszStorage, SV::kLogFileName);
+        snprintf(buffer, sizeof(buffer), "%sSAMP/%s", pszStorage, SV::kLogFileName);
         flLog = fopen(buffer, "w");
     }
 

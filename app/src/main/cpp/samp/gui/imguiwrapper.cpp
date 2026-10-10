@@ -49,6 +49,8 @@ bool ImGuiWrapper::initialize()
 	static const ImWchar ranges[] =
     {
         0x0020, 0x00FF, // Basic Latin + Latin Supplement
+        0x0100, 0x017F, // Latin Extended-A (Azərbaycan hərfləri: ç, ğ, ı, ö, ş, ü)
+        0x0250, 0x02AF, // IPA Extensions (Kiçik 'ə' hərfi üçün)
         0x0400, 0x04FF, // Cyrillic + Cyrillic Supplement
 		0x0E00, 0x0E7F, // Thai
         0x2DE0, 0x2DFF, // Cyrillic Extended-A

@@ -105,5 +105,9 @@ private:
 
 	bool m_bNeedClearMousePos = false;
 
+	// YENI: toxunma buraxilisi gecikdirilir ki ImGui basmani en azi 1 kadr gorsun
+	bool m_bPendingRelease = false;
+	int  m_nDownFrames = 0;
+
     DataStructures::SingleProducerConsumer<BUFFERED_COMMAND_TEXTDRAW> m_BufferedCommandTextdraws;
 };

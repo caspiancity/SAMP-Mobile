@@ -177,7 +177,7 @@ bool UI::initialize()
 	pUI->addChild(label4);
 
 	Label* d_label1;
-	d_label1 = new Label(cryptor::create("APACHE — ONLINE v1.0 test").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+	d_label1 = new Label(cryptor::create("APACHE ONLINE - test v1.0").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(d_label1);
 	d_label1->setPosition(ImVec2(3.0, 3.0));
 
@@ -690,10 +690,40 @@ void UI::drawList()
 	RenderHandlingDialog();   // mod menyu hamisinin ustunde
 }
 
+// Toxunus mod menyuya "tutulubmu" (basma panelin icinde baslayibsa, barmaq disari cixsa da eyni toxunus bitene qeder tutulur)
+static bool s_dlgCapture      = false;   // cari toxunus paneldedir
+static bool s_dlgCapturedEvent = false;  // SON hadise menyuya aiddir (hooks.cpp bunu oxuyur)
+
+bool UI_HandlingDlgCapturedEvent()
+{
+	return s_dlgCapturedEvent;
+}
+
+// hooks.cpp -> AND_TouchEvent_hook bu funksiyani cagirir (pUI->touchEvent(...))
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
+	const int tt = (type == TouchType::push) ? TOUCH_PUSH : ((type == TouchType::pop) ? TOUCH_POP : TOUCH_MOVE);
+
+	if (tt != TOUCH_MOVE)
+		HND_LOG("[HND] touch type=%d x=%.0f y=%.0f dlg=%d", tt, pos.x, pos.y, (int)g_bShowHandlingDlg);
+
+	// "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
+	if (g_bHideAllUI && !g_bShowHandlingDlg && tt == TOUCH_PUSH) {
+		g_bHideAllUI = false;
+		if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+		s_dlgCapturedEvent = false;
+		return;
+	}
+
+	// Mod menyu ucun her toxunusu queue-ya at
+	PushTouch(tt, pos.x, pos.y);
+
+	if (tt == TOUCH_PUSH) s_dlgCapture = UI_IsPointInHandlingDlg(pos);
+	s_dlgCapturedEvent = s_dlgCapture;
+	if (tt == TOUCH_POP) s_dlgCapture = false;
+
 	// Mod menyunun uzerine basanda alt widget-ler (chat, buttonpanel ...) toxunusu almasin
-	if (UI_IsPointInHandlingDlg(pos))
+	if (s_dlgCapturedEvent || UI_IsPointInHandlingDlg(pos))
 		return;
 
 	if (m_keyboard->visible() && m_keyboard->contains(pos))
@@ -711,6 +741,8 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
 	Widget::touchEvent(pos, type);
 }
 
+// DIQQET: hooks.cpp-de bu funksiyanin cagirisi serhe alinib, real giris UI::touchEvent-dir.
+// Eger bir gun hook-da OnTouchEvent aktiv edilse, UI::touchEvent ile cift toxunus gelmesin.
 bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 {
 	(void)multi;

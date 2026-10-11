@@ -2,7 +2,7 @@
 #include "../game/game.h"
 #include "../net/netgame.h"
 #include "../game/vehicle.h"
-#include "../game/vehicle_tuning.h"
+#include "../game/VehTuner.h"
 #include "gui.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -28,6 +28,11 @@ extern UI* pUI;
 
 extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;
+
+// ImGui toxunus veziyyeti (gui.h-a TOXUNMAMAQ ucun burada saxlanir)
+static int  s_downFrames    = 2;      // son basmadan bəri neçə kadr keçib
+static bool s_releasePending = false; // buraxma gozleyir
+static int  s_clearFrames   = 0;      // >0 ise sonda mouse pos temizlenecek
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
 	: Widget(), ImGuiWrapper(display_size, font_path)
@@ -123,16 +128,16 @@ void UI::render()
 	ImGuiIO& io = ImGui::GetIO();
 
 	// Basma (MouseDown) neçə kadr görünüb?
-	if (io.MouseDown[0] && m_iDownFrames < 1000) m_iDownFrames++;
+	if (io.MouseDown[0] && s_downFrames < 1000) s_downFrames++;
 
 	// Qısa toxunuş: basma ən azı 2 kadr görünübsə, indi buraxırıq.
-	if (m_bReleasePending && m_iDownFrames >= 2) {
+	if (s_releasePending && s_downFrames >= 2) {
 		io.MouseDown[0] = false;
-		m_bReleasePending = false;
-		m_iClearMouseFrames = 2;   // ImGui buraxmanı görsün deyə mouse pos-u 1 kadr daha saxla
+		s_releasePending = false;
+		s_clearFrames = 2;   // ImGui buraxmanı görsün deyə mouse pos-u 1 kadr daha saxla
 	}
 
-	if (m_iClearMouseFrames > 0 && --m_iClearMouseFrames == 0) {
+	if (s_clearFrames > 0 && --s_clearFrames == 0) {
 		io.MousePos = ImVec2(-1, -1);
 	}
 }
@@ -168,7 +173,7 @@ void RenderHandlingDialog()
 {
 	static bool          s_wasOpen  = false;
 	static CVehicleGTA*  s_lastVeh  = nullptr;
-	static VehicleTuning s_tune;
+	static VehTune s_tune;
 
 	if (!g_bShowHandlingDlg) {
 		s_wasOpen = false;
@@ -200,7 +205,7 @@ void RenderHandlingDialog()
 
 	// Yeni acilis ve ya basqa masin -> deyerleri bu masinin real veziyyetinden oxu
 	if (!s_wasOpen || gtaVeh != s_lastVeh) {
-		s_tune    = CVehicleTuning::Get(gtaVeh);
+		s_tune    = VehTuner::Get(gtaVeh);
 		s_lastVeh = gtaVeh;
 		s_wasOpen = true;
 	}
@@ -209,11 +214,11 @@ void RenderHandlingDialog()
 	const ImVec2 disp     = ImGui::GetIO().DisplaySize;
 	const float  baseFont = ImGui::GetFontSize();
 	// Pencere ~28 srift-hundurluyu tutur. Ekran sigmirsa srifti kiçilt (scroll lazim olmasin).
-	const float  fs = std::min(1.0f, (disp.y * 0.94f) / (baseFont * 28.0f));
+	const float  fs = std::min(1.0f, (disp.y * 0.94f) / (baseFont * 24.0f));
 	const float  f  = baseFont * fs;
 
 	const ImVec2 winSize(std::min(disp.x * 0.70f, f * 40.0f),
-	                     std::min(disp.y * 0.94f, f * 28.0f));
+	                     std::min(disp.y * 0.94f, f * 24.0f));
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(f * 0.8f, f * 0.7f));
 	ImGui::SetNextWindowPos(ImVec2(disp.x * 0.5f, disp.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -236,10 +241,26 @@ void RenderHandlingDialog()
 		ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,  f * 1.6f);
 		ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, f * 1.1f);
 
-		bool changed = false;
 
 		ImGui::TextUnformatted("Canli Handling (100% = standart)");
+
+		// ---- sehife duymeleri (barmaqla rahat) ----
+		static int s_page = 0;
+		{
+			static const char* kPages[4] = { "Muherrik", "Idare", "Asma", "Far" };
+			const float spc = ImGui::GetStyle().ItemSpacing.x;
+			const float bw  = (ImGui::GetContentRegionAvail().x - spc * 3.0f) / 4.0f;
+			for (int i = 0; i < 4; ++i) {
+				if (i) ImGui::SameLine();
+				const bool sel = (s_page == i);
+				if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
+				if (ImGui::Button(kPages[i], ImVec2(bw, f * 2.2f))) s_page = i;
+				if (sel) ImGui::PopStyleColor();
+			}
+		}
 		ImGui::Separator();
+
+		bool changed = false;
 
 		auto sliderRow = [&](const char* label, const char* id, float* v, float mn, float mx)
 		{
@@ -249,48 +270,70 @@ void RenderHandlingDialog()
 			ImGui::PopItemWidth();
 		};
 
-		ImGui::Columns(2, "hnd_cols", false);
-		sliderRow("Maks. Suret",         "##spd", &s_tune.speedPct,  50.0f, 250.0f);
-		sliderRow("Tecil",               "##acc", &s_tune.accelPct,  30.0f, 300.0f);
-		sliderRow("Tormoz Gucu",         "##brk", &s_tune.brakePct,  30.0f, 300.0f);
-		ImGui::NextColumn();
-		sliderRow("Manevr Bucagi",       "##str", &s_tune.steerPct,  50.0f, 150.0f);
-		sliderRow("Ceki / Kutle",        "##mas", &s_tune.massPct,   30.0f, 300.0f);
-		ImGui::Columns(1);
-
-		ImGui::Spacing();
-
-		// ---- Far rengi: 16 boyuk reng duymesi (0 = standart) ----
-		if (s_tune.headlight == 0) ImGui::TextUnformatted("Far Rengi: Standart");
-		else                       ImGui::Text("Far Rengi: #%d", (int)s_tune.headlight);
-
-		const ImVec2 bs(f * 2.2f, f * 2.2f);
-		for (int i = 0; i < HEADLIGHT_COLOR_COUNT; ++i)
+		if (s_page == 0)          // MUHERRIK
 		{
-			uint8_t r, g, b;
-			CVehicleTuning::GetPaletteColor(i, r, g, b);
+			ImGui::Columns(2, "hnd_c0", false);
+			sliderRow("Yerinden Goturme (Tecil)", "##acc", &s_tune.accelPct,   30.0f, 400.0f);
+			sliderRow("Maks. Suret",              "##spd", &s_tune.speedPct,   50.0f, 250.0f);
+			sliderRow("Muherrik Ataleti (az=tez)","##ine", &s_tune.inertiaPct, 20.0f, 300.0f);
+			ImGui::NextColumn();
+			sliderRow("Ceki / Kutle",             "##mas", &s_tune.massPct,    30.0f, 300.0f);
+			sliderRow("Hava Muqavimeti",          "##drg", &s_tune.dragPct,    20.0f, 300.0f);
+			ImGui::Columns(1);
+		}
+		else if (s_page == 1)     // IDAREETME
+		{
+			ImGui::Columns(2, "hnd_c1", false);
+			sliderRow("Tormoz Gucu",              "##brk", &s_tune.brakePct,    30.0f, 300.0f);
+			sliderRow("Manevr Bucagi",            "##str", &s_tune.steerPct,    50.0f, 150.0f);
+			sliderRow("Yapisma (Traction)",       "##trc", &s_tune.tractionPct, 50.0f, 200.0f);
+			ImGui::NextColumn();
+			sliderRow("Surusme Itkisi (az=yaxsi)","##trl", &s_tune.tracLossPct, 20.0f, 200.0f);
+			sliderRow("Firlanma Ataleti",         "##trn", &s_tune.turnPct,     30.0f, 300.0f);
+			ImGui::Columns(1);
+		}
+		else if (s_page == 2)     // ASMA / ZERBE
+		{
+			ImGui::Columns(2, "hnd_c2", false);
+			sliderRow("Asma Gucu",                "##sf",  &s_tune.suspForcePct, 30.0f, 300.0f);
+			sliderRow("Asma Sonduruculeri",       "##sd",  &s_tune.suspDampPct,  30.0f, 300.0f);
+			ImGui::NextColumn();
+			sliderRow("Toqqusma Zereri",          "##col", &s_tune.collisionPct, 10.0f, 300.0f);
+			ImGui::Columns(1);
+		}
+		else                      // FAR RENGI
+		{
+			if (s_tune.headlight == 0) ImGui::TextUnformatted("Far Rengi: Standart");
+			else                       ImGui::Text("Far Rengi: #%d", (int)s_tune.headlight);
 
-			ImGui::PushID(i);
-			if (i % 8 != 0) ImGui::SameLine();
+			const ImVec2 bs(f * 2.2f, f * 2.2f);
+			for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+			{
+				uint8_t r, g, b;
+				VehTuner::GetPaletteColor(i, r, g, b);
 
-			const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
-			if (ImGui::ColorButton("##hl", col, ImGuiColorEditFlags_NoTooltip, bs)) {
-				s_tune.headlight = (uint8_t)i;
-				changed = true;
+				ImGui::PushID(i);
+				if (i % 8 != 0) ImGui::SameLine();
+
+				const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+				if (ImGui::ColorButton("##hl", col, ImGuiColorEditFlags_NoTooltip, bs)) {
+					s_tune.headlight = (uint8_t)i;
+					changed = true;
+				}
+				if (s_tune.headlight == i) {
+					ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+					                                    IM_COL32(255, 255, 255, 255), 0.0f, 0, f * 0.18f);
+				}
+				ImGui::PopID();
 			}
-			if (s_tune.headlight == i) {
-				ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-				                                    IM_COL32(255, 255, 255, 255), 0.0f, 0, f * 0.18f);
-			}
-			ImGui::PopID();
 		}
 
 		ImGui::Spacing();
 
 		const ImVec2 btn(f * 9.0f, f * 2.4f);
 		if (ImGui::Button("Sifirla", btn)) {
-			CVehicleTuning::Reset(gtaVeh);
-			s_tune = VehicleTuning();
+			VehTuner::Reset(gtaVeh);
+			s_tune = VehTune();
 			changed = false;
 			if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart deyerler qaytarildi.");
 		}
@@ -301,7 +344,7 @@ void RenderHandlingDialog()
 		}
 
 		// Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
-		if (changed) CVehicleTuning::Set(gtaVeh, s_tune);
+		if (changed) VehTuner::Set(gtaVeh, s_tune);
 
 		ImGui::PopStyleVar(4);
 	}
@@ -374,20 +417,20 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 	case TOUCH_PUSH:
 		io.MousePos = ImVec2((float)x, (float)y);
 		io.MouseDown[0] = true;
-		m_iDownFrames = 0;
-		m_bReleasePending = false;
-		m_iClearMouseFrames = 0;
+		s_downFrames = 0;
+		s_releasePending = false;
+		s_clearFrames = 0;
 		break;
 
 	case TOUCH_POP:
 		io.MousePos = ImVec2((float)x, (float)y);
-		if (m_iDownFrames >= 2) {
+		if (s_downFrames >= 2) {
 			// basma artiq kifayet qeder kadr gorunub -> indi burax
 			io.MouseDown[0] = false;
-			m_iClearMouseFrames = 1;
+			s_clearFrames = 1;
 		} else {
 			// qisa toxunus: buraxmani UI::render() geciktirecek
-			m_bReleasePending = true;
+			s_releasePending = true;
 		}
 		break;
 

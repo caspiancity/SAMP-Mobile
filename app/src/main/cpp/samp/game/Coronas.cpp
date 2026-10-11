@@ -92,7 +92,7 @@ void CCoronas::InjectHooks() {
     // Far rengi: RegisterCorona(eCoronaType) hook-u.
     if (!InstallInlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
                            &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type)) {
-        FLog("CCoronas: RegisterCorona hook qurulmadi (far rengi isleməyəcək)");
+        FLog("CCoronas: RegisterCorona hook qurulmadi, far rengi islemeyecek");
     }
 
    // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);

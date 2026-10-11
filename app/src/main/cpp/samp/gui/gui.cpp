@@ -19,9 +19,12 @@
 #include "game/Pools.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cstdio>
+#include <deque>
+#include <mutex>
 
-extern CGame* pGame; // DUZELDILDI: pGame obyekti fayla elave edildi
+extern CGame* pGame;
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
@@ -29,10 +32,94 @@ extern UI* pUI;
 extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;
 
-// ImGui toxunus veziyyeti (gui.h-a TOXUNMAMAQ ucun burada saxlanir)
-static int  s_downFrames    = 2;      // son basmadan bəri neçə kadr keçib
-static bool s_releasePending = false; // buraxma gozleyir
-static int  s_clearFrames   = 0;      // >0 ise sonda mouse pos temizlenecek
+// Diaqnostika loglari (FLog). Problem hell olunandan sonra 0 et.
+#define HND_DEBUG 1
+#if HND_DEBUG
+#define HND_LOG(...) FLog(__VA_ARGS__)
+#else
+#define HND_LOG(...) ((void)0)
+#endif
+
+enum eTouchType
+{
+	TOUCH_POP = 1,
+	TOUCH_PUSH = 2,
+	TOUCH_MOVE = 3
+};
+
+// ============================================================================
+//  TOXUNUS QUEUE-SU
+//
+//  Toxunus hadiseleri ayri thread-den gele biler. Burada onlar queue-ya yigilir,
+//  UI::render() kadrdan ONCE bunlari ImGui-ye verir.
+//  Qayda: bir kadrda en cox BIR dugme veziyyeti deyisir (basma / buraxma).
+//  Bu, qisa toxunusun (basma+buraxma eyni anda) ImGui terefinden gorulmesini temin edir.
+// ============================================================================
+namespace
+{
+	struct TouchEv { int type; float x; float y; };
+
+	std::mutex          s_touchMtx;
+	std::deque<TouchEv> s_touchQ;
+	bool                s_touchClearPos = false;
+
+	void ImSetMousePos(float x, float y)
+	{
+		ImGuiIO& io = ImGui::GetIO();
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18700
+		io.AddMousePosEvent(x, y);
+#else
+		io.MousePos = ImVec2(x, y);
+#endif
+	}
+
+	void ImSetMouseDown(bool down)
+	{
+		ImGuiIO& io = ImGui::GetIO();
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18700
+		io.AddMouseButtonEvent(0, down);
+#else
+		io.MouseDown[0] = down;
+#endif
+	}
+
+	void PushTouch(int type, float x, float y)
+	{
+		std::lock_guard<std::mutex> lk(s_touchMtx);
+
+		if (type == TOUCH_MOVE && !s_touchQ.empty() && s_touchQ.back().type == TOUCH_MOVE) {
+			s_touchQ.back().x = x;
+			s_touchQ.back().y = y;
+			return;
+		}
+		if (s_touchQ.size() > 512) s_touchQ.clear();
+		s_touchQ.push_back({ type, x, y });
+	}
+
+	// ImGui::NewFrame()-DEN ƏVVƏL çağırılmalıdır
+	void ProcessTouchQueue()
+	{
+		std::lock_guard<std::mutex> lk(s_touchMtx);
+
+		// Onceki kadrda buraxilmisdi -> isareci sil (hover/active qalmasin)
+		if (s_touchClearPos) {
+			s_touchClearPos = false;
+			ImSetMousePos(-FLT_MAX, -FLT_MAX);
+		}
+
+		while (!s_touchQ.empty())
+		{
+			const TouchEv e = s_touchQ.front();
+			s_touchQ.pop_front();
+
+			ImSetMousePos(e.x, e.y);
+
+			if (e.type == TOUCH_PUSH) { ImSetMouseDown(true);  break; }
+			if (e.type == TOUCH_POP)  { ImSetMouseDown(false); s_touchClearPos = true; break; }
+			// TOUCH_MOVE: novbetini davam et
+		}
+	}
+}
 
 UI::UI(const ImVec2& display_size, const std::string& font_path)
 	: Widget(), ImGuiWrapper(display_size, font_path)
@@ -94,17 +181,17 @@ bool UI::initialize()
 	m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
 	m_playerTabList->setVisible(false);
 
-    label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-    pUI->addChild(label);
+	label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+	pUI->addChild(label);
 
-    label2 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-    pUI->addChild(label2);
+	label2 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+	pUI->addChild(label2);
 
-    label3 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-    pUI->addChild(label3);
+	label3 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+	pUI->addChild(label3);
 
-    label4 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
-    pUI->addChild(label4);
+	label4 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+	pUI->addChild(label4);
 
 	Label* d_label1;
 	d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
@@ -114,32 +201,16 @@ bool UI::initialize()
 	return true;
 }
 
-// ============================================================================
-//  render(): kadrin sonunda ImGui toxunus vəziyyətini idarə edir
-// ============================================================================
 void UI::render()
 {
+	// toxunuslari ImGui-ye NewFrame-den evvel ver
+	ProcessTouchQueue();
+
 	ImGuiWrapper::render();
 
-    renderDebug();
+	renderDebug();
 
-    ProcessPushedTextdraws();
-
-	ImGuiIO& io = ImGui::GetIO();
-
-	// Basma (MouseDown) neçə kadr görünüb?
-	if (io.MouseDown[0] && s_downFrames < 1000) s_downFrames++;
-
-	// Qısa toxunuş: basma ən azı 2 kadr görünübsə, indi buraxırıq.
-	if (s_releasePending && s_downFrames >= 2) {
-		io.MouseDown[0] = false;
-		s_releasePending = false;
-		s_clearFrames = 2;   // ImGui buraxmanı görsün deyə mouse pos-u 1 kadr daha saxla
-	}
-
-	if (s_clearFrames > 0 && --s_clearFrames == 0) {
-		io.MousePos = ImVec2(-1, -1);
-	}
+	ProcessPushedTextdraws();
 }
 
 void UI::shutdown()
@@ -150,16 +221,13 @@ void UI::shutdown()
 // ============================================================================
 //  HANDLING REDAKTORU
 //
-//  Tapilan problemler (kohne versiya):
-//   - 500x420 sabit piksel pəncərə: ekrana gore miqyaslanmirdi, mövqe verilmirdi,
-//     ImGuiCond_FirstUseEver sebebile ilk olcu yadda qalirdi -> "dar, yarisi gorunmur".
-//   - Bagla X-i toxunus ucun cox kicik idi.
-//   - static deyisenler yalniz ILK acilista doldurulurdu -> basqa masinda kohne deyerler.
-//   - Slider araliqlari fayl vahidinde idi, oyundan oxunan deyerler ise oyun vahidinde.
-//   - Qisa toxunus (basma+buraxma 1 kadrda) ImGui terefinden gorulmurdu (UI::OnTouchEvent).
+//  - Oz basliq cubugu: surukle (yer deyis), [H-][H+] hundurluk, [-] kicilt, [X] bagla
+//  - Sag-alt kunc: surukleyerek olcunu deyis
+//  - Olcu/movqe yadda qalir, ekrandan cixmir
+//  - Hamisi toxunusla (barmaq) rahat isleyir
 // ============================================================================
 static bool   s_hndRectValid = false;
-static ImVec2 s_hndPos(0.0f, 0.0f);
+static ImVec2 s_hndPos(0.0f, 0.0f);    // yalniz toxunus yoxlamasi ucun (real pencere)
 static ImVec2 s_hndSize(0.0f, 0.0f);
 
 bool UI_IsPointInHandlingDlg(const ImVec2& p)
@@ -171,9 +239,18 @@ bool UI_IsPointInHandlingDlg(const ImVec2& p)
 
 void RenderHandlingDialog()
 {
-	static bool          s_wasOpen  = false;
-	static CVehicleGTA*  s_lastVeh  = nullptr;
-	static VehTune s_tune;
+	static bool          s_wasOpen = false;
+	static CVehicleGTA*  s_lastVeh = nullptr;
+	static VehTune       s_tune;
+
+	// pencere veziyyeti (baglanib-acilanda yadda qalir)
+	static bool   s_winInit   = false;
+	static bool   s_collapsed = false;
+	static ImVec2 s_winPos(0.0f, 0.0f);
+	static ImVec2 s_winSize(0.0f, 0.0f);
+	static ImVec2 s_dragOff(0.0f, 0.0f);
+	static ImVec2 s_rsMouse0(0.0f, 0.0f);
+	static ImVec2 s_rsSize0(0.0f, 0.0f);
 
 	if (!g_bShowHandlingDlg) {
 		s_wasOpen = false;
@@ -208,26 +285,45 @@ void RenderHandlingDialog()
 		s_tune    = VehTuner::Get(gtaVeh);
 		s_lastVeh = gtaVeh;
 		s_wasOpen = true;
+		HND_LOG("[HND] dialog opened");
 	}
 
-	// ---- olculer: ekrana ve sriftin real olcusune gore ----
-	const ImVec2 disp     = ImGui::GetIO().DisplaySize;
-	const float  baseFont = ImGui::GetFontSize();
-	// Pencere ~28 srift-hundurluyu tutur. Ekran sigmirsa srifti kiçilt (scroll lazim olmasin).
-	const float  fs = std::min(1.0f, (disp.y * 0.94f) / (baseFont * 24.0f));
-	const float  f  = baseFont * fs;
+	ImGuiIO& io = ImGui::GetIO();
 
-	const ImVec2 winSize(std::min(disp.x * 0.70f, f * 40.0f),
-	                     std::min(disp.y * 0.94f, f * 24.0f));
+	// ---- olculer ----
+	const ImVec2 disp     = io.DisplaySize;
+	const float  baseFont = ImGui::GetFont()->FontSize;     // miqyassiz esas srift
+	const float  fs  = std::min(1.0f, (disp.y * 0.94f) / (baseFont * 20.0f));
+	const float  f   = baseFont * fs;
+	const float  pad = f * 0.6f;
+	const float  hh  = f * 2.6f;       // basliq hundurluyu
+	const float  bw  = f * 2.6f;       // basliq dugmesi eni
+	const float  footerH = f * 2.4f + pad;
 
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(f * 0.8f, f * 0.7f));
-	ImGui::SetNextWindowPos(ImVec2(disp.x * 0.5f, disp.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(winSize, ImGuiCond_Always);
+	if (!s_winInit) {
+		s_winSize = ImVec2(std::min(disp.x * 0.62f, f * 34.0f), std::min(disp.y * 0.88f, f * 19.0f));
+		s_winPos  = ImVec2((disp.x - s_winSize.x) * 0.5f, (disp.y - s_winSize.y) * 0.5f);
+		s_winInit = true;
+	}
 
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-	                               ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoSavedSettings;
+	// olcu ve movqe hududlari
+	s_winSize.x = std::max(f * 18.0f, std::min(s_winSize.x, disp.x * 0.98f));
+	s_winSize.y = std::max(f * 10.0f, std::min(s_winSize.y, disp.y * 0.98f));
+	const ImVec2 eff(s_winSize.x, s_collapsed ? (hh + pad) : s_winSize.y);
+	s_winPos.x = std::max(0.0f, std::min(s_winPos.x, std::max(0.0f, disp.x - eff.x)));
+	s_winPos.y = std::max(0.0f, std::min(s_winPos.y, std::max(0.0f, disp.y - eff.y)));
 
-	if (ImGui::Begin("Vehicle Handling Editor", nullptr, flags))
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, f * 0.3f);
+	ImGui::SetNextWindowPos(s_winPos, ImGuiCond_Always);
+	ImGui::SetNextWindowSize(eff, ImGuiCond_Always);
+
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+	                               ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoCollapse |
+	                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+	                               ImGuiWindowFlags_NoScrollWithMouse;
+
+	if (ImGui::Begin("##VehicleHandlingEditor", nullptr, flags))
 	{
 		ImGui::SetWindowFontScale(fs);
 
@@ -235,121 +331,182 @@ void RenderHandlingDialog()
 		s_hndSize      = ImGui::GetWindowSize();
 		s_hndRectValid = true;
 
-		// Barmaqla rahat idareetme ucun boyuk elementler
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(f * 0.5f, f * 0.45f));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,  ImVec2(f * 0.6f, f * 0.45f));
-		ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,  f * 1.6f);
-		ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, f * 1.1f);
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+		const ImVec2 wp = ImGui::GetWindowPos();
+		const float  ww = ImGui::GetWindowWidth();
 
+		// ---------------- BASLIQ ----------------
+		dl->AddRectFilled(wp, ImVec2(wp.x + ww, wp.y + hh), IM_COL32(25, 55, 105, 255));
 
-		ImGui::TextUnformatted("Canli Handling (100% = standart)");
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+		ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
 
-		// ---- sehife duymeleri (barmaqla rahat) ----
-		static int s_page = 0;
-		{
-			static const char* kPages[4] = { "Muherrik", "Idare", "Asma", "Far" };
-			const float spc = ImGui::GetStyle().ItemSpacing.x;
-			const float bw  = (ImGui::GetContentRegionAvail().x - spc * 3.0f) / 4.0f;
-			for (int i = 0; i < 4; ++i) {
-				if (i) ImGui::SameLine();
-				const bool sel = (s_page == i);
-				if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
-				if (ImGui::Button(kPages[i], ImVec2(bw, f * 2.2f))) s_page = i;
-				if (sel) ImGui::PopStyleColor();
-			}
+		// surukleme zonasi
+		ImGui::InvisibleButton("##hnd_drag", ImVec2(std::max(1.0f, ww - bw * 4.0f), hh));
+		if (ImGui::IsItemActivated()) {
+			s_dragOff = ImVec2(io.MousePos.x - s_winPos.x, io.MousePos.y - s_winPos.y);
 		}
-		ImGui::Separator();
-
-		bool changed = false;
-
-		auto sliderRow = [&](const char* label, const char* id, float* v, float mn, float mx)
-		{
-			ImGui::TextUnformatted(label);
-			ImGui::PushItemWidth(-1.0f);
-			if (ImGui::SliderFloat(id, v, mn, mx, "%.0f%%")) changed = true;
-			ImGui::PopItemWidth();
-		};
-
-		if (s_page == 0)          // MUHERRIK
-		{
-			ImGui::Columns(2, "hnd_c0", false);
-			sliderRow("Yerinden Goturme (Tecil)", "##acc", &s_tune.accelPct,   30.0f, 400.0f);
-			sliderRow("Maks. Suret",              "##spd", &s_tune.speedPct,   50.0f, 250.0f);
-			sliderRow("Muherrik Ataleti (az=tez)","##ine", &s_tune.inertiaPct, 20.0f, 300.0f);
-			ImGui::NextColumn();
-			sliderRow("Ceki / Kutle",             "##mas", &s_tune.massPct,    30.0f, 300.0f);
-			sliderRow("Hava Muqavimeti",          "##drg", &s_tune.dragPct,    20.0f, 300.0f);
-			ImGui::Columns(1);
+		if (ImGui::IsItemActive()) {
+			s_winPos = ImVec2(io.MousePos.x - s_dragOff.x, io.MousePos.y - s_dragOff.y);
 		}
-		else if (s_page == 1)     // IDAREETME
-		{
-			ImGui::Columns(2, "hnd_c1", false);
-			sliderRow("Tormoz Gucu",              "##brk", &s_tune.brakePct,    30.0f, 300.0f);
-			sliderRow("Manevr Bucagi",            "##str", &s_tune.steerPct,    50.0f, 150.0f);
-			sliderRow("Yapisma (Traction)",       "##trc", &s_tune.tractionPct, 50.0f, 200.0f);
-			ImGui::NextColumn();
-			sliderRow("Surusme Itkisi (az=yaxsi)","##trl", &s_tune.tracLossPct, 20.0f, 200.0f);
-			sliderRow("Firlanma Ataleti",         "##trn", &s_tune.turnPct,     30.0f, 300.0f);
-			ImGui::Columns(1);
-		}
-		else if (s_page == 2)     // ASMA / ZERBE
-		{
-			ImGui::Columns(2, "hnd_c2", false);
-			sliderRow("Asma Gucu",                "##sf",  &s_tune.suspForcePct, 30.0f, 300.0f);
-			sliderRow("Asma Sonduruculeri",       "##sd",  &s_tune.suspDampPct,  30.0f, 300.0f);
-			ImGui::NextColumn();
-			sliderRow("Toqqusma Zereri",          "##col", &s_tune.collisionPct, 10.0f, 300.0f);
-			ImGui::Columns(1);
-		}
-		else                      // FAR RENGI
-		{
-			if (s_tune.headlight == 0) ImGui::TextUnformatted("Far Rengi: Standart");
-			else                       ImGui::Text("Far Rengi: #%d", (int)s_tune.headlight);
+		dl->AddText(ImVec2(wp.x + pad, wp.y + (hh - f) * 0.5f), IM_COL32(255, 255, 255, 255), "Handling Editor APACHES");
 
-			const ImVec2 bs(f * 2.2f, f * 2.2f);
-			for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+		const ImVec2 hb(bw, hh);
+		ImGui::SameLine(0.0f, 0.0f);
+		if (ImGui::Button("H-", hb)) s_winSize.y -= f * 2.5f;
+		ImGui::SameLine(0.0f, 0.0f);
+		if (ImGui::Button("H+", hb)) s_winSize.y += f * 2.5f;
+		ImGui::SameLine(0.0f, 0.0f);
+		if (ImGui::Button(s_collapsed ? "[]" : "-", hb)) s_collapsed = !s_collapsed;
+		ImGui::SameLine(0.0f, 0.0f);
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.15f, 0.15f, 1.0f));
+		if (ImGui::Button("X", hb)) g_bShowHandlingDlg = false;
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar();   // FrameRounding
+
+		// ---------------- GOVDE ----------------
+		if (!s_collapsed)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(f * 0.5f, f * 0.45f));
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,   ImVec2(f * 0.6f, f * 0.45f));
+			ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,   f * 1.6f);
+			ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, f * 1.1f);
+
+			// sehife duymeleri
+			static int s_page = 0;
+			ImGui::SetCursorPos(ImVec2(pad, hh + pad));
 			{
-				uint8_t r, g, b;
-				VehTuner::GetPaletteColor(i, r, g, b);
-
-				ImGui::PushID(i);
-				if (i % 8 != 0) ImGui::SameLine();
-
-				const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
-				if (ImGui::ColorButton("##hl", col, ImGuiColorEditFlags_NoTooltip, bs)) {
-					s_tune.headlight = (uint8_t)i;
-					changed = true;
+				static const char* kPages[4] = { "Muherrik", "Idare", "Asma", "Far" };
+				const float spc = ImGui::GetStyle().ItemSpacing.x;
+				const float tw  = (ww - pad * 2.0f - spc * 3.0f) / 4.0f;
+				for (int i = 0; i < 4; ++i) {
+					if (i) ImGui::SameLine();
+					const bool sel = (s_page == i);
+					if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
+					if (ImGui::Button(kPages[i], ImVec2(tw, f * 2.2f))) s_page = i;
+					if (sel) ImGui::PopStyleColor();
 				}
-				if (s_tune.headlight == i) {
-					ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-					                                    IM_COL32(255, 255, 255, 255), 0.0f, 0, f * 0.18f);
-				}
-				ImGui::PopID();
 			}
+
+			ImGui::SetCursorPosX(pad);
+			ImGui::BeginChild("##hnd_body", ImVec2(-pad, -footerH), false);
+
+			bool changed = false;
+
+			struct Spec { const char* label; const char* id; float* v; float mn; float mx; };
+
+			auto drawSpecs = [&](const Spec* s, int n)
+			{
+				const int cols = (ImGui::GetContentRegionAvail().x > f * 26.0f) ? 2 : 1;
+				if (cols == 2) ImGui::Columns(2, "##hnd_cols", false);
+				const int half = (n + 1) / 2;
+				for (int i = 0; i < n; ++i) {
+					if (cols == 2 && i == half) ImGui::NextColumn();
+					ImGui::TextUnformatted(s[i].label);
+					ImGui::PushItemWidth(-1.0f);
+					if (ImGui::SliderFloat(s[i].id, s[i].v, s[i].mn, s[i].mx, "%.0f%%")) changed = true;
+					ImGui::PopItemWidth();
+				}
+				if (cols == 2) ImGui::Columns(1);
+			};
+
+			ImGui::TextUnformatted("HANDLING DƏYİŞİCİ");
+
+			if (s_page == 0)          // MUHERRIK
+			{
+				const Spec sp[] = {
+					{ "Yerinden Goturme (Tecil)",  "##acc", &s_tune.accelPct,   30.0f, 400.0f },
+					{ "Maks. Suret",               "##spd", &s_tune.speedPct,   50.0f, 250.0f },
+					{ "Muherrik Ataleti (az=tez)", "##ine", &s_tune.inertiaPct, 20.0f, 300.0f },
+					{ "Ceki / Kutle",              "##mas", &s_tune.massPct,    30.0f, 300.0f },
+					{ "Hava Muqavimeti",           "##drg", &s_tune.dragPct,    20.0f, 300.0f },
+				};
+				drawSpecs(sp, 5);
+			}
+			else if (s_page == 1)     // IDAREETME
+			{
+				const Spec sp[] = {
+					{ "Tormoz Gucu",                "##brk", &s_tune.brakePct,    30.0f, 300.0f },
+					{ "Manevr Bucagi",              "##str", &s_tune.steerPct,    50.0f, 150.0f },
+					{ "Yapisma (Traction)",         "##trc", &s_tune.tractionPct, 50.0f, 200.0f },
+					{ "Surusme Itkisi (az=yaxsi)",  "##trl", &s_tune.tracLossPct, 20.0f, 200.0f },
+					{ "Firlanma Ataleti",           "##trn", &s_tune.turnPct,     30.0f, 300.0f },
+				};
+				drawSpecs(sp, 5);
+			}
+			else if (s_page == 2)     // ASMA / ZERBE
+			{
+				const Spec sp[] = {
+					{ "Asma Gucu",           "##sf",  &s_tune.suspForcePct, 30.0f, 300.0f },
+					{ "Asma Sonduruculeri",  "##sd",  &s_tune.suspDampPct,  30.0f, 300.0f },
+					{ "Toqqusma Zereri",     "##col", &s_tune.collisionPct, 10.0f, 300.0f },
+				};
+				drawSpecs(sp, 3);
+			}
+			else                      // FAR RENGI (sonra tamamlanacaq)
+			{
+				if (s_tune.headlight == 0) ImGui::TextUnformatted("Far Rengi: Standart");
+				else                       ImGui::Text("Far Rengi: #%d", (int)s_tune.headlight);
+
+				const ImVec2 bs(f * 2.2f, f * 2.2f);
+				for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+				{
+					uint8_t r, g, b;
+					VehTuner::GetPaletteColor(i, r, g, b);
+
+					ImGui::PushID(i);
+					if (i % 8 != 0) ImGui::SameLine();
+
+					const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+					if (ImGui::ColorButton("##hl", col, ImGuiColorEditFlags_NoTooltip, bs)) {
+						s_tune.headlight = (uint8_t)i;
+						changed = true;
+					}
+					if (s_tune.headlight == i) {
+						ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+						                                    IM_COL32(255, 255, 255, 255), 0.0f, 0, f * 0.18f);
+					}
+					ImGui::PopID();
+				}
+			}
+
+			ImGui::EndChild();
+
+			// ---------------- ALT SIRA: Sifirla + olcu kunci ----------------
+			ImGui::SetCursorPosX(pad);
+			if (ImGui::Button("Sifirla", ImVec2(f * 8.0f, f * 2.4f))) {
+				VehTuner::Reset(gtaVeh);
+				s_tune = VehTune();
+				changed = false;
+				if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart deyerler qaytarildi.");
+			}
+
+			const float gripS = f * 2.4f;
+			ImGui::SameLine(ImGui::GetWindowWidth() - pad - gripS);
+			ImGui::InvisibleButton("##hnd_grip", ImVec2(gripS, gripS));
+			if (ImGui::IsItemActivated()) {
+				s_rsMouse0 = io.MousePos;
+				s_rsSize0  = s_winSize;
+			}
+			if (ImGui::IsItemActive()) {
+				s_winSize.x = s_rsSize0.x + (io.MousePos.x - s_rsMouse0.x);
+				s_winSize.y = s_rsSize0.y + (io.MousePos.y - s_rsMouse0.y);
+			}
+			{
+				const ImVec2 a = ImGui::GetItemRectMin();
+				const ImVec2 b = ImGui::GetItemRectMax();
+				const ImU32  gc = ImGui::IsItemActive() ? IM_COL32(255, 255, 255, 255) : IM_COL32(180, 180, 180, 255);
+				dl->AddTriangleFilled(ImVec2(b.x, a.y + gripS * 0.2f), b, ImVec2(a.x + gripS * 0.2f, b.y), gc);
+			}
+
+			// Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
+			if (changed) VehTuner::Set(gtaVeh, s_tune);
+
+			ImGui::PopStyleVar(4);
 		}
-
-		ImGui::Spacing();
-
-		const ImVec2 btn(f * 9.0f, f * 2.4f);
-		if (ImGui::Button("Sifirla", btn)) {
-			VehTuner::Reset(gtaVeh);
-			s_tune = VehTune();
-			changed = false;
-			if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart deyerler qaytarildi.");
-		}
-
-		ImGui::SameLine(0.0f, f);
-		if (ImGui::Button("Bagla", btn)) {
-			g_bShowHandlingDlg = false;
-		}
-
-		// Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
-		if (changed) VehTuner::Set(gtaVeh, s_tune);
-
-		ImGui::PopStyleVar(4);
 	}
 	ImGui::End();
-	ImGui::PopStyleVar();   // WindowPadding
+	ImGui::PopStyleVar(2);   // WindowPadding + WindowRounding
 }
 
 void UI::drawList()
@@ -391,16 +548,15 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
 	Widget::touchEvent(pos, type);
 }
 
-enum eTouchType
-{
-	TOUCH_POP = 1,
-	TOUCH_PUSH = 2,
-	TOUCH_MOVE = 3
-};
-
 bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 {
-	if (g_bHideAllUI && type == TOUCH_PUSH) {
+	(void)multi;
+
+	if (type != TOUCH_MOVE)
+		HND_LOG("[HND] touch type=%d x=%d y=%d dlg=%d", type, x, y, (int)g_bShowHandlingDlg);
+
+	// "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (handling dialoqu aciq deyilse)
+	if (g_bHideAllUI && !g_bShowHandlingDlg && type == TOUCH_PUSH) {
 		g_bHideAllUI = false;
 		if (pUI && pUI->chat()) {
 			pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
@@ -408,37 +564,7 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 		return true;
 	}
 
-	ImGuiIO& io = ImGui::GetIO();
-	VoiceButton* vbutton = pUI->voicebutton();
-	(void)vbutton;
-
-	switch (type)
-	{
-	case TOUCH_PUSH:
-		io.MousePos = ImVec2((float)x, (float)y);
-		io.MouseDown[0] = true;
-		s_downFrames = 0;
-		s_releasePending = false;
-		s_clearFrames = 0;
-		break;
-
-	case TOUCH_POP:
-		io.MousePos = ImVec2((float)x, (float)y);
-		if (s_downFrames >= 2) {
-			// basma artiq kifayet qeder kadr gorunub -> indi burax
-			io.MouseDown[0] = false;
-			s_clearFrames = 1;
-		} else {
-			// qisa toxunus: buraxmani UI::render() geciktirecek
-			s_releasePending = true;
-		}
-		break;
-
-	case TOUCH_MOVE:
-		io.MousePos = ImVec2((float)x, (float)y);
-		break;
-	}
-
+	PushTouch(type, (float)x, (float)y);
 	return true;
 }
 
@@ -446,41 +572,41 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 extern CSettings* pSettings;
 void UI::renderDebug()
 {
-    if(!pSettings->Get().iFPSCounter) return;
+	if(!pSettings->Get().iFPSCounter) return;
 
-    char szStr[30];
+	char szStr[30];
 
-    ImVec2 pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(540.0f));
+	ImVec2 pos = ImVec2(pUI->ScaleX(40.0f), pUI->ScaleY(540.0f));
 
-    static float fps = 120.f;
-    static auto lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
-    if(CTimer::m_snTimeInMillisecondsNonClipped - lastTick > 500) {
-        lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
-        fps = std::clamp(CTimer::game_FPS, 10.f, (float) 120);
-    }
-    snprintf(&szStr[0], sizeof(szStr), "FPS: %.0f", fps);
+	static float fps = 120.f;
+	static auto lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+	if(CTimer::m_snTimeInMillisecondsNonClipped - lastTick > 500) {
+		lastTick = CTimer::m_snTimeInMillisecondsNonClipped;
+		fps = std::clamp(CTimer::game_FPS, 10.f, (float) 120);
+	}
+	snprintf(&szStr[0], sizeof(szStr), "FPS: %.0f", fps);
 
-    label->setText(&szStr[0]);
-    label->setPosition(pos);
+	label->setText(&szStr[0]);
+	label->setPosition(pos);
 }
 
 void UI::PushToBufferedQueueTextDrawPressed(uint16_t textdrawId)
 {
-    BUFFERED_COMMAND_TEXTDRAW* pCmd = m_BufferedCommandTextdraws.WriteLock();
+	BUFFERED_COMMAND_TEXTDRAW* pCmd = m_BufferedCommandTextdraws.WriteLock();
 
-    pCmd->textdrawId = textdrawId;
+	pCmd->textdrawId = textdrawId;
 
-    m_BufferedCommandTextdraws.WriteUnlock();
+	m_BufferedCommandTextdraws.WriteUnlock();
 }
 
 void UI::ProcessPushedTextdraws()
 {
-    BUFFERED_COMMAND_TEXTDRAW* pCmd = nullptr;
-    while (pCmd = m_BufferedCommandTextdraws.ReadLock())
-    {
-        RakNet::BitStream bs;
-        bs.Write(pCmd->textdrawId);
-        pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bs, HIGH_PRIORITY, RELIABLE_SEQUENCED, 0, false, UNASSIGNED_NETWORK_ID, 0);
-        m_BufferedCommandTextdraws.ReadUnlock();
-    }
+	BUFFERED_COMMAND_TEXTDRAW* pCmd = nullptr;
+	while (pCmd = m_BufferedCommandTextdraws.ReadLock())
+	{
+		RakNet::BitStream bs;
+		bs.Write(pCmd->textdrawId);
+		pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bs, HIGH_PRIORITY, RELIABLE_SEQUENCED, 0, false, UNASSIGNED_NETWORK_ID, 0);
+		m_BufferedCommandTextdraws.ReadUnlock();
+	}
 }

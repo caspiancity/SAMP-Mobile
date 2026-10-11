@@ -19,7 +19,9 @@
 #include "game/Pools.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 #include <deque>
 #include <mutex>
@@ -32,7 +34,7 @@ extern UI* pUI;
 extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;
 
-// Diaqnostika loglari (FLog). Problem hell olunandan sonra 0 et.
+// Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
 #define HND_DEBUG 1
 #if HND_DEBUG
 #define HND_LOG(...) FLog(__VA_ARGS__)
@@ -48,40 +50,24 @@ enum eTouchType
 };
 
 // ============================================================================
-//  TOXUNUS QUEUE-SU
-//
-//  Toxunus hadiseleri ayri thread-den gele biler. Burada onlar queue-ya yigilir,
-//  UI::render() kadrdan ONCE bunlari ImGui-ye verir.
-//  Qayda: bir kadrda en cox BIR dugme veziyyeti deyisir (basma / buraxma).
-//  Bu, qisa toxunusun (basma+buraxma eyni anda) ImGui terefinden gorulmesini temin edir.
+//  TOXUNUS: hadiseler queue-ya yigilir, her kadrin evvelinde oxunur.
+//  Bir kadrda en cox BIR basma/buraxma emal olunur (qisa toxunus itmesin).
+//  Mod menyu ImGui-nin input sistemini istifade ETMIR, oz veziyyetini saxlayir.
 // ============================================================================
+struct MMTouch
+{
+	float    x = -1.0f, y = -1.0f;
+	bool     down = false, pressed = false, released = false;
+	unsigned events = 0;
+};
+static MMTouch g_mmTouch;
+
 namespace
 {
 	struct TouchEv { int type; float x; float y; };
 
 	std::mutex          s_touchMtx;
 	std::deque<TouchEv> s_touchQ;
-	bool                s_touchClearPos = false;
-
-	void ImSetMousePos(float x, float y)
-	{
-		ImGuiIO& io = ImGui::GetIO();
-#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18700
-		io.AddMousePosEvent(x, y);
-#else
-		io.MousePos = ImVec2(x, y);
-#endif
-	}
-
-	void ImSetMouseDown(bool down)
-	{
-		ImGuiIO& io = ImGui::GetIO();
-#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18700
-		io.AddMouseButtonEvent(0, down);
-#else
-		io.MouseDown[0] = down;
-#endif
-	}
 
 	void PushTouch(int type, float x, float y)
 	{
@@ -96,27 +82,24 @@ namespace
 		s_touchQ.push_back({ type, x, y });
 	}
 
-	// ImGui::NewFrame()-DEN ƏVVƏL çağırılmalıdır
 	void ProcessTouchQueue()
 	{
 		std::lock_guard<std::mutex> lk(s_touchMtx);
 
-		// Onceki kadrda buraxilmisdi -> isareci sil (hover/active qalmasin)
-		if (s_touchClearPos) {
-			s_touchClearPos = false;
-			ImSetMousePos(-FLT_MAX, -FLT_MAX);
-		}
+		g_mmTouch.pressed  = false;
+		g_mmTouch.released = false;
 
 		while (!s_touchQ.empty())
 		{
 			const TouchEv e = s_touchQ.front();
 			s_touchQ.pop_front();
 
-			ImSetMousePos(e.x, e.y);
+			g_mmTouch.x = e.x;
+			g_mmTouch.y = e.y;
+			g_mmTouch.events++;
 
-			if (e.type == TOUCH_PUSH) { ImSetMouseDown(true);  break; }
-			if (e.type == TOUCH_POP)  { ImSetMouseDown(false); s_touchClearPos = true; break; }
-			// TOUCH_MOVE: novbetini davam et
+			if (e.type == TOUCH_PUSH) { g_mmTouch.down = true;  g_mmTouch.pressed  = true; break; }
+			if (e.type == TOUCH_POP)  { g_mmTouch.down = false; g_mmTouch.released = true; break; }
 		}
 	}
 }
@@ -194,7 +177,7 @@ bool UI::initialize()
 	pUI->addChild(label4);
 
 	Label* d_label1;
-	d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+	d_label1 = new Label(cryptor::create("APACHE — ONLINE v1.0 test").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(d_label1);
 	d_label1->setPosition(ImVec2(3.0, 3.0));
 
@@ -203,8 +186,7 @@ bool UI::initialize()
 
 void UI::render()
 {
-	// toxunuslari ImGui-ye NewFrame-den evvel ver
-	ProcessTouchQueue();
+	ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
 
 	ImGuiWrapper::render();
 
@@ -219,15 +201,10 @@ void UI::shutdown()
 }
 
 // ============================================================================
-//  HANDLING REDAKTORU
-//
-//  - Oz basliq cubugu: surukle (yer deyis), [H-][H+] hundurluk, [-] kicilt, [X] bagla
-//  - Sag-alt kunc: surukleyerek olcunu deyis
-//  - Olcu/movqe yadda qalir, ekrandan cixmir
-//  - Hamisi toxunusla (barmaq) rahat isleyir
+//  MOD MENU  (oz cizgisi, oz toxunusu, animasiyali)
 // ============================================================================
 static bool   s_hndRectValid = false;
-static ImVec2 s_hndPos(0.0f, 0.0f);    // yalniz toxunus yoxlamasi ucun (real pencere)
+static ImVec2 s_hndPos(0.0f, 0.0f);    // toxunus bloklamasi ucun panelin real sahesi
 static ImVec2 s_hndSize(0.0f, 0.0f);
 
 bool UI_IsPointInHandlingDlg(const ImVec2& p)
@@ -237,276 +214,462 @@ bool UI_IsPointInHandlingDlg(const ImVec2& p)
 	       p.y >= s_hndPos.y && p.y <= s_hndPos.y + s_hndSize.y;
 }
 
+namespace mm
+{
+	struct Rc { float x, y, w, h; };
+
+	static ImDrawList* s_dl = nullptr;
+	static float s_U = 1.0f;       // olcu vahidi (piksel)
+	static float s_A = 1.0f;       // umumi seffaflig
+	static int   s_act = 0;        // hazirda basili olan element
+	static float s_prs[64] = {};   // basma animasiyalari
+	static float s_frac[8] = {};   // slider doldurma animasiyasi
+
+	enum { ID_DRAG = 1, ID_CLOSE = 2, ID_ZOOMP = 3, ID_ZOOMM = 4, ID_NAV0 = 5, ID_RESET = 9, ID_SLIDER = 16, ID_SWATCH = 40 };
+
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18200
+	static const int kAllCorners = 0;
+#else
+	static const int kAllCorners = ImDrawCornerFlags_All;
+#endif
+
+	static inline float S(float v) { return v * s_U; }
+	static inline float Clamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+	static inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
+	static inline float Smooth(float cur, float target, float dt, float speed) { return Lerp(cur, target, 1.0f - expf(-dt * speed)); }
+	static inline float EaseOutBack(float t) { const float c1 = 1.70158f, c3 = c1 + 1.0f; const float p = t - 1.0f; return 1.0f + c3 * p * p * p + c1 * p * p; }
+	static inline float EaseOutCubic(float t) { const float p = 1.0f - t; return 1.0f - p * p * p; }
+	static inline bool  In(const Rc& r, float px, float py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
+	static inline Rc    Shrink(const Rc& r, float a) { return Rc{ r.x + a, r.y + a, r.w - 2.0f * a, r.h - 2.0f * a }; }
+
+	static inline ImU32 Col(int r, int g, int b, int a = 255) { return IM_COL32(r, g, b, (int)((float)a * s_A)); }
+	static inline ImU32 Accent(float f, int a = 255) { return Col((int)Lerp(60.0f, 165.0f, f), (int)Lerp(165.0f, 95.0f, f), 255, a); }
+
+	static void Fill(const Rc& r, ImU32 c, float rad) { s_dl->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad); }
+	static void Stroke(const Rc& r, ImU32 c, float rad, float th) { s_dl->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad, kAllCorners, th); }
+	static void Dot(float x, float y, float rad, ImU32 c) { s_dl->AddCircleFilled(ImVec2(x, y), rad, c, 28); }
+
+	static float TW(float size, const char* s) { return ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x; }
+	static void  Txt(float size, float x, float y, ImU32 c, const char* s) { s_dl->AddText(ImGui::GetFont(), size, ImVec2(x, y), c, s); }
+	static void  TxtB(float size, float x, float y, ImU32 c, const char* s) { Txt(size, x, y, c, s); Txt(size, x + S(0.8f), y, c, s); }
+	static void  TxtC(float size, const Rc& r, ImU32 c, const char* s, bool bold)
+	{
+		const float x = r.x + (r.w - TW(size, s)) * 0.5f;
+		const float y = r.y + (r.h - size) * 0.5f;
+		if (bold) TxtB(size, x, y, c, s); else Txt(size, x, y, c, s);
+	}
+
+	static float Prs(int id, float dt)
+	{
+		if (id < 0 || id >= 64) return 0.0f;
+		float& p = s_prs[id];
+		p = Lerp(p, (s_act == id && g_mmTouch.down) ? 1.0f : 0.0f, 1.0f - expf(-dt * 24.0f));
+		return p;
+	}
+
+	// basma + buraxma eyni elementin uzerinde olarsa true
+	static bool Tap(int id, const Rc& r, bool canInput)
+	{
+		if (!canInput) return false;
+		if (g_mmTouch.pressed && s_act == 0 && In(r, g_mmTouch.x, g_mmTouch.y)) s_act = id;
+		if (g_mmTouch.released && s_act == id) return In(r, g_mmTouch.x, g_mmTouch.y);
+		return false;
+	}
+
+	static void HeaderBtn(int id, const Rc& r, float dt, const char* label, bool danger)
+	{
+		const float p = Prs(id, dt);
+		const Rc d = Shrink(r, S(2.0f) * p);
+		Fill(d, danger ? Col(205, 55, 68, 150 + (int)(70.0f * p)) : Col(255, 255, 255, 16 + (int)(40.0f * p)), S(10.0f));
+		if (danger) {
+			const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.5f, k = S(6.5f);
+			s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(255, 255, 255, 240), S(2.2f));
+			s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(255, 255, 255, 240), S(2.2f));
+		} else {
+			TxtC(S(15.0f), d, Col(232, 236, 248), label, true);
+		}
+	}
+
+	// bir slider satiri; deyer deyisibse true
+	static bool SliderRow(int idx, const Rc& row, const char* label, float* v, float mn, float mx, float dt, bool canInput)
+	{
+		const int id = ID_SLIDER + idx * 4;
+		bool changed = false;
+
+		const float cy = row.y + S(47.0f);
+		const Rc minus{ row.x + S(14.0f), cy - S(15.0f), S(30.0f), S(30.0f) };
+		const Rc plus { row.x + row.w - S(44.0f), cy - S(15.0f), S(30.0f), S(30.0f) };
+		const float tx0 = row.x + S(60.0f), tx1 = row.x + row.w - S(60.0f);
+		const Rc hit{ tx0 - S(16.0f), row.y + S(22.0f), (tx1 - tx0) + S(32.0f), row.h - S(22.0f) };
+
+		if (canInput)
+		{
+			const MMTouch& t = g_mmTouch;
+			if (t.pressed && s_act == 0) {
+				if (In(minus, t.x, t.y))      s_act = id + 1;
+				else if (In(plus, t.x, t.y))  s_act = id + 2;
+				else if (In(hit, t.x, t.y))   s_act = id;
+			}
+			if (s_act == id && t.down) {
+				const float f  = Clamp((t.x - tx0) / (tx1 - tx0), 0.0f, 1.0f);
+				const float nv = floorf(mn + f * (mx - mn) + 0.5f);
+				if (nv != *v) { *v = nv; changed = true; }
+			}
+			if (t.released) {
+				float nv = *v;
+				if (s_act == id + 1 && In(minus, t.x, t.y)) nv = Clamp(*v - 5.0f, mn, mx);
+				if (s_act == id + 2 && In(plus,  t.x, t.y)) nv = Clamp(*v + 5.0f, mn, mx);
+				if (nv != *v) { *v = nv; changed = true; }
+			}
+		}
+
+		const bool dragging = (s_act == id && g_mmTouch.down);
+		const float target = Clamp((*v - mn) / (mx - mn), 0.0f, 1.0f);
+		s_frac[idx] = Smooth(s_frac[idx], target, dt, dragging ? 40.0f : 14.0f);
+		const float fr = s_frac[idx];
+
+		// kart
+		Fill(row, Col(25, 29, 43, 255), S(13.0f));
+		if (dragging) Stroke(row, Accent(fr, 150), S(13.0f), S(1.6f));
+
+		Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(205, 212, 230), label);
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%.0f%%", *v);
+		TxtB(S(18.0f), row.x + row.w - S(16.0f) - TW(S(18.0f), buf), row.y + S(7.0f), Accent(fr), buf);
+
+		// - / + duymeleri
+		const float pm = Prs(id + 1, dt), pp = Prs(id + 2, dt);
+		Dot(minus.x + minus.w * 0.5f, cy, S(15.0f) - S(1.5f) * pm, Col(255, 255, 255, 16 + (int)(40.0f * pm)));
+		Dot(plus.x + plus.w * 0.5f,  cy, S(15.0f) - S(1.5f) * pp, Col(255, 255, 255, 16 + (int)(40.0f * pp)));
+		{
+			const float k = S(5.5f), mcx = minus.x + minus.w * 0.5f, pcx = plus.x + plus.w * 0.5f;
+			s_dl->AddLine(ImVec2(mcx - k, cy), ImVec2(mcx + k, cy), Col(235, 238, 248, 230), S(2.2f));
+			s_dl->AddLine(ImVec2(pcx - k, cy), ImVec2(pcx + k, cy), Col(235, 238, 248, 230), S(2.2f));
+			s_dl->AddLine(ImVec2(pcx, cy - k), ImVec2(pcx, cy + k), Col(235, 238, 248, 230), S(2.2f));
+		}
+
+		// yol (track)
+		const float th = S(8.0f), ty = cy - th * 0.5f;
+		Fill(Rc{ tx0, ty, tx1 - tx0, th }, Col(255, 255, 255, 24), S(4.0f));
+		const float kx = tx0 + (tx1 - tx0) * fr;
+		if (kx - tx0 > 1.0f) Fill(Rc{ tx0, ty, kx - tx0, th }, Accent(fr), S(4.0f));
+
+		// "standart (100%)" ish
+		if (mn < 100.0f && mx > 100.0f) {
+			const float sx = tx0 + (tx1 - tx0) * ((100.0f - mn) / (mx - mn));
+			s_dl->AddLine(ImVec2(sx, ty - S(6.0f)), ImVec2(sx, ty + th + S(6.0f)), Col(255, 255, 255, 70), S(1.6f));
+		}
+
+		// topuz
+		const float kr = S(12.0f) + (dragging ? S(3.0f) : 0.0f);
+		if (dragging) Dot(kx, cy, kr + S(9.0f), Accent(fr, 55));
+		Dot(kx, cy, kr, Col(255, 255, 255, 255));
+		Dot(kx, cy, kr * 0.45f, Accent(fr));
+
+		return changed;
+	}
+}
+
 void RenderHandlingDialog()
 {
+	using namespace mm;
+
 	static bool          s_wasOpen = false;
 	static CVehicleGTA*  s_lastVeh = nullptr;
 	static VehTune       s_tune;
 
-	// pencere veziyyeti (baglanib-acilanda yadda qalir)
-	static bool   s_winInit   = false;
-	static bool   s_collapsed = false;
-	static ImVec2 s_winPos(0.0f, 0.0f);
-	static ImVec2 s_winSize(0.0f, 0.0f);
-	static ImVec2 s_dragOff(0.0f, 0.0f);
-	static ImVec2 s_rsMouse0(0.0f, 0.0f);
-	static ImVec2 s_rsSize0(0.0f, 0.0f);
+	static float s_t = 0.0f;                 // acilma/baglanma animasiyasi 0..1
+	static float s_cx = -1.0f, s_cy = -1.0f; // panel merkezi
+	static float s_zoom = 1.0f;              // istifadeci olcusu
+	static int   s_page = 0;
+	static float s_pageAnim = 1.0f;
+	static float s_navRel = 74.0f;           // sidebar gostericisi (u vahidinde)
+	static float s_flash = 0.0f;
+	static float s_dragDx = 0.0f, s_dragDy = 0.0f;
+	static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
 
-	if (!g_bShowHandlingDlg) {
+	// ---- real vaxt ----
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	float dt = std::chrono::duration<float>(now - s_last).count();
+	s_last = now;
+	dt = Clamp(dt, 0.0f, 0.05f);
+
+	const bool want = g_bShowHandlingDlg;
+	if (!want && s_t <= 0.0f) {
 		s_wasOpen = false;
 		s_hndRectValid = false;
+		s_act = 0;
 		return;
 	}
 
-	CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-	if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-		g_bShowHandlingDlg = false;
-		s_wasOpen = false;
-		s_hndRectValid = false;
-		return;
-	}
+	CVehicleGTA* gtaVeh = s_lastVeh;
 
-	CVehicle* pVeh = nullptr;
-	if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
-		CVehiclePool* pPool = pNetGame->GetVehiclePool();
-		VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
-		if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
-	}
+	if (want)
+	{
+		CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+		if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+			g_bShowHandlingDlg = false;
+			s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
+			return;
+		}
 
-	if (!pVeh || !pVeh->m_pVehicle) {
-		s_hndRectValid = false;
-		return;
-	}
+		CVehicle* pVeh = nullptr;
+		if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+			CVehiclePool* pPool = pNetGame->GetVehiclePool();
+			VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+			if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+		}
 
-	CVehicleGTA* gtaVeh = pVeh->m_pVehicle;
+		if (!pVeh || !pVeh->m_pVehicle) {
+			s_hndRectValid = false;
+			return;
+		}
 
-	// Yeni acilis ve ya basqa masin -> deyerleri bu masinin real veziyyetinden oxu
-	if (!s_wasOpen || gtaVeh != s_lastVeh) {
-		s_tune    = VehTuner::Get(gtaVeh);
-		s_lastVeh = gtaVeh;
-		s_wasOpen = true;
-		HND_LOG("[HND] dialog opened");
+		gtaVeh = pVeh->m_pVehicle;
+
+		// Yeni acilis ve ya basqa masin -> deyerleri masinin real veziyyetinden oxu
+		if (!s_wasOpen || gtaVeh != s_lastVeh) {
+			s_tune    = VehTuner::Get(gtaVeh);
+			s_lastVeh = gtaVeh;
+			s_wasOpen = true;
+			for (int i = 0; i < 8; ++i) s_frac[i] = 0.0f;
+			s_pageAnim = 0.0f;
+			HND_LOG("[HND] dialog opened");
+		}
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
+	const ImVec2 disp = io.DisplaySize;
+
+	// ---- animasiya zamani ----
+	s_t = Clamp(s_t + (want ? dt / 0.32f : -dt / 0.22f), 0.0f, 1.0f);
+	const float eAnim = want ? EaseOutBack(s_t) : EaseOutCubic(s_t);
+	s_A = Clamp(s_t * 2.0f, 0.0f, 1.0f);
+	s_pageAnim = Clamp(s_pageAnim + dt / 0.30f, 0.0f, 1.0f);
+	s_flash = Clamp(s_flash - dt / 1.4f, 0.0f, 1.0f);
 
 	// ---- olculer ----
-	const ImVec2 disp     = io.DisplaySize;
-	const float  baseFont = ImGui::GetFont()->FontSize;     // miqyassiz esas srift
-	const float  fs  = std::min(1.0f, (disp.y * 0.94f) / (baseFont * 20.0f));
-	const float  f   = baseFont * fs;
-	const float  pad = f * 0.6f;
-	const float  hh  = f * 2.6f;       // basliq hundurluyu
-	const float  bw  = f * 2.6f;       // basliq dugmesi eni
-	const float  footerH = f * 2.4f + pad;
+	const float W0 = 880.0f, H0 = 560.0f;
+	float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+	u0 *= s_zoom;
+	u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
+	s_U = u0 * (0.86f + 0.14f * eAnim);
 
-	if (!s_winInit) {
-		s_winSize = ImVec2(std::min(disp.x * 0.62f, f * 34.0f), std::min(disp.y * 0.88f, f * 19.0f));
-		s_winPos  = ImVec2((disp.x - s_winSize.x) * 0.5f, (disp.y - s_winSize.y) * 0.5f);
-		s_winInit = true;
-	}
+	if (s_cx < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
 
-	// olcu ve movqe hududlari
-	s_winSize.x = std::max(f * 18.0f, std::min(s_winSize.x, disp.x * 0.98f));
-	s_winSize.y = std::max(f * 10.0f, std::min(s_winSize.y, disp.y * 0.98f));
-	const ImVec2 eff(s_winSize.x, s_collapsed ? (hh + pad) : s_winSize.y);
-	s_winPos.x = std::max(0.0f, std::min(s_winPos.x, std::max(0.0f, disp.x - eff.x)));
-	s_winPos.y = std::max(0.0f, std::min(s_winPos.y, std::max(0.0f, disp.y - eff.y)));
+	auto clampCenter = [&]() {
+		const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+		s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+		s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+	};
+	clampCenter();
 
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, f * 0.3f);
-	ImGui::SetNextWindowPos(s_winPos, ImGuiCond_Always);
-	ImGui::SetNextWindowSize(eff, ImGuiCond_Always);
+	const bool canInput = want && s_t > 0.75f;
+	const MMTouch& tch = g_mmTouch;
 
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-	                               ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoCollapse |
-	                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-	                               ImGuiWindowFlags_NoScrollWithMouse;
+	auto panelRect = [&]() { return Rc{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U }; };
+	Rc P = panelRect();
 
-	if (ImGui::Begin("##VehicleHandlingEditor", nullptr, flags))
+	// ---- panel surukleme (basliqdan) ----
 	{
-		ImGui::SetWindowFontScale(fs);
-
-		s_hndPos       = ImGui::GetWindowPos();
-		s_hndSize      = ImGui::GetWindowSize();
-		s_hndRectValid = true;
-
-		ImDrawList* dl = ImGui::GetWindowDrawList();
-		const ImVec2 wp = ImGui::GetWindowPos();
-		const float  ww = ImGui::GetWindowWidth();
-
-		// ---------------- BASLIQ ----------------
-		dl->AddRectFilled(wp, ImVec2(wp.x + ww, wp.y + hh), IM_COL32(25, 55, 105, 255));
-
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-		ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-
-		// surukleme zonasi
-		ImGui::InvisibleButton("##hnd_drag", ImVec2(std::max(1.0f, ww - bw * 4.0f), hh));
-		if (ImGui::IsItemActivated()) {
-			s_dragOff = ImVec2(io.MousePos.x - s_winPos.x, io.MousePos.y - s_winPos.y);
-		}
-		if (ImGui::IsItemActive()) {
-			s_winPos = ImVec2(io.MousePos.x - s_dragOff.x, io.MousePos.y - s_dragOff.y);
-		}
-		dl->AddText(ImVec2(wp.x + pad, wp.y + (hh - f) * 0.5f), IM_COL32(255, 255, 255, 255), "Handling Editor APACHES");
-
-		const ImVec2 hb(bw, hh);
-		ImGui::SameLine(0.0f, 0.0f);
-		if (ImGui::Button("H-", hb)) s_winSize.y -= f * 2.5f;
-		ImGui::SameLine(0.0f, 0.0f);
-		if (ImGui::Button("H+", hb)) s_winSize.y += f * 2.5f;
-		ImGui::SameLine(0.0f, 0.0f);
-		if (ImGui::Button(s_collapsed ? "[]" : "-", hb)) s_collapsed = !s_collapsed;
-		ImGui::SameLine(0.0f, 0.0f);
-		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.15f, 0.15f, 1.0f));
-		if (ImGui::Button("X", hb)) g_bShowHandlingDlg = false;
-		ImGui::PopStyleColor();
-		ImGui::PopStyleVar();   // FrameRounding
-
-		// ---------------- GOVDE ----------------
-		if (!s_collapsed)
-		{
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(f * 0.5f, f * 0.45f));
-			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,   ImVec2(f * 0.6f, f * 0.45f));
-			ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize,   f * 1.6f);
-			ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, f * 1.1f);
-
-			// sehife duymeleri
-			static int s_page = 0;
-			ImGui::SetCursorPos(ImVec2(pad, hh + pad));
-			{
-				static const char* kPages[4] = { "Muherrik", "Idare", "Asma", "Far" };
-				const float spc = ImGui::GetStyle().ItemSpacing.x;
-				const float tw  = (ww - pad * 2.0f - spc * 3.0f) / 4.0f;
-				for (int i = 0; i < 4; ++i) {
-					if (i) ImGui::SameLine();
-					const bool sel = (s_page == i);
-					if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
-					if (ImGui::Button(kPages[i], ImVec2(tw, f * 2.2f))) s_page = i;
-					if (sel) ImGui::PopStyleColor();
-				}
+		const Rc dragRc{ P.x, P.y, P.w - S(168.0f), S(56.0f) };
+		if (canInput) {
+			if (tch.pressed && s_act == 0 && In(dragRc, tch.x, tch.y)) {
+				s_act = ID_DRAG;
+				s_dragDx = tch.x - s_cx;
+				s_dragDy = tch.y - s_cy;
 			}
-
-			ImGui::SetCursorPosX(pad);
-			ImGui::BeginChild("##hnd_body", ImVec2(-pad, -footerH), false);
-
-			bool changed = false;
-
-			struct Spec { const char* label; const char* id; float* v; float mn; float mx; };
-
-			auto drawSpecs = [&](const Spec* s, int n)
-			{
-				const int cols = (ImGui::GetContentRegionAvail().x > f * 26.0f) ? 2 : 1;
-				if (cols == 2) ImGui::Columns(2, "##hnd_cols", false);
-				const int half = (n + 1) / 2;
-				for (int i = 0; i < n; ++i) {
-					if (cols == 2 && i == half) ImGui::NextColumn();
-					ImGui::TextUnformatted(s[i].label);
-					ImGui::PushItemWidth(-1.0f);
-					if (ImGui::SliderFloat(s[i].id, s[i].v, s[i].mn, s[i].mx, "%.0f%%")) changed = true;
-					ImGui::PopItemWidth();
-				}
-				if (cols == 2) ImGui::Columns(1);
-			};
-
-			ImGui::TextUnformatted("HANDLING DƏYİŞİCİ");
-
-			if (s_page == 0)          // MUHERRIK
-			{
-				const Spec sp[] = {
-					{ "Yerinden Goturme (Tecil)",  "##acc", &s_tune.accelPct,   30.0f, 400.0f },
-					{ "Maks. Suret",               "##spd", &s_tune.speedPct,   50.0f, 250.0f },
-					{ "Muherrik Ataleti (az=tez)", "##ine", &s_tune.inertiaPct, 20.0f, 300.0f },
-					{ "Ceki / Kutle",              "##mas", &s_tune.massPct,    30.0f, 300.0f },
-					{ "Hava Muqavimeti",           "##drg", &s_tune.dragPct,    20.0f, 300.0f },
-				};
-				drawSpecs(sp, 5);
+			if (s_act == ID_DRAG && tch.down) {
+				s_cx = tch.x - s_dragDx;
+				s_cy = tch.y - s_dragDy;
+				clampCenter();
+				P = panelRect();
 			}
-			else if (s_page == 1)     // IDAREETME
-			{
-				const Spec sp[] = {
-					{ "Tormoz Gucu",                "##brk", &s_tune.brakePct,    30.0f, 300.0f },
-					{ "Manevr Bucagi",              "##str", &s_tune.steerPct,    50.0f, 150.0f },
-					{ "Yapisma (Traction)",         "##trc", &s_tune.tractionPct, 50.0f, 200.0f },
-					{ "Surusme Itkisi (az=yaxsi)",  "##trl", &s_tune.tracLossPct, 20.0f, 200.0f },
-					{ "Firlanma Ataleti",           "##trn", &s_tune.turnPct,     30.0f, 300.0f },
-				};
-				drawSpecs(sp, 5);
-			}
-			else if (s_page == 2)     // ASMA / ZERBE
-			{
-				const Spec sp[] = {
-					{ "Asma Gucu",           "##sf",  &s_tune.suspForcePct, 30.0f, 300.0f },
-					{ "Asma Sonduruculeri",  "##sd",  &s_tune.suspDampPct,  30.0f, 300.0f },
-					{ "Toqqusma Zereri",     "##col", &s_tune.collisionPct, 10.0f, 300.0f },
-				};
-				drawSpecs(sp, 3);
-			}
-			else                      // FAR RENGI (sonra tamamlanacaq)
-			{
-				if (s_tune.headlight == 0) ImGui::TextUnformatted("Far Rengi: Standart");
-				else                       ImGui::Text("Far Rengi: #%d", (int)s_tune.headlight);
-
-				const ImVec2 bs(f * 2.2f, f * 2.2f);
-				for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
-				{
-					uint8_t r, g, b;
-					VehTuner::GetPaletteColor(i, r, g, b);
-
-					ImGui::PushID(i);
-					if (i % 8 != 0) ImGui::SameLine();
-
-					const ImVec4 col(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
-					if (ImGui::ColorButton("##hl", col, ImGuiColorEditFlags_NoTooltip, bs)) {
-						s_tune.headlight = (uint8_t)i;
-						changed = true;
-					}
-					if (s_tune.headlight == i) {
-						ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-						                                    IM_COL32(255, 255, 255, 255), 0.0f, 0, f * 0.18f);
-					}
-					ImGui::PopID();
-				}
-			}
-
-			ImGui::EndChild();
-
-			// ---------------- ALT SIRA: Sifirla + olcu kunci ----------------
-			ImGui::SetCursorPosX(pad);
-			if (ImGui::Button("Sifirla", ImVec2(f * 8.0f, f * 2.4f))) {
-				VehTuner::Reset(gtaVeh);
-				s_tune = VehTune();
-				changed = false;
-				if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart deyerler qaytarildi.");
-			}
-
-			const float gripS = f * 2.4f;
-			ImGui::SameLine(ImGui::GetWindowWidth() - pad - gripS);
-			ImGui::InvisibleButton("##hnd_grip", ImVec2(gripS, gripS));
-			if (ImGui::IsItemActivated()) {
-				s_rsMouse0 = io.MousePos;
-				s_rsSize0  = s_winSize;
-			}
-			if (ImGui::IsItemActive()) {
-				s_winSize.x = s_rsSize0.x + (io.MousePos.x - s_rsMouse0.x);
-				s_winSize.y = s_rsSize0.y + (io.MousePos.y - s_rsMouse0.y);
-			}
-			{
-				const ImVec2 a = ImGui::GetItemRectMin();
-				const ImVec2 b = ImGui::GetItemRectMax();
-				const ImU32  gc = ImGui::IsItemActive() ? IM_COL32(255, 255, 255, 255) : IM_COL32(180, 180, 180, 255);
-				dl->AddTriangleFilled(ImVec2(b.x, a.y + gripS * 0.2f), b, ImVec2(a.x + gripS * 0.2f, b.y), gc);
-			}
-
-			// Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
-			if (changed) VehTuner::Set(gtaVeh, s_tune);
-
-			ImGui::PopStyleVar(4);
 		}
 	}
-	ImGui::End();
-	ImGui::PopStyleVar(2);   // WindowPadding + WindowRounding
+
+	s_hndRectValid = (s_t > 0.05f);
+	s_hndPos  = ImVec2(P.x, P.y);
+	s_hndSize = ImVec2(P.w, P.h);
+
+	s_dl = ImGui::GetForegroundDrawList();
+
+	// ======================= CIZGI =======================
+	// kolge
+	for (int k = 0; k < 5; ++k) {
+		const float e = S(4.0f + k * 5.0f);
+		Fill(Rc{ P.x - e, P.y - e + S(6.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 20 - k * 3), S(24.0f) + e);
+	}
+	// panel
+	Fill(P, Col(14, 16, 26, 240), S(22.0f));
+	Stroke(P, Col(255, 255, 255, 26), S(22.0f), S(1.2f));
+
+	// --- basliq ---
+	{
+		const Rc logo{ P.x + S(20.0f), P.y + S(11.0f), S(34.0f), S(34.0f) };
+		Fill(logo, Accent(0.1f), S(10.0f));
+		Fill(Shrink(logo, S(1.5f)), Accent(0.9f, 90), S(9.0f));
+		TxtC(S(20.0f), logo, Col(255, 255, 255), "M", true);
+		TxtB(S(21.0f), P.x + S(66.0f), P.y + S(8.0f), Col(240, 244, 255), "MOD MENU");
+		Txt(S(13.0f), P.x + S(66.0f), P.y + S(32.0f), Col(130, 140, 170), "v1.0  |  canlı tənzimləmə");
+
+		const Rc bClose{ P.x + P.w - S(54.0f),  P.y + S(10.0f), S(36.0f), S(36.0f) };
+		const Rc bZoomP{ P.x + P.w - S(100.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+		const Rc bZoomM{ P.x + P.w - S(146.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+
+		if (Tap(ID_CLOSE, bClose, canInput)) { g_bShowHandlingDlg = false; HND_LOG("[HND] close"); }
+		if (Tap(ID_ZOOMP, bZoomP, canInput)) s_zoom = Clamp(s_zoom + 0.1f, 0.6f, 1.4f);
+		if (Tap(ID_ZOOMM, bZoomM, canInput)) s_zoom = Clamp(s_zoom - 0.1f, 0.6f, 1.4f);
+
+		HeaderBtn(ID_ZOOMM, bZoomM, dt, "A-", false);
+		HeaderBtn(ID_ZOOMP, bZoomP, dt, "A+", false);
+		HeaderBtn(ID_CLOSE, bClose, dt, "", true);
+
+		// basliq altindaki rengli xett
+		s_dl->AddRectFilledMultiColor(ImVec2(P.x + S(1.0f), P.y + S(58.0f)), ImVec2(P.x + P.w - S(1.0f), P.y + S(60.0f)),
+		                              Accent(0.0f, 200), Accent(1.0f, 200), Accent(1.0f, 200), Accent(0.0f, 200));
+	}
+
+	// --- sidebar ---
+	static const char* kPages[4]  = { "Mühərrik", "İdarəetmə", "Asma", "Far" };
+	static const char* kSubs[4]   = { "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi" };
+	{
+		s_navRel = Smooth(s_navRel, 74.0f + 60.0f * s_page, dt, 16.0f);
+		const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(52.0f) };
+		Fill(ind, Accent(0.2f, 50), S(13.0f));
+		Fill(Rc{ ind.x, ind.y + S(13.0f), S(4.0f), S(26.0f) }, Accent(0.2f), S(2.0f));
+
+		for (int i = 0; i < 4; ++i)
+		{
+			const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 60.0f * i), S(166.0f), S(52.0f) };
+			if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
+				s_page = i;
+				s_pageAnim = 0.0f;
+				for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+			}
+			const float p = Prs(ID_NAV0 + i, dt);
+			const bool  on = (s_page == i);
+			Dot(it.x + S(26.0f), it.y + it.h * 0.5f, S(5.0f) + S(1.0f) * p, on ? Accent(0.2f) : Col(120, 130, 160, 160));
+			if (on) TxtB(S(18.0f), it.x + S(44.0f), it.y + (it.h - S(18.0f)) * 0.5f, Col(245, 248, 255), kPages[i]);
+			else    Txt (S(18.0f), it.x + S(44.0f), it.y + (it.h - S(18.0f)) * 0.5f, Col(150, 158, 182), kPages[i]);
+		}
+		s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 18), S(1.0f));
+	}
+
+	// --- mezmun ---
+	bool changed = false;
+	{
+		const float pe = EaseOutCubic(s_pageAnim);
+		const float ox = (1.0f - pe) * S(26.0f);
+		const float cx0 = P.x + S(220.0f) + ox;
+		const float cw  = S(636.0f);
+		const float saveA = s_A;
+		s_A = saveA * pe;
+
+		TxtB(S(24.0f), cx0, P.y + S(68.0f), Col(244, 247, 255), kPages[s_page]);
+		Txt(S(14.0f), cx0, P.y + S(98.0f), Col(125, 135, 165), kSubs[s_page]);
+
+		struct Spec { const char* label; float* v; float mn; float mx; };
+
+		if (s_page == 3)
+		{
+			char hb[40];
+			if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far rəngi: Standart");
+			else                       snprintf(hb, sizeof(hb), "Far rəngi: #%d", (int)s_tune.headlight);
+			Txt(S(17.0f), cx0, P.y + S(128.0f), Col(205, 212, 230), hb);
+
+			for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+			{
+				uint8_t r, g, b;
+				VehTuner::GetPaletteColor(i, r, g, b);
+
+				const int   col = i % 8, rowi = i / 8;
+				const float cxs = cx0 + S(24.0f) + col * S(58.0f);
+				const float cys = P.y + S(190.0f) + rowi * S(58.0f);
+				const Rc    sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+
+				const int sid = ID_SWATCH + std::min(i, 23);
+				if (Tap(sid, sq, canInput)) { s_tune.headlight = (uint8_t)i; changed = true; }
+
+				const float p = Prs(sid, dt);
+				Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
+				if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 235), 28, S(2.4f));
+			}
+		}
+		else
+		{
+			Spec sp[5];
+			int  n = 0;
+			if (s_page == 0) {
+				sp[n++] = { "Yerindən götürmə (təcil)",    &s_tune.accelPct,   30.0f, 400.0f };
+				sp[n++] = { "Maksimum sürət",              &s_tune.speedPct,   50.0f, 250.0f };
+				sp[n++] = { "Mühərrik ətaləti (az = tez)", &s_tune.inertiaPct, 20.0f, 300.0f };
+				sp[n++] = { "Çəki / kütlə",                &s_tune.massPct,    30.0f, 300.0f };
+				sp[n++] = { "Hava müqaviməti",             &s_tune.dragPct,    20.0f, 300.0f };
+			} else if (s_page == 1) {
+				sp[n++] = { "Tormoz gücü",                 &s_tune.brakePct,    30.0f, 300.0f };
+				sp[n++] = { "Manevr bucağı",               &s_tune.steerPct,    50.0f, 150.0f };
+				sp[n++] = { "Yol tutuş (traction)",        &s_tune.tractionPct, 50.0f, 200.0f };
+				sp[n++] = { "Sürüşmə itkisi (az = yaxşı)", &s_tune.tracLossPct, 20.0f, 200.0f };
+				sp[n++] = { "Fırlanma ətaləti",            &s_tune.turnPct,     30.0f, 300.0f };
+			} else {
+				sp[n++] = { "Asma gücü",                   &s_tune.suspForcePct, 30.0f, 300.0f };
+				sp[n++] = { "Asma amortizatorları",        &s_tune.suspDampPct,  30.0f, 300.0f };
+				sp[n++] = { "Toqquşma zərəri",             &s_tune.collisionPct, 10.0f, 300.0f };
+			}
+
+			for (int i = 0; i < n; ++i) {
+				const Rc row{ cx0, P.y + S(124.0f + 72.0f * i), cw, S(66.0f) };
+				if (SliderRow(i, row, sp[i].label, sp[i].v, sp[i].mn, sp[i].mx, dt, canInput)) changed = true;
+			}
+		}
+
+		// --- alt sira: Sifirla + status ---
+		const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
+		if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
+			VehTuner::Reset(gtaVeh);
+			s_tune = VehTune();
+			changed = false;
+			s_flash = 1.0f;
+			for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+			if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart dəyərlər qaytarıldı.");
+		}
+		const float rp = Prs(ID_RESET, dt);
+		const Rc rd = Shrink(rb, S(2.0f) * rp);
+		Fill(rd, Accent(0.2f, 22 + (int)(40.0f * rp)), S(12.0f));
+		Stroke(rd, Accent(0.2f, 190), S(12.0f), S(1.6f));
+		TxtC(S(17.0f), rd, Col(235, 242, 255), "Sıfırla", true);
+
+		if (s_flash > 0.01f) {
+			const char* msg = "Tətbiq edildi";
+			Dot(cx0 + S(176.0f), rb.y + rb.h * 0.5f, S(5.0f), Col(90, 225, 145, (int)(255.0f * s_flash)));
+			Txt(S(16.0f), cx0 + S(190.0f), rb.y + (rb.h - S(16.0f)) * 0.5f, Col(120, 230, 160, (int)(255.0f * s_flash)), msg);
+		}
+
+		s_A = saveA;
+	}
+
+	// Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
+	if (changed && want && gtaVeh) {
+		VehTuner::Set(gtaVeh, s_tune);
+		s_flash = 1.0f;
+	}
+
+	if (tch.released || !tch.down) s_act = 0;
+
+#if HND_DEBUG
+	// Diaqnostika: qirmizi halqa = oyunun hesab etdiyi barmaq yeri
+	{
+		ImDrawList* d = ImGui::GetForegroundDrawList();
+		if (tch.x >= 0.0f) {
+			d->AddCircle(ImVec2(tch.x, tch.y), 22.0f, tch.down ? IM_COL32(255, 60, 60, 255) : IM_COL32(255, 220, 60, 160), 24, 3.0f);
+		}
+		char dbg[96];
+		snprintf(dbg, sizeof(dbg), "T %.0f,%.0f d%d ev%u disp %.0fx%.0f act%d", tch.x, tch.y, (int)tch.down, tch.events, disp.x, disp.y, s_act);
+		d->AddText(ImGui::GetFont(), 18.0f, ImVec2(11.0f, disp.y - 29.0f), IM_COL32(0, 0, 0, 255), dbg);
+		d->AddText(ImGui::GetFont(), 18.0f, ImVec2(10.0f, disp.y - 30.0f), IM_COL32(255, 255, 255, 255), dbg);
+	}
+#endif
 }
 
 void UI::drawList()
@@ -522,14 +685,14 @@ void UI::drawList()
 	if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());
 	if (pNetGame && pNetGame->GetPlayerBubblePool()) pNetGame->GetPlayerBubblePool()->Render(renderer());
 
-	RenderHandlingDialog();
-
 	draw(renderer());
+
+	RenderHandlingDialog();   // mod menyu hamisinin ustunde
 }
 
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
-	// Handling dialoqunun uzerine basanda alt widget-ler (chat, buttonpanel ...) toxunusu almasin
+	// Mod menyunun uzerine basanda alt widget-ler (chat, buttonpanel ...) toxunusu almasin
 	if (UI_IsPointInHandlingDlg(pos))
 		return;
 
@@ -555,7 +718,7 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 	if (type != TOUCH_MOVE)
 		HND_LOG("[HND] touch type=%d x=%d y=%d dlg=%d", type, x, y, (int)g_bShowHandlingDlg);
 
-	// "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (handling dialoqu aciq deyilse)
+	// "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
 	if (g_bHideAllUI && !g_bShowHandlingDlg && type == TOUCH_PUSH) {
 		g_bHideAllUI = false;
 		if (pUI && pUI->chat()) {

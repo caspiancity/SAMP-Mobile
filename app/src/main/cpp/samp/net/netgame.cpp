@@ -12,6 +12,19 @@
 
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
 
+// ---------------------------------------------------------------------------
+// Chat message styling (single place to change the look of all system messages)
+// ---------------------------------------------------------------------------
+#define CLR_BRAND   "{FF8000}"   // brand / prefix
+#define CLR_TEXT    "{E6E6E6}"   // normal text
+#define CLR_VALUE   "{FFFFFF}"   // highlighted values
+#define CLR_OK      "{4CD964}"   // success
+#define CLR_INFO    "{5AC8FA}"   // information
+#define CLR_WARN    "{FFCC00}"   // warning / retry
+#define CLR_ERR     "{FF453A}"   // error
+
+#define MSG_PREFIX  CLR_BRAND "APACHE ONLINE " CLR_TEXT "» "
+
 extern UI* pUI;
 extern CGame* pGame;
 extern CAudioStream* pAudioStream;
@@ -31,202 +44,196 @@ void InstallVehicleEngineLightPatches();
 // 0.3.7
 unsigned char GetPacketID(Packet *p)
 {
-	if (p == 0) return 255;
+    if (p == 0) return 255;
 
-	if ((unsigned char)p->data[0] == ID_TIMESTAMP)
-		return (unsigned char)p->data[sizeof(unsigned char) + sizeof(unsigned long)];
-	else
-		return (unsigned char)p->data[0];
+    if ((unsigned char)p->data[0] == ID_TIMESTAMP)
+        return (unsigned char)p->data[sizeof(unsigned char) + sizeof(unsigned long)];
+    else
+        return (unsigned char)p->data[0];
 }
 
 extern CJavaWrapper *pJavaWrapper;
 
 CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, const char* szPass)
 {
-	FLog("CNetGame initializing..");
+    FLog("CNetGame initializing..");
 
-	m_pNetSet = new NET_SETTINGS;
-	memset(m_szHostName, 0, 256);
-	memset(m_szHostOrIp, 0, 256);
+    m_pNetSet = new NET_SETTINGS;
+    memset(m_szHostName, 0, sizeof(m_szHostName));
+    memset(m_szHostOrIp, 0, sizeof(m_szHostOrIp));
 
-	strcpy(m_szHostName, "APACHE ONLINE");
-	strncpy(m_szHostOrIp, szHostOrIp, sizeof(m_szHostOrIp));
-	m_iPort = iPort;
+    strcpy(m_szHostName, "APACHE ONLINE");
+    strncpy(m_szHostOrIp, szHostOrIp, sizeof(m_szHostOrIp) - 1);
+    m_iPort = iPort;
 
-	m_pRakClient = RakNetworkFactory::GetRakClientInterface();
-	InitializePools();
+    m_pRakClient = RakNetworkFactory::GetRakClientInterface();
+    InitializePools();
 
-	GetPlayerPool()->SetLocalPlayerName(szPlayerName);
+    GetPlayerPool()->SetLocalPlayerName(szPlayerName);
 
-	RegisterRPCs(m_pRakClient);
-	RegisterScriptRPCs(m_pRakClient);
-	m_pRakClient->SetPassword(szPass);
+    RegisterRPCs(m_pRakClient);
+    RegisterScriptRPCs(m_pRakClient);
+    m_pRakClient->SetPassword(szPass);
 
-	memset(m_dwMapIcon, 0, sizeof(m_dwMapIcon));
+    memset(m_dwMapIcon, 0, sizeof(m_dwMapIcon));
 
-	pGame->EnableClock(false);
-	pGame->EnableZoneNames(false);
+    pGame->EnableClock(false);
+    pGame->EnableZoneNames(false);
 
-	m_pNetSet->iDeathDropMoney = 0;
-	m_pNetSet->iSpawnsAvailable = 0;
-	m_pNetSet->bNameTagLOS = 0;
-	m_pNetSet->byteHoldTime = true;
-	m_pNetSet->bUseCJWalk = 0;
-	m_pNetSet->bDisableInteriorEnterExits = 0;
-	m_pNetSet->bZoneNames = false;
-	m_pNetSet->bInstagib = false;
-	m_pNetSet->fNameTagDrawDistance = 70.0f;
-	m_pNetSet->bFriendlyFire = true;
-	m_pNetSet->byteWorldTime_Hour = 12;
-	m_pNetSet->byteWorldTime_Minute = 0;
-	m_pNetSet->byteWeather = 1;
-	m_pNetSet->fGravity = 0.008f;
-	m_bNameTagStatus = true;
+    m_pNetSet->iDeathDropMoney = 0;
+    m_pNetSet->iSpawnsAvailable = 0;
+    m_pNetSet->bNameTagLOS = 0;
+    m_pNetSet->byteHoldTime = true;
+    m_pNetSet->bUseCJWalk = 0;
+    m_pNetSet->bDisableInteriorEnterExits = 0;
+    m_pNetSet->bZoneNames = false;
+    m_pNetSet->bInstagib = false;
+    m_pNetSet->fNameTagDrawDistance = 70.0f;
+    m_pNetSet->bFriendlyFire = true;
+    m_pNetSet->byteWorldTime_Hour = 12;
+    m_pNetSet->byteWorldTime_Minute = 0;
+    m_pNetSet->byteWeather = 1;
+    m_pNetSet->fGravity = 0.008f;
+    m_bNameTagStatus = true;
 
-	m_dwLastConnectAttempt = GetTickCount();
-	SetGameState(GAMESTATE_WAIT_CONNECT);
-	m_bLanMode = false;
+    m_dwLastConnectAttempt = GetTickCount();
+    SetGameState(GAMESTATE_WAIT_CONNECT);
+    m_bLanMode = false;
 
     pJavaWrapper->HideLoadingScreen();
 
     const char* sampVer = SAMP_VERSION;
-    if(pSettings)
+    if (pSettings)
         sampVer = pSettings->Get().szVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{FF8000}[APACHE ONLINE] {00FFFF}Kliyent versiyası {FFFFFF}%s {00FFFF}uğurla başladıldı!", sampVer);
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_INFO "Klient versiyası " CLR_VALUE "%s" CLR_INFO " uğurla yükləndi.", sampVer);
 }
 
 CNetGame::~CNetGame()
 {
-	m_pRakClient->Disconnect(0);
-	UnregisterRPCs(m_pRakClient);
-	UnregisterScriptRPCs(m_pRakClient);
-	RakNetworkFactory::DestroyRakClientInterface(m_pRakClient);
+    m_pRakClient->Disconnect(0);
+    UnregisterRPCs(m_pRakClient);
+    UnregisterScriptRPCs(m_pRakClient);
+    RakNetworkFactory::DestroyRakClientInterface(m_pRakClient);
 
-	UninitializePools();
+    UninitializePools();
 
-	if (m_pNetSet) {
-		delete m_pNetSet;
-		m_pNetSet = nullptr;
-	}
+    if (m_pNetSet) {
+        delete m_pNetSet;
+        m_pNetSet = nullptr;
+    }
 }
 
 void CNetGame::InitializePools()
 {
-	m_pPools = new NET_POOLS;
-	m_pPools->pPlayerPool = new CPlayerPool();
-	m_pPools->pVehiclePool = new CVehiclePool();
-	m_pPools->pGangZonePool = new CGangZonePool();
-	m_pPools->pPickupPool = new CPickupPool();
-	m_pPools->pObjectPool = new CObjectPool();
-	m_pPools->pTextLabelPool = new C3DTextLabelPool();
-	m_pPools->pTextDrawPool = new CTextDrawPool();
-	m_pPools->pActorPool = new CActorPool();
-	m_pPools->pMenuPool = new CMenuPool();
-	m_pPools->pPlayerBubblePool = new CPlayerBubblePool();
+    m_pPools = new NET_POOLS;
+    m_pPools->pPlayerPool = new CPlayerPool();
+    m_pPools->pVehiclePool = new CVehiclePool();
+    m_pPools->pGangZonePool = new CGangZonePool();
+    m_pPools->pPickupPool = new CPickupPool();
+    m_pPools->pObjectPool = new CObjectPool();
+    m_pPools->pTextLabelPool = new C3DTextLabelPool();
+    m_pPools->pTextDrawPool = new CTextDrawPool();
+    m_pPools->pActorPool = new CActorPool();
+    m_pPools->pMenuPool = new CMenuPool();
+    m_pPools->pPlayerBubblePool = new CPlayerBubblePool();
 }
 
 void CNetGame::UninitializePools()
 {
-	if (m_pPools->pPlayerPool) {
-		delete m_pPools->pPlayerPool;
-		m_pPools->pPlayerPool = nullptr;
-	}
+    if (!m_pPools) return;
 
-	if (m_pPools->pVehiclePool) {
-		delete m_pPools->pVehiclePool;
-		m_pPools->pVehiclePool = nullptr;
-	}
+    if (m_pPools->pPlayerPool) {
+        delete m_pPools->pPlayerPool;
+        m_pPools->pPlayerPool = nullptr;
+    }
 
-	if (m_pPools->pGangZonePool) {
-		delete m_pPools->pGangZonePool;
-		m_pPools->pGangZonePool = nullptr;
-	}
+    if (m_pPools->pVehiclePool) {
+        delete m_pPools->pVehiclePool;
+        m_pPools->pVehiclePool = nullptr;
+    }
 
-	if (m_pPools->pPickupPool) {
-		delete m_pPools->pPickupPool;
-		m_pPools->pPickupPool = nullptr;
-	}
+    if (m_pPools->pGangZonePool) {
+        delete m_pPools->pGangZonePool;
+        m_pPools->pGangZonePool = nullptr;
+    }
 
-	if (m_pPools->pObjectPool) {
-		delete m_pPools->pObjectPool;
-		m_pPools->pObjectPool = nullptr;
-	}
+    if (m_pPools->pPickupPool) {
+        delete m_pPools->pPickupPool;
+        m_pPools->pPickupPool = nullptr;
+    }
 
-	if (m_pPools->pTextLabelPool) {
-		delete m_pPools->pTextLabelPool;
-		m_pPools->pTextLabelPool = nullptr;
-	}
+    if (m_pPools->pObjectPool) {
+        delete m_pPools->pObjectPool;
+        m_pPools->pObjectPool = nullptr;
+    }
 
-	if (m_pPools->pTextDrawPool) {
-		delete m_pPools->pTextDrawPool;
-		m_pPools->pTextDrawPool = nullptr;
-	}
+    if (m_pPools->pTextLabelPool) {
+        delete m_pPools->pTextLabelPool;
+        m_pPools->pTextLabelPool = nullptr;
+    }
 
-	if (m_pPools->pActorPool) {
-		delete m_pPools->pActorPool;
-		m_pPools->pActorPool = nullptr;
-	}
+    if (m_pPools->pTextDrawPool) {
+        delete m_pPools->pTextDrawPool;
+        m_pPools->pTextDrawPool = nullptr;
+    }
 
-	if (m_pPools->pMenuPool) {
-		delete m_pPools->pMenuPool;
-		m_pPools->pMenuPool = nullptr;
-	}
+    if (m_pPools->pActorPool) {
+        delete m_pPools->pActorPool;
+        m_pPools->pActorPool = nullptr;
+    }
 
-	if (m_pPools->pPlayerBubblePool)
-	{
-		delete m_pPools->pPlayerBubblePool;
-		m_pPools->pPlayerBubblePool = nullptr;
-	}
+    if (m_pPools->pMenuPool) {
+        delete m_pPools->pMenuPool;
+        m_pPools->pMenuPool = nullptr;
+    }
 
-	if (m_pPools) {
-		delete m_pPools;
-		m_pPools = nullptr;
-	}
+    if (m_pPools->pPlayerBubblePool) {
+        delete m_pPools->pPlayerBubblePool;
+        m_pPools->pPlayerBubblePool = nullptr;
+    }
 
-	if (m_pNetSet) {
-		delete m_pNetSet;
-		m_pNetSet = nullptr;
-	}
+    delete m_pPools;
+    m_pPools = nullptr;
 }
 
 void CNetGame::Process()
 {
-	static uint32_t time = GetTickCount();
-	bool bProcess = false;
-	if (GetTickCount() - time >= 1000 / 30)
-	{
-		UpdateNetwork();
-		time = GetTickCount();
-		bProcess = true;
-	}
-	if (m_pNetSet->byteHoldTime) {
-		pGame->SetWorldTime(m_pNetSet->byteWorldTime_Hour, m_pNetSet->byteWorldTime_Minute);
-	}
+    static uint32_t time = GetTickCount();
 
-	if (GetGameState() == GAMESTATE_CONNECTED) {
-		ProcessPools();
-	}
-	else {
-		ProcessLoadingScreen();
-	}
+    if (GetTickCount() - time >= 1000 / 30)
+    {
+        UpdateNetwork();
+        time = GetTickCount();
+    }
 
-	if (GetGameState() == GAMESTATE_WAIT_CONNECT) {
-		ProcessConnecting();
-	}
+    if (m_pNetSet->byteHoldTime) {
+        pGame->SetWorldTime(m_pNetSet->byteWorldTime_Hour, m_pNetSet->byteWorldTime_Minute);
+    }
+
+    if (GetGameState() == GAMESTATE_CONNECTED) {
+        ProcessPools();
+    }
+    else {
+        ProcessLoadingScreen();
+    }
+
+    if (GetGameState() == GAMESTATE_WAIT_CONNECT) {
+        ProcessConnecting();
+    }
 }
 
 void CNetGame::UpdateNetwork()
 {
-	bool breakStatus = false;
-	Packet *pkt = nullptr;
-	unsigned char packetIdentifier;
+    Packet *pkt = nullptr;
+    unsigned char packetIdentifier;
 
-	while (pkt = m_pRakClient->Receive())
-	{
-		packetIdentifier = GetPacketID(pkt);
+    while ((pkt = m_pRakClient->Receive()))
+    {
+        packetIdentifier = GetPacketID(pkt);
 
-		switch (packetIdentifier) {
+        switch (packetIdentifier) {
             case ID_AUTH_KEY:
                 Packet_AuthKey(pkt);
                 break;
@@ -306,8 +313,8 @@ void CNetGame::UpdateNetwork()
                 break;
         }
 
-		m_pRakClient->DeallocatePacket(pkt);
-	}
+        m_pRakClient->DeallocatePacket(pkt);
+    }
 }
 
 void CNetGame::Packet_CustomRPC(Packet *p) {
@@ -367,739 +374,751 @@ void CNetGame::Packet_CustomRPC(Packet *p) {
 
 void CNetGame::ShutdownForGameModeRestart()
 {
-	SpeakerList::Hide();
-	MicroIcon::Hide();
-	Network::OnRaknetDisconnect();
+    SpeakerList::Hide();
+    MicroIcon::Hide();
+    Network::OnRaknetDisconnect();
 
-	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
-	{
-		CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(playerId);
-		if (pRemotePlayer) {
-			pRemotePlayer->SetTeam(NO_TEAM);
-			pRemotePlayer->ResetAllSyncAttributes();
-		}
-	}
+    for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
+    {
+        CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(playerId);
+        if (pRemotePlayer) {
+            pRemotePlayer->SetTeam(NO_TEAM);
+            pRemotePlayer->ResetAllSyncAttributes();
+        }
+    }
 
-	GetPlayerPool()->GetLocalPlayer()->ResetAllSyncAttributes();
-	GetPlayerPool()->GetLocalPlayer()->ToggleSpectating(false);
-	GameResetStats();
+    GetPlayerPool()->GetLocalPlayer()->ResetAllSyncAttributes();
+    GetPlayerPool()->GetLocalPlayer()->ToggleSpectating(false);
+    GameResetStats();
 
-	if (pAudioStream) {
-		pAudioStream->Stop(true);
-	}
+    if (pAudioStream) {
+        pAudioStream->Stop(true);
+    }
 
-	SetGameState(GAMESTATE_RESTARTING);
-	GetPlayerPool()->DeactivateAll();
-	GetPlayerPool()->Process();
-	ResetVehiclePool();
-	ResetActorPool();
-	ResetTextDrawPool();
-	ResetGangZonePool();
-	Reset3DTextLabelPool();
-	ResetPickupPool();
-	ResetObjectPool();
-	ResetMenuPool();
+    SetGameState(GAMESTATE_RESTARTING);
+    GetPlayerPool()->DeactivateAll();
+    GetPlayerPool()->Process();
+    ResetVehiclePool();
+    ResetActorPool();
+    ResetTextDrawPool();
+    ResetGangZonePool();
+    Reset3DTextLabelPool();
+    ResetPickupPool();
+    ResetObjectPool();
+    ResetMenuPool();
 
-	m_pNetSet->bDisableInteriorEnterExits = false;
-	m_pNetSet->fNameTagDrawDistance = 70.0f;
-	m_pNetSet->byteWorldTime_Hour = 12;
-	m_pNetSet->byteWorldTime_Minute = 0;
-	m_pNetSet->byteWeather = 1;
-	m_pNetSet->byteHoldTime = 1;
-	m_pNetSet->bNameTagLOS = true;
-	m_pNetSet->bUseCJWalk = false;
-	pGame->ToggleCJWalk(false);
-	m_pNetSet->fGravity = 0.008f;
-	m_pNetSet->iDeathDropMoney = 0;
+    m_pNetSet->bDisableInteriorEnterExits = false;
+    m_pNetSet->fNameTagDrawDistance = 70.0f;
+    m_pNetSet->byteWorldTime_Hour = 12;
+    m_pNetSet->byteWorldTime_Minute = 0;
+    m_pNetSet->byteWeather = 1;
+    m_pNetSet->byteHoldTime = 1;
+    m_pNetSet->bNameTagLOS = true;
+    m_pNetSet->bUseCJWalk = false;
+    pGame->ToggleCJWalk(false);
+    m_pNetSet->fGravity = 0.008f;
+    m_pNetSet->iDeathDropMoney = 0;
 
-	pGame->m_bCheckpointsEnabled = false;
-	pGame->m_bRaceCheckpointsEnabled = false;
+    pGame->m_bCheckpointsEnabled = false;
+    pGame->m_bRaceCheckpointsEnabled = false;
 
-	pGame->FindPlayerPed()->m_pPed->SetInterior(0, true);
-	pGame->ResetLocalMoney();
-	pGame->FindPlayerPed()->SetDead();
-	pGame->FindPlayerPed()->SetArmour(0.0f);
-	pGame->EnableZoneNames(false);
-	m_pNetSet->bZoneNames = false;
-	GameResetRadarColors();
-	pGame->SetGravity(m_pNetSet->fGravity);
-	pGame->SetWantedLevel(0);
-	pGame->EnableClock(false);
+    pGame->FindPlayerPed()->m_pPed->SetInterior(0, true);
+    pGame->ResetLocalMoney();
+    pGame->FindPlayerPed()->SetDead();
+    pGame->FindPlayerPed()->SetArmour(0.0f);
+    pGame->EnableZoneNames(false);
+    m_pNetSet->bZoneNames = false;
+    GameResetRadarColors();
+    pGame->SetGravity(m_pNetSet->fGravity);
+    pGame->SetWantedLevel(0);
+    pGame->EnableClock(false);
 
-	if (pUI) pUI->chat()->addInfoMessage("{FF0000}[APACHE ONLINE] {FFFF00}Server yenidən başladılır...");
+    if (pUI) pUI->chat()->addInfoMessage(
+        MSG_PREFIX CLR_WARN "Server yenidən başladılır. Zəhmət olmasa gözləyin...");
 }
 
 int iVehiclePoolProcessFlag = 0;
 void CNetGame::ProcessPools()
 {
-	if (GetPlayerPool()) {
-		GetPlayerPool()->Process();
-	}
+    if (GetPlayerPool()) {
+        GetPlayerPool()->Process();
+    }
 
-	if(GetVehiclePool()) {
-		GetVehiclePool()->Process();
-	}
+    if (GetVehiclePool()) {
+        GetVehiclePool()->Process();
+    }
 
-	if (GetPickupPool()) {
-		GetPickupPool()->Process();
-	}
-}	
+    if (GetPickupPool()) {
+        GetPickupPool()->Process();
+    }
+}
 
 void CNetGame::ProcessLoadingScreen()
 {
-	CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
-	if (pPlayerPed->IsInVehicle()) {
-		pPlayerPed->RemoveFromVehicleAndPutAt(1093.4, -2036.5, 82.710602);
-	}
-	else {
-		pPlayerPed->m_pPed->SetPosn(1133.0504, -2038.4034, 69.099998);
-	}
+    CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
+    if (pPlayerPed->IsInVehicle()) {
+        pPlayerPed->RemoveFromVehicleAndPutAt(1093.4, -2036.5, 82.710602);
+    }
+    else {
+        pPlayerPed->m_pPed->SetPosn(1133.0504, -2038.4034, 69.099998);
+    }
 
-	CCamera::SetPosition(1093.0, -2036.0, 90.0, 0.0, 0.0, 0.0);
-	CCamera::LookAtPoint(384.0, -1557.0, 20.0, 2);
-	pGame->SetWorldWeather(1);
-	pGame->DisplayHUD(false);
+    CCamera::SetPosition(1093.0, -2036.0, 90.0, 0.0, 0.0, 0.0);
+    CCamera::LookAtPoint(384.0, -1557.0, 20.0, 2);
+    pGame->SetWorldWeather(1);
+    pGame->DisplayHUD(false);
 }
 
 void CNetGame::ProcessConnecting()
 {
-	if (GetTickCount() - m_dwLastConnectAttempt > 1000)
-	{
-		if (pUI) pUI->chat()->addDebugMessage("{00FF00}[APACHE ONLINE] {FFFFFF}Serverə qoşululur...");
+    if (GetTickCount() - m_dwLastConnectAttempt > 1000)
+    {
+        if (pUI) pUI->chat()->addDebugMessage(
+            MSG_PREFIX CLR_INFO "Serverə qoşulma qurulur...");
 
-		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
-		
-		Network::OnRaknetConnect(m_szHostOrIp, m_iPort);
+        m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 
-		m_dwLastConnectAttempt = GetTickCount();
-		SetGameState(GAMESTATE_CONNECTING);
-	}
+        Network::OnRaknetConnect(m_szHostOrIp, m_iPort);
+
+        m_dwLastConnectAttempt = GetTickCount();
+        SetGameState(GAMESTATE_CONNECTING);
+    }
 }
 
 void gen_auth_key(char buf[260], char* auth_in);
 void CNetGame::Packet_AuthKey(Packet *pkt)
 {
-	uint8_t byteAuthLen;
-	char szAuth[260], szAuthKey[269];
+    uint8_t byteAuthLen;
+    char szAuth[260], szAuthKey[269];
 
-	RakNet::BitStream bsAuth((unsigned char*)pkt->data, pkt->length, false);
+    RakNet::BitStream bsAuth((unsigned char*)pkt->data, pkt->length, false);
 
-	if (GetGameState() < GAMESTATE_WAIT_CONNECT || GetGameState() > GAMESTATE_AWAIT_JOIN) return;
+    if (GetGameState() < GAMESTATE_WAIT_CONNECT || GetGameState() > GAMESTATE_AWAIT_JOIN) return;
 
-	bsAuth.IgnoreBits(8);
-	bsAuth.Read(byteAuthLen);
-	bsAuth.Read(szAuth, byteAuthLen);
-	szAuth[byteAuthLen] = '\0';
+    bsAuth.IgnoreBits(8);
+    bsAuth.Read(byteAuthLen);
+    bsAuth.Read(szAuth, byteAuthLen);
+    szAuth[byteAuthLen] = '\0';
 
-	gen_auth_key(szAuthKey, szAuth);
-	uint8_t byteAuthKeyLen = strlen(szAuthKey);
+    gen_auth_key(szAuthKey, szAuth);
+    uint8_t byteAuthKeyLen = strlen(szAuthKey);
 
-	RakNet::BitStream bsKey;
-	bsKey.Write((uint8_t)ID_AUTH_KEY);
-	bsKey.Write(byteAuthKeyLen);
-	bsKey.Write(szAuthKey, byteAuthKeyLen);
-	m_pRakClient->Send(&bsKey, SYSTEM_PRIORITY, RELIABLE, 0);
+    RakNet::BitStream bsKey;
+    bsKey.Write((uint8_t)ID_AUTH_KEY);
+    bsKey.Write(byteAuthKeyLen);
+    bsKey.Write(szAuthKey, byteAuthKeyLen);
+    m_pRakClient->Send(&bsKey, SYSTEM_PRIORITY, RELIABLE, 0);
 }
 
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF3333}[APACHE ONLINE] {FFFFFF}Serverdən cavab gəlmədi. Yenidən cəhd edilir...");
-	if (pAudioStream) {
-		pAudioStream->Stop(true);
-	}
-	SpeakerList::Hide();
-	MicroIcon::Hide();
-	SetGameState(GAMESTATE_WAIT_CONNECT);
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Serverdən cavab alınmadı. " CLR_TEXT "Yenidən cəhd edilir...");
+
+    if (pAudioStream) {
+        pAudioStream->Stop(true);
+    }
+    SpeakerList::Hide();
+    MicroIcon::Hide();
+    SetGameState(GAMESTATE_WAIT_CONNECT);
 }
 
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
-	if(pUI) pUI->chat()->addDebugMessage("{FF9900}[APACHE ONLINE] {FFFFFF}Server doludur. Yenidən cəhd olunur...");
-	SpeakerList::Hide();
-	MicroIcon::Hide();
-	SetGameState(GAMESTATE_WAIT_CONNECT);
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_WARN "Server hazırda doludur. " CLR_TEXT "Yenidən cəhd edilir...");
+
+    SpeakerList::Hide();
+    MicroIcon::Hide();
+    SetGameState(GAMESTATE_WAIT_CONNECT);
 }
 
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Server bağlantını kəsdi.");
-	if (pAudioStream) {
-		pAudioStream->Stop(true);
-	}
-	m_pRakClient->Disconnect(2000);
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Server tərəfindən bağlantı kəsildi.");
 
-	SpeakerList::Hide();
-	MicroIcon::Hide();
+    if (pAudioStream) {
+        pAudioStream->Stop(true);
+    }
+    m_pRakClient->Disconnect(2000);
+
+    SpeakerList::Hide();
+    MicroIcon::Hide();
 }
 
 void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 {
-	RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
-	PLAYERID MyPlayerID;
-	unsigned int uiChallenge;
-	int iVersion = 4057;
-	uint8_t byteMod = 1;
+    RakNet::BitStream bsSuccAuth(pkt->data, pkt->length, true);
+    PLAYERID MyPlayerID;
+    unsigned int uiChallenge;
+    int iVersion = 4057;
+    uint8_t byteMod = 1;
 
-	bsSuccAuth.IgnoreBits(8);
-	bsSuccAuth.IgnoreBits(32);
-	bsSuccAuth.IgnoreBits(16);
+    bsSuccAuth.IgnoreBits(8);
+    bsSuccAuth.IgnoreBits(32);
+    bsSuccAuth.IgnoreBits(16);
 
-	bsSuccAuth.Read(MyPlayerID);
-	bsSuccAuth.Read(uiChallenge);
-	uiChallenge ^= iVersion;
+    bsSuccAuth.Read(MyPlayerID);
+    bsSuccAuth.Read(uiChallenge);
+    uiChallenge ^= iVersion;
 
-	if (pUI) pUI->chat()->addDebugMessage("{00FF00}[APACHE ONLINE] {FFFFFF}Bağlantı uğurludur! Oyuna daxil olunur...");
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_OK "Bağlantı uğurla quruldu. " CLR_TEXT "Serverə daxil olunur...");
 
-	SetGameState(GAMESTATE_AWAIT_JOIN);
+    SetGameState(GAMESTATE_AWAIT_JOIN);
 
-	uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
-	uint8_t byteAuthBSLen = strlen(AUTH_BS);
-	uint8_t byteClientVerLen = strlen(SAMP_VERSION);
-    if(pSettings)
+    uint8_t byteNameLen = strlen(GetPlayerPool()->GetLocalPlayerName());
+    uint8_t byteAuthBSLen = strlen(AUTH_BS);
+    uint8_t byteClientVerLen = strlen(SAMP_VERSION);
+    if (pSettings)
         byteClientVerLen = strlen(pSettings->Get().szVersion);
 
-	RakNet::BitStream bsSend;
-	bsSend.Write(iVersion);
-	bsSend.Write(byteMod);
-	bsSend.Write(byteNameLen);
-	bsSend.Write(GetPlayerPool()->GetLocalPlayerName(), byteNameLen);
-	bsSend.Write(uiChallenge);
-	bsSend.Write(byteAuthBSLen);
-	bsSend.Write(AUTH_BS, byteAuthBSLen);
-	bsSend.Write(byteClientVerLen);
+    RakNet::BitStream bsSend;
+    bsSend.Write(iVersion);
+    bsSend.Write(byteMod);
+    bsSend.Write(byteNameLen);
+    bsSend.Write(GetPlayerPool()->GetLocalPlayerName(), byteNameLen);
+    bsSend.Write(uiChallenge);
+    bsSend.Write(byteAuthBSLen);
+    bsSend.Write(AUTH_BS, byteAuthBSLen);
+    bsSend.Write(byteClientVerLen);
 
-    if(pSettings)
+    if (pSettings)
         bsSend.Write(pSettings->Get().szVersion, byteClientVerLen);
     else
         bsSend.Write(SAMP_VERSION, byteClientVerLen);
 
-	Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
+    Network::OnRaknetRpc(RPC_ClientJoin, bsSend);
 
-	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+    m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 
-	SpeakerList::Hide();
-	MicroIcon::Hide();
+    SpeakerList::Hide();
+    MicroIcon::Hide();
 }
 
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Şifrələməni başlatmaq alınmadı.");
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Şifrələmə mexanizmi işə salına bilmədi.");
 }
 
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Sən bu serverdən ban olunmusan!");
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Bu serverə giriş qadağan edilib. " CLR_TEXT "Hesabınız bloklanıb.");
 }
 
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
-	if (pUI) pUI->chat()->addDebugMessage("{FF3333}[APACHE ONLINE] {FFFFFF}Server şifrəsi səhvdir.");
-	m_pRakClient->Disconnect(0);
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Server şifrəsi yanlışdır.");
+
+    m_pRakClient->Disconnect(0);
 }
 
 void CNetGame::Packet_ConnectionLost(Packet *pkt)
 {
-	if (m_pRakClient) {
-		m_pRakClient->Disconnect(0);
-	}
+    if (m_pRakClient) {
+        m_pRakClient->Disconnect(0);
+    }
 
-	if (pUI) pUI->chat()->addDebugMessage("{FF0000}[APACHE ONLINE] {FFFFFF}Server ilə əlaqə itdi. Yenidən qoşululur...");
-	ShutdownForGameModeRestart();
+    if (pUI) pUI->chat()->addDebugMessage(
+        MSG_PREFIX CLR_ERR "Serverlə əlaqə kəsildi. " CLR_TEXT "Yenidən qoşulmağa çalışılır...");
 
-	CPlayerPool *pPlayerPool = GetPlayerPool();
-	if (pPlayerPool) {
-		for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++) {
-			if (pPlayerPool->GetSlotState(playerId) == true) {
-				pPlayerPool->Delete(playerId, 0);
-			}
-		}
-	}
+    ShutdownForGameModeRestart();
 
-	if (pAudioStream) {
-		pAudioStream->Stop(true);
-	}
+    CPlayerPool *pPlayerPool = GetPlayerPool();
+    if (pPlayerPool) {
+        for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++) {
+            if (pPlayerPool->GetSlotState(playerId) == true) {
+                pPlayerPool->Delete(playerId, 0);
+            }
+        }
+    }
 
-	SetGameState(GAMESTATE_WAIT_CONNECT);
+    if (pAudioStream) {
+        pAudioStream->Stop(true);
+    }
 
-	SpeakerList::Hide();
-	MicroIcon::Hide();
+    SetGameState(GAMESTATE_WAIT_CONNECT);
+
+    SpeakerList::Hide();
+    MicroIcon::Hide();
 }
 
 void CNetGame::Packet_PlayerSync(Packet *pkt)
 {
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
-	ONFOOT_SYNC_DATA ofSync;
-	uint32_t dwTime = 0;
-	uint8_t bytePacketId;
-	PLAYERID playerId;
+    RakNet::BitStream bsData(pkt->data, pkt->length, false);
+    ONFOOT_SYNC_DATA ofSync;
+    uint8_t bytePacketId;
+    PLAYERID playerId;
 
-	bool bHasLR, bHasUD;
+    bool bHasLR, bHasUD;
 
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	memset(&ofSync, 0, sizeof(ONFOOT_SYNC_DATA));
+    memset(&ofSync, 0, sizeof(ONFOOT_SYNC_DATA));
 
-	bsData.Read(bytePacketId);
-	bsData.Read(playerId);
+    bsData.Read(bytePacketId);
+    bsData.Read(playerId);
 
-	bsData.Read(bHasLR);
-	if (bHasLR) {
-		bsData.Read(ofSync.lrAnalog);
-	}
+    bsData.Read(bHasLR);
+    if (bHasLR) {
+        bsData.Read(ofSync.lrAnalog);
+    }
 
-	bsData.Read(bHasUD);
-	if (bHasUD) {
-		bsData.Read(ofSync.udAnalog);
-	}
+    bsData.Read(bHasUD);
+    if (bHasUD) {
+        bsData.Read(ofSync.udAnalog);
+    }
 
-	bsData.Read(ofSync.wKeys);
-	bsData.Read((char*)&ofSync.vecPos, sizeof(CVector));
-	float w, x, y, z;
-	bsData.ReadNormQuat(w, x, y, z);
-	ofSync.quat.Set(x, y, z, w);
+    bsData.Read(ofSync.wKeys);
+    bsData.Read((char*)&ofSync.vecPos, sizeof(CVector));
+    float w, x, y, z;
+    bsData.ReadNormQuat(w, x, y, z);
+    ofSync.quat.Set(x, y, z, w);
 
-	uint8_t byteHealthArmour;
-	uint8_t byteArmTemp = 0, byteHlTemp = 0;
-	
-	bsData.Read(byteHealthArmour);
-	byteArmTemp = (byteHealthArmour & 0x0F);
-	byteHlTemp = (byteHealthArmour >> 4);
+    uint8_t byteHealthArmour;
+    uint8_t byteArmTemp = 0, byteHlTemp = 0;
 
-	if (byteArmTemp == 0xF) ofSync.byteArmour = 100;
-	else if (byteArmTemp == 0) ofSync.byteArmour = 0;
-	else ofSync.byteArmour = byteArmTemp * 7;
+    bsData.Read(byteHealthArmour);
+    byteArmTemp = (byteHealthArmour & 0x0F);
+    byteHlTemp = (byteHealthArmour >> 4);
 
-	if (byteHlTemp == 0xF) ofSync.byteHealth = 100;
-	else if (byteHlTemp == 0) ofSync.byteHealth = 0;
-	else ofSync.byteHealth = byteHlTemp * 7;
+    if (byteArmTemp == 0xF) ofSync.byteArmour = 100;
+    else if (byteArmTemp == 0) ofSync.byteArmour = 0;
+    else ofSync.byteArmour = byteArmTemp * 7;
 
-	uint8_t byteCurrentWeapon = 0;
-	bsData.Read(byteCurrentWeapon);
-	ofSync.byteCurrentWeapon ^= (byteCurrentWeapon ^ ofSync.byteCurrentWeapon) & 0x3F;
+    if (byteHlTemp == 0xF) ofSync.byteHealth = 100;
+    else if (byteHlTemp == 0) ofSync.byteHealth = 0;
+    else ofSync.byteHealth = byteHlTemp * 7;
 
-	bsData.Read(ofSync.byteSpecialAction);
-	bsData.ReadVector(ofSync.vecMoveSpeed.x, ofSync.vecMoveSpeed.y, ofSync.vecMoveSpeed.z);
+    uint8_t byteCurrentWeapon = 0;
+    bsData.Read(byteCurrentWeapon);
+    ofSync.byteCurrentWeapon ^= (byteCurrentWeapon ^ ofSync.byteCurrentWeapon) & 0x3F;
 
-	bool bHasVehicleSurfingInfo;
-	bsData.Read(bHasVehicleSurfingInfo);
-	if (bHasVehicleSurfingInfo)
-	{
-		bsData.Read(ofSync.wSurfID);
-		bsData.Read(ofSync.vecSurfOffsets.x);
-		bsData.Read(ofSync.vecSurfOffsets.y);
-		bsData.Read(ofSync.vecSurfOffsets.z);
-	}
-	else
-		ofSync.wSurfID = INVALID_VEHICLE_ID;
+    bsData.Read(ofSync.byteSpecialAction);
+    bsData.ReadVector(ofSync.vecMoveSpeed.x, ofSync.vecMoveSpeed.y, ofSync.vecMoveSpeed.z);
 
-	bool bHasAnimation;
-	bsData.Read(bHasAnimation);
-	if (bHasAnimation) {
-		bsData.Read(ofSync.dwAnimation);
-	}
-	else {
-		ofSync.dwAnimation = 0x80000000;
-	}
+    bool bHasVehicleSurfingInfo;
+    bsData.Read(bHasVehicleSurfingInfo);
+    if (bHasVehicleSurfingInfo)
+    {
+        bsData.Read(ofSync.wSurfID);
+        bsData.Read(ofSync.vecSurfOffsets.x);
+        bsData.Read(ofSync.vecSurfOffsets.y);
+        bsData.Read(ofSync.vecSurfOffsets.z);
+    }
+    else
+        ofSync.wSurfID = INVALID_VEHICLE_ID;
 
-	CRemotePlayer *pRemotePlayer = GetPlayerPool()->GetAt(playerId);
-	if (pRemotePlayer) {
-		pRemotePlayer->StoreOnFootFullSyncData(&ofSync, 0);
-	}
+    bool bHasAnimation;
+    bsData.Read(bHasAnimation);
+    if (bHasAnimation) {
+        bsData.Read(ofSync.dwAnimation);
+    }
+    else {
+        ofSync.dwAnimation = 0x80000000;
+    }
+
+    CRemotePlayer *pRemotePlayer = GetPlayerPool()->GetAt(playerId);
+    if (pRemotePlayer) {
+        pRemotePlayer->StoreOnFootFullSyncData(&ofSync, 0);
+    }
 }
 
 void CNetGame::Packet_VehicleSync(Packet* pkt)
 {
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
-	uint32_t dwTime = 0;
-	uint8_t bytePacketId;
-	INCAR_SYNC_DATA icSync;
-	PLAYERID PlayerID;
+    RakNet::BitStream bsData(pkt->data, pkt->length, false);
+    uint8_t bytePacketId;
+    INCAR_SYNC_DATA icSync;
+    PLAYERID PlayerID;
 
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	memset(&icSync, 0, sizeof(INCAR_SYNC_DATA));
+    memset(&icSync, 0, sizeof(INCAR_SYNC_DATA));
 
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerID);
-	bsData.Read(icSync.VehicleID);
-	bsData.Read(icSync.lrAnalog);
-	bsData.Read(icSync.udAnalog);
-	bsData.Read(icSync.wKeys);
+    bsData.Read(bytePacketId);
+    bsData.Read(PlayerID);
+    bsData.Read(icSync.VehicleID);
+    bsData.Read(icSync.lrAnalog);
+    bsData.Read(icSync.udAnalog);
+    bsData.Read(icSync.wKeys);
 
-	float w, x, y, z;
-	bsData.ReadNormQuat(w, x, y, z);
-	icSync.quat.Set(x, y, z, w);
-	
-	bsData.Read((char*)& icSync.vecPos, sizeof(CVector));
-	bsData.ReadVector(icSync.vecMoveSpeed.x, icSync.vecMoveSpeed.y, icSync.vecMoveSpeed.z);
+    float w, x, y, z;
+    bsData.ReadNormQuat(w, x, y, z);
+    icSync.quat.Set(x, y, z, w);
 
-	uint16_t wTempVehicleHealth;
-	bsData.Read(wTempVehicleHealth);
-	icSync.fCarHealth = (float)wTempVehicleHealth;
+    bsData.Read((char*)& icSync.vecPos, sizeof(CVector));
+    bsData.ReadVector(icSync.vecMoveSpeed.x, icSync.vecMoveSpeed.y, icSync.vecMoveSpeed.z);
 
-	uint8_t byteHealthArmour;
-	uint8_t byteArmTemp = 0, byteHlTemp = 0;
+    uint16_t wTempVehicleHealth;
+    bsData.Read(wTempVehicleHealth);
+    icSync.fCarHealth = (float)wTempVehicleHealth;
 
-	bsData.Read(byteHealthArmour);
-	byteArmTemp = (byteHealthArmour & 0x0F);
-	byteHlTemp = (byteHealthArmour >> 4);
+    uint8_t byteHealthArmour;
+    uint8_t byteArmTemp = 0, byteHlTemp = 0;
 
-	if (byteArmTemp == 0xF) icSync.bytePlayerArmour = 100;
-	else if (byteArmTemp == 0) icSync.bytePlayerArmour = 0;
-	else icSync.bytePlayerArmour = byteArmTemp * 7;
+    bsData.Read(byteHealthArmour);
+    byteArmTemp = (byteHealthArmour & 0x0F);
+    byteHlTemp = (byteHealthArmour >> 4);
 
-	if (byteHlTemp == 0xF) icSync.bytePlayerHealth = 100;
-	else if (byteHlTemp == 0) icSync.bytePlayerHealth = 0;
-	else icSync.bytePlayerHealth = byteHlTemp * 7;
+    if (byteArmTemp == 0xF) icSync.bytePlayerArmour = 100;
+    else if (byteArmTemp == 0) icSync.bytePlayerArmour = 0;
+    else icSync.bytePlayerArmour = byteArmTemp * 7;
 
-	uint8_t byteTempWeapon;
-	bsData.Read(byteTempWeapon);
-	icSync.byteCurrentWeapon ^= (byteTempWeapon ^ icSync.byteCurrentWeapon) & 0x3F;
+    if (byteHlTemp == 0xF) icSync.bytePlayerHealth = 100;
+    else if (byteHlTemp == 0) icSync.bytePlayerHealth = 0;
+    else icSync.bytePlayerHealth = byteHlTemp * 7;
 
-	bool bCheck;
+    uint8_t byteTempWeapon;
+    bsData.Read(byteTempWeapon);
+    icSync.byteCurrentWeapon ^= (byteTempWeapon ^ icSync.byteCurrentWeapon) & 0x3F;
 
-	bsData.Read(bCheck);
-	if (bCheck) icSync.byteSirenOn = 1;
-	bsData.Read(bCheck);
-	if (bCheck) icSync.byteLandingGearState = 1;
-	bsData.Read(bCheck);
-	if (bCheck) bsData.Read(icSync.fTrainSpeed);
-	bsData.Read(bCheck);
-	if (bCheck) bsData.Read(icSync.TrailerID);
+    bool bCheck;
 
-	CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
-	if (pRemotePlayer) {
-		pRemotePlayer->StoreInCarFullSyncData(&icSync, 0);
-	}
+    bsData.Read(bCheck);
+    if (bCheck) icSync.byteSirenOn = 1;
+    bsData.Read(bCheck);
+    if (bCheck) icSync.byteLandingGearState = 1;
+    bsData.Read(bCheck);
+    if (bCheck) bsData.Read(icSync.fTrainSpeed);
+    bsData.Read(bCheck);
+    if (bCheck) bsData.Read(icSync.TrailerID);
+
+    CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
+    if (pRemotePlayer) {
+        pRemotePlayer->StoreInCarFullSyncData(&icSync, 0);
+    }
 }
 
 void CNetGame::Packet_AimSync(Packet* pkt)
 {
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
-	
-	uint8_t bytePacketId;
-	PLAYERID PlayerId;
-	AIM_SYNC_DATA aimSync;
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerId);
-	bsData.Read((char*)& aimSync, sizeof(AIM_SYNC_DATA));
+    RakNet::BitStream bsData(pkt->data, pkt->length, false);
 
-	CRemotePlayer* pPlayer = m_pPools->pPlayerPool->GetAt(PlayerId);
-	if (pPlayer)
-		pPlayer->StoreAimFullSyncData(&aimSync);
+    uint8_t bytePacketId;
+    PLAYERID PlayerId;
+    AIM_SYNC_DATA aimSync;
+    bsData.Read(bytePacketId);
+    bsData.Read(PlayerId);
+    bsData.Read((char*)& aimSync, sizeof(AIM_SYNC_DATA));
+
+    CRemotePlayer* pPlayer = m_pPools->pPlayerPool->GetAt(PlayerId);
+    if (pPlayer)
+        pPlayer->StoreAimFullSyncData(&aimSync);
 }
 
 void CNetGame::Packet_BulletSync(Packet* pkt)
 {
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
+    RakNet::BitStream bsData(pkt->data, pkt->length, false);
 
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	BULLET_SYNC_DATA btSync;
-	uint8_t bytePacketId = 0;
-	PLAYERID PlayerID = 0;
+    BULLET_SYNC_DATA btSync;
+    uint8_t bytePacketId = 0;
+    PLAYERID PlayerID = 0;
 
-	bsData.Read(bytePacketId);
-	bsData.Read(PlayerID);
-	bsData.Read((char*)&btSync, sizeof(BULLET_SYNC_DATA));
+    bsData.Read(bytePacketId);
+    bsData.Read(PlayerID);
+    bsData.Read((char*)&btSync, sizeof(BULLET_SYNC_DATA));
 
-	CPlayerPool* pPlayerPool = GetPlayerPool();
-	CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
-	if (pRemotePlayer)
-		pRemotePlayer->StoreBulletFullSyncData(&btSync);
-
+    CPlayerPool* pPlayerPool = GetPlayerPool();
+    CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(PlayerID);
+    if (pRemotePlayer)
+        pRemotePlayer->StoreBulletFullSyncData(&btSync);
 }
 
 void CNetGame::Packet_PassengerSync(Packet* pkt)
 {
-	RakNet::BitStream bsData(pkt->data, pkt->length, false);
+    RakNet::BitStream bsData(pkt->data, pkt->length, false);
 
-	if (GetGameState() == GAMESTATE_CONNECTED)
-	{
-		uint8_t bytePacketId;
-		PLAYERID PlayerID;
-		PASSENGER_SYNC_DATA psSync;
+    if (GetGameState() == GAMESTATE_CONNECTED)
+    {
+        uint8_t bytePacketId;
+        PLAYERID PlayerID;
+        PASSENGER_SYNC_DATA psSync;
 
-		bsData.Read(bytePacketId);
-		bsData.Read(PlayerID);
-		bsData.Read((char*)& psSync, sizeof(PASSENGER_SYNC_DATA));
+        bsData.Read(bytePacketId);
+        bsData.Read(PlayerID);
+        bsData.Read((char*)& psSync, sizeof(PASSENGER_SYNC_DATA));
 
-		CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
-		if (pRemotePlayer) {
-			pRemotePlayer->StorePassengerFullSyncData(&psSync);
-		}
-	}
+        CRemotePlayer* pRemotePlayer = GetPlayerPool()->GetAt(PlayerID);
+        if (pRemotePlayer) {
+            pRemotePlayer->StorePassengerFullSyncData(&psSync);
+        }
+    }
 }
 
 void CNetGame::Packet_MarkerSync(Packet *pkt)
 {
-	if(m_iGameState != GAMESTATE_CONNECTED) return;
+    if (m_iGameState != GAMESTATE_CONNECTED) return;
 
-	uint8_t bytePacketId;
-	int	iNumberOfPlayers;
-	PLAYERID playerId;
-	bool bIsPlayerActive;
-	short sPos[3];
+    uint8_t bytePacketId;
+    int iNumberOfPlayers;
+    PLAYERID playerId;
+    bool bIsPlayerActive;
+    short sPos[3];
 
-	RakNet::BitStream bsMarkersSync((unsigned char *)pkt->data, pkt->length, false);
-	bsMarkersSync.Read(bytePacketId);
-	bsMarkersSync.Read(iNumberOfPlayers);
-	if(iNumberOfPlayers)
-	{
-		for(int i = 0; i < iNumberOfPlayers; i++)
-		{
-			bsMarkersSync.Read(playerId);
-			bsMarkersSync.ReadCompressed(bIsPlayerActive);
+    RakNet::BitStream bsMarkersSync((unsigned char *)pkt->data, pkt->length, false);
+    bsMarkersSync.Read(bytePacketId);
+    bsMarkersSync.Read(iNumberOfPlayers);
+    if (iNumberOfPlayers)
+    {
+        for (int i = 0; i < iNumberOfPlayers; i++)
+        {
+            bsMarkersSync.Read(playerId);
+            bsMarkersSync.ReadCompressed(bIsPlayerActive);
 
-			if(bIsPlayerActive)
-			{
-				bsMarkersSync.Read(sPos[0]);
-				bsMarkersSync.Read(sPos[1]);
-				bsMarkersSync.Read(sPos[2]);
-			}
+            if (bIsPlayerActive)
+            {
+                bsMarkersSync.Read(sPos[0]);
+                bsMarkersSync.Read(sPos[1]);
+                bsMarkersSync.Read(sPos[2]);
+            }
 
-			if(playerId >= 0 && playerId < MAX_PLAYERS && GetPlayerPool()->GetSlotState(playerId))
-			{
-				CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
-				if(pPlayer)
-				{
-					if(bIsPlayerActive)
-						pPlayer->ShowGlobalMarker(sPos[0], sPos[1], sPos[2]);
-					else
-						pPlayer->HideGlobalMarker();
-				}
-			}
-		}
-	}
+            if (playerId < MAX_PLAYERS && GetPlayerPool()->GetSlotState(playerId))
+            {
+                CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
+                if (pPlayer)
+                {
+                    if (bIsPlayerActive)
+                        pPlayer->ShowGlobalMarker(sPos[0], sPos[1], sPos[2]);
+                    else
+                        pPlayer->HideGlobalMarker();
+                }
+            }
+        }
+    }
 }
 
 void CNetGame::UpdatePlayerScoresAndPings()
 {
-	static uint32_t dwLastUpdateTick = 0;
+    static uint32_t dwLastUpdateTick = 0;
 
-	if (GetTickCount() - dwLastUpdateTick > 3000) {
-		dwLastUpdateTick = GetTickCount();
+    if (GetTickCount() - dwLastUpdateTick > 3000) {
+        dwLastUpdateTick = GetTickCount();
 
-		RakNet::BitStream bsSend;
-		m_pRakClient->RPC(&RPC_UpdateScoresPingsIPs, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-	}
+        RakNet::BitStream bsSend;
+        m_pRakClient->RPC(&RPC_UpdateScoresPingsIPs, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+    }
 }
 
 void CNetGame::SendDialogResponse(uint16_t wDialogID, uint8_t byteButtonID, uint16_t wListBoxItem, const char* szInput)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	uint8_t length = strlen(szInput);
+    uint8_t length = strlen(szInput);
 
-	RakNet::BitStream bsSend;
-	bsSend.Write(wDialogID);
-	bsSend.Write(byteButtonID);
-	bsSend.Write(wListBoxItem);
-	bsSend.Write(length);
-	bsSend.Write(szInput, length);
-	m_pRakClient->RPC(&RPC_DialogResponse, &bsSend, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+    RakNet::BitStream bsSend;
+    bsSend.Write(wDialogID);
+    bsSend.Write(byteButtonID);
+    bsSend.Write(wListBoxItem);
+    bsSend.Write(length);
+    bsSend.Write(szInput, length);
+    m_pRakClient->RPC(&RPC_DialogResponse, &bsSend, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 }
 
 void CNetGame::SendChatMessage(const char* szMsg)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	RakNet::BitStream bsSend;
-	uint8_t byteTextLen = strlen(szMsg);
+    RakNet::BitStream bsSend;
+    uint8_t byteTextLen = strlen(szMsg);
 
-	bsSend.Write(byteTextLen);
-	bsSend.Write(szMsg, byteTextLen);
+    bsSend.Write(byteTextLen);
+    bsSend.Write(szMsg, byteTextLen);
 
-	m_pRakClient->RPC(&RPC_Chat, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
+    m_pRakClient->RPC(&RPC_Chat, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 }
 
 void CNetGame::SendChatCommand(const char* szCommand)
 {
-	if (GetGameState() != GAMESTATE_CONNECTED) return;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	RakNet::BitStream bsParams;
-	int iStrlen = strlen(szCommand);
+    RakNet::BitStream bsParams;
+    int iStrlen = strlen(szCommand);
 
-	bsParams.Write(iStrlen);
-	bsParams.Write(szCommand, iStrlen);
-	m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
+    bsParams.Write(iStrlen);
+    bsParams.Write(szCommand, iStrlen);
+    m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 }
 
 void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPosZ, uint8_t byteType, uint32_t dwColor, uint8_t byteStyle)
 {
-	if (m_dwMapIcon[byteIconID] != 0) {
-		DisableMapIcon(byteIconID);
-	}
+    if (m_dwMapIcon[byteIconID] != 0) {
+        DisableMapIcon(byteIconID);
+    }
 
-	m_dwMapIcon[byteIconID] = pGame->CreateRadarMarkerIcon(byteType, fPosX, fPosY, fPosZ, dwColor, byteStyle);
+    m_dwMapIcon[byteIconID] = pGame->CreateRadarMarkerIcon(byteType, fPosX, fPosY, fPosZ, dwColor, byteStyle);
 }
 
 void CNetGame::DisableMapIcon(uint8_t byteIconID)
 {
-	ScriptCommand(&disable_marker, m_dwMapIcon[byteIconID]);
-	m_dwMapIcon[byteIconID] = 0;
+    ScriptCommand(&disable_marker, m_dwMapIcon[byteIconID]);
+    m_dwMapIcon[byteIconID] = 0;
 }
 
 void CNetGame::ResetVehiclePool()
 {
-	if (m_pPools->pVehiclePool) {
-		delete m_pPools->pVehiclePool;
-	}
+    if (m_pPools->pVehiclePool) {
+        delete m_pPools->pVehiclePool;
+    }
 
-	m_pPools->pVehiclePool = new CVehiclePool();
+    m_pPools->pVehiclePool = new CVehiclePool();
 }
 
 void CNetGame::ResetActorPool()
 {
-	if (m_pPools->pActorPool) {
-		delete m_pPools->pActorPool;
-	}
+    if (m_pPools->pActorPool) {
+        delete m_pPools->pActorPool;
+    }
 
-	m_pPools->pActorPool = new CActorPool();
+    m_pPools->pActorPool = new CActorPool();
 }
 
 void CNetGame::ResetTextDrawPool()
 {
-	if (m_pPools->pTextDrawPool) {
-		delete m_pPools->pTextDrawPool;
-	}
+    if (m_pPools->pTextDrawPool) {
+        delete m_pPools->pTextDrawPool;
+    }
 
-	m_pPools->pTextDrawPool = new CTextDrawPool();
+    m_pPools->pTextDrawPool = new CTextDrawPool();
 }
 
 void CNetGame::ResetGangZonePool()
 {
-	if (m_pPools->pGangZonePool) {
-		delete m_pPools->pGangZonePool;
-	}
+    if (m_pPools->pGangZonePool) {
+        delete m_pPools->pGangZonePool;
+    }
 
-	m_pPools->pGangZonePool = new CGangZonePool();
+    m_pPools->pGangZonePool = new CGangZonePool();
 }
 
 void CNetGame::Reset3DTextLabelPool()
 {
-	if (m_pPools->pTextLabelPool) {
-		delete m_pPools->pTextLabelPool;
-	}
+    if (m_pPools->pTextLabelPool) {
+        delete m_pPools->pTextLabelPool;
+    }
 
-	m_pPools->pTextLabelPool = new C3DTextLabelPool();
+    m_pPools->pTextLabelPool = new C3DTextLabelPool();
 }
 
 void CNetGame::ResetMapIcons()
 {
-	for (int i = 0; i < MAX_MAP_ICONS; i++)
-	{
-		if (m_dwMapIcon[i]) {
-			ScriptCommand(&disable_marker, m_dwMapIcon[i]);
-			m_dwMapIcon[i] = 0;
-		}
-	}
+    for (int i = 0; i < MAX_MAP_ICONS; i++)
+    {
+        if (m_dwMapIcon[i]) {
+            ScriptCommand(&disable_marker, m_dwMapIcon[i]);
+            m_dwMapIcon[i] = 0;
+        }
+    }
 }
 
 void CNetGame::ResetPickupPool()
 {
-	if (m_pPools->pPickupPool) {
-		delete m_pPools->pPickupPool;
-	}
+    if (m_pPools->pPickupPool) {
+        delete m_pPools->pPickupPool;
+    }
 
-	m_pPools->pPickupPool = new CPickupPool();
+    m_pPools->pPickupPool = new CPickupPool();
 }
 
 void CNetGame::ResetObjectPool()
 {
-	if (m_pPools->pObjectPool) {
-		delete m_pPools->pObjectPool;
-	}
+    if (m_pPools->pObjectPool) {
+        delete m_pPools->pObjectPool;
+    }
 
-	m_pPools->pObjectPool = new CObjectPool();
+    m_pPools->pObjectPool = new CObjectPool();
 }
 
 void CNetGame::ResetMenuPool()
 {
-	if (m_pPools->pMenuPool) {
-		delete m_pPools->pMenuPool;
-	}
+    if (m_pPools->pMenuPool) {
+        delete m_pPools->pMenuPool;
+    }
 
-	m_pPools->pMenuPool = new CMenuPool();
+    m_pPools->pMenuPool = new CMenuPool();
 }
 
 void CNetGame::InitGameLogic()
 {
-	m_pNetSet->fWorldBounds[0] = 20000.0f;
-	m_pNetSet->fWorldBounds[1] = -20000.0f;
-	m_pNetSet->fWorldBounds[2] = 20000.0f;
-	m_pNetSet->fWorldBounds[3] = -20000.0f;
+    m_pNetSet->fWorldBounds[0] = 20000.0f;
+    m_pNetSet->fWorldBounds[1] = -20000.0f;
+    m_pNetSet->fWorldBounds[2] = 20000.0f;
+    m_pNetSet->fWorldBounds[3] = -20000.0f;
 }
 
 void CNetGame::SendPrevClass()
 {
-	CPlayerPool* pPlayerPool = GetPlayerPool();
-	if (pPlayerPool)
-	{
-		pPlayerPool->GetLocalPlayer()->SendPrevClass();
-	}
+    CPlayerPool* pPlayerPool = GetPlayerPool();
+    if (pPlayerPool)
+    {
+        pPlayerPool->GetLocalPlayer()->SendPrevClass();
+    }
 }
 
 void CNetGame::SendSpawn()
 {
-	CPlayerPool* pPlayerPool = GetPlayerPool();
-	if (pPlayerPool)
-	{
-		pPlayerPool->GetLocalPlayer()->SendSpawn();
-	}
+    CPlayerPool* pPlayerPool = GetPlayerPool();
+    if (pPlayerPool)
+    {
+        pPlayerPool->GetLocalPlayer()->SendSpawn();
+    }
 }
 
 void CNetGame::SendNextClass()
 {
-	CPlayerPool* pPlayerPool = GetPlayerPool();
-	if (pPlayerPool)
-	{
-		pPlayerPool->GetLocalPlayer()->SendNextClass();
-	}
+    CPlayerPool* pPlayerPool = GetPlayerPool();
+    if (pPlayerPool)
+    {
+        pPlayerPool->GetLocalPlayer()->SendNextClass();
+    }
 }
 
 void CNetGame::Packet_TrailerSync(Packet *pkt)
 {
-	if(GetGameState() != GAMESTATE_CONNECTED) return;
-	
-	uint8_t bytePacketId;
-	PLAYERID playerId;
+    if (GetGameState() != GAMESTATE_CONNECTED) return;
 
-	TRAILER_SYNC_DATA trSync;
-	memset(&trSync, 0, sizeof(TRAILER_SYNC_DATA));
+    uint8_t bytePacketId;
+    PLAYERID playerId;
 
-	RakNet::BitStream bsTrailerSync((unsigned char *)pkt->data, pkt->length, false);
-	bsTrailerSync.Read(bytePacketId);
-	bsTrailerSync.Read(playerId);
-	bsTrailerSync.Read((char*)&trSync, sizeof(TRAILER_SYNC_DATA));
+    TRAILER_SYNC_DATA trSync;
+    memset(&trSync, 0, sizeof(TRAILER_SYNC_DATA));
 
-	if(GetPlayerPool()) 
-	{
-		CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
-		if(pPlayer)
-			pPlayer->StoreTrailerFullSyncData(&trSync);
-	}
+    RakNet::BitStream bsTrailerSync((unsigned char *)pkt->data, pkt->length, false);
+    bsTrailerSync.Read(bytePacketId);
+    bsTrailerSync.Read(playerId);
+    bsTrailerSync.Read((char*)&trSync, sizeof(TRAILER_SYNC_DATA));
+
+    if (GetPlayerPool())
+    {
+        CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
+        if (pPlayer)
+            pPlayer->StoreTrailerFullSyncData(&trSync);
+    }
 }
 
 void CNetGame::Packet_UnoccupiedSync(Packet *pkt)
 {
-	if(m_iGameState != GAMESTATE_CONNECTED) return;
+    if (m_iGameState != GAMESTATE_CONNECTED) return;
 
-	uint8_t bytePacketId;
-	PLAYERID playerId;
+    uint8_t bytePacketId;
+    PLAYERID playerId;
 
-	UNOCCUPIED_SYNC_DATA unocSync;
-	memset(&unocSync, 0, sizeof(UNOCCUPIED_SYNC_DATA));
+    UNOCCUPIED_SYNC_DATA unocSync;
+    memset(&unocSync, 0, sizeof(UNOCCUPIED_SYNC_DATA));
 
-	RakNet::BitStream bsUnocSync((unsigned char *)pkt->data, pkt->length, false);
-	bsUnocSync.Read(bytePacketId);
-	bsUnocSync.Read(playerId);
-	bsUnocSync.Read((char*)&unocSync,sizeof(UNOCCUPIED_SYNC_DATA));
+    RakNet::BitStream bsUnocSync((unsigned char *)pkt->data, pkt->length, false);
+    bsUnocSync.Read(bytePacketId);
+    bsUnocSync.Read(playerId);
+    bsUnocSync.Read((char*)&unocSync, sizeof(UNOCCUPIED_SYNC_DATA));
 
-	if(GetPlayerPool())
-	{
-		CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
-		if(pPlayer)
-			pPlayer->StoreUnoccupiedSyncData(&unocSync);
-	}
+    if (GetPlayerPool())
+    {
+        CRemotePlayer *pPlayer = GetPlayerPool()->GetAt(playerId);
+        if (pPlayer)
+            pPlayer->StoreUnoccupiedSyncData(&unocSync);
+    }
 }

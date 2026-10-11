@@ -8,6 +8,16 @@
 #include "RegisteredCorona.h"
 #include "../Entity/CEntityGTA.h"
 
+// vehicle : hazirda isiqlari cekilen masin (yoxdursa nullptr)
+// active  : bu masinda custom far rengi var
+// inTail  : arxa far funksiyasinin icindeyik (onlari boyama!)
+struct CoronaHeadlightOverride {
+    const void* vehicle;
+    bool        active;
+    bool        inTail;
+    uint8       r, g, b;
+};
+
 class CCoronas {
 public:
     static inline float SunScreenX;
@@ -33,21 +43,9 @@ public:
 //        bool AlwaysRenderWetRoadReflections; // Ignored if if `DisableReflections == false`
 //    } s_DebugSettings{};
 
-    // ------------------------------------------------------------------
-    // FAR RENGI: kontekst.
-    // CVehicleGTA.cpp -> DoVehicleLights hook-u bunu doldurur,
-    // Coronas.cpp -> RegisterCorona hook-u oxuyub rengi evez edir.
-    //   vehicle : hazirda isiqlari cekilen masin (yoxdursa nullptr)
-    //   active  : bu masinda custom far rengi var
-    //   inTail  : arxa far funksiyasinin icindeyik (onlari boyama!)
-    // ------------------------------------------------------------------
-    struct HeadlightOverride {
-        const void* vehicle = nullptr;
-        bool  active = false;
-        bool  inTail = false;
-        uint8 r = 255, g = 255, b = 255;
-    };
-    static inline HeadlightOverride s_HeadlightOverride;
+    // FAR RENGI konteksti (struct sinifin XARICINDE tanimlanib, clang ucun vacibdir).
+    // CVehicleGTA.cpp -> DoVehicleLights hook-u doldurur, Coronas.cpp -> RegisterCorona hook-u oxuyur.
+    static inline CoronaHeadlightOverride s_HeadlightOverride{};
 
 public:
     static void InjectHooks();

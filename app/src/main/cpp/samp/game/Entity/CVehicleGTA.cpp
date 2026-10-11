@@ -10,7 +10,7 @@
 #include "game/Models/ModelInfo.h"
 #include "game/Entity/CPedGTA.h"
 #include "game/Entity/CEntityGTA.h"
-#include "game/vehicle_tuning.h"
+#include "game/VehTuner.h"
 
 void CVehicleGTA::RenderDriverAndPassengers() {
     if(IsRCVehicleModelID())
@@ -164,7 +164,7 @@ void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint
     auto& ho = CCoronas::s_HeadlightOverride;
     ho.vehicle = thiz;
     ho.inTail  = false;
-    ho.active  = CVehicleTuning::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
+    ho.active  = VehTuner::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
 
     CVehicle__DoVehicleLights(thiz, matVehicle, nLightFlags);
 

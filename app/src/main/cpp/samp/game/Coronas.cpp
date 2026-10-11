@@ -6,6 +6,11 @@
 #include "../vendor/armhook/patch.h"
 #include "TxdStore.h"
 
+#if __has_include(<shadowhook.h>)
+#include <shadowhook.h>
+#define CORONAS_HAVE_SHADOWHOOK 1
+#endif
+
 
 // Creates corona by texture
 void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
@@ -57,6 +62,26 @@ static void RegisterCorona_Type_hook(uint32 id, CEntityGTA* attachTo, uint8 red,
                                   longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 }
 
+// Unvan ilə inline hook: CHook-da unvan overload-u varsa onu, yoxdursa shadowhook-u istifade edir.
+// (C++20 `requires` ile derleme zamani secilir -> hansi variant olursa olsun KOMPILYASIYA ugurlu olur.)
+template <typename H, typename O>
+static bool InstallInlineHook(uintptr_t addr, H hook, O* orig)
+{
+    if constexpr (requires { CHook::InlineHook(addr, hook, orig); }) {
+        CHook::InlineHook(addr, hook, orig);
+        return true;
+    } else {
+#ifdef CORONAS_HAVE_SHADOWHOOK
+        void* stub = shadowhook_hook_func_addr(reinterpret_cast<void*>(addr),
+                                               reinterpret_cast<void*>(hook),
+                                               reinterpret_cast<void**>(orig));
+        return stub != nullptr;
+#else
+        return false;
+#endif
+    }
+}
+
 void CCoronas::InjectHooks() {
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00679A84 : 0x851528), &CCoronas::SunScreenX);
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00679784 : 0x850F20), &CCoronas::SunScreenY);
@@ -65,10 +90,10 @@ void CCoronas::InjectHooks() {
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00675F6C : 0x849F60), &CCoronas::MoonSize);
 
     // Far rengi: RegisterCorona(eCoronaType) hook-u.
-    // DIQQET: bu setir patch.h-daki CHook::InlineHook-un UNVAN (uintptr_t) variantini teleb edir.
-    // Eger yalniz symbol variantı varsa, patch.h-i mene gonder ve ya InlineHook-a unvan overload-u elave et.
-    CHook::InlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
-                      &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type);
+    if (!InstallInlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
+                           &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type)) {
+        FLog("CCoronas: RegisterCorona hook qurulmadi (far rengi isleməyəcək)");
+    }
 
    // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);
 }

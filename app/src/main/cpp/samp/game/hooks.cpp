@@ -467,6 +467,10 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 				break;
 		}
 
+        if (UI_HandlingDlgCapturedEvent()) {
+            return AND_TouchEvent(1, 0, 0, 0);
+        }
+
         if (pUI->keyboard()->visible() || pUI->dialog()->visible()) {
             AND_TouchEvent(1, 0, 0, 0);
             return;

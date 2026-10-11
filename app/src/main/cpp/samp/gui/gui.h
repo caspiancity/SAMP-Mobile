@@ -115,3 +115,4 @@ private:
 
 // Handling dialoqu açıqdırsa və nöqtə onun içindədirsə true (alt widget-lər toxunuşu görməsin).
 bool UI_IsPointInHandlingDlg(const ImVec2& p);
+bool UI_HandlingDlgCapturedEvent();

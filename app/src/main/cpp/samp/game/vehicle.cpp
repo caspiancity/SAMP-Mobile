@@ -3,6 +3,7 @@
 #include "../net/netgame.h"
 #include "vehicle.h"
 #include "Streaming.h"
+#include "VehControls.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -230,7 +231,8 @@ CVehicle::~CVehicle()
 
         // Ferdi handling kopyasini sil, orijinal pointeri geri qaytar
         ReleaseOwnHandling(m_pVehicle);
-
+        VehControls::Forget(m_pVehicle);
+        
         int iModel = m_pVehicle->m_nModelIndex;
         if (iModel == 538 || iModel == 537)
         {

@@ -178,7 +178,7 @@ bool UI::initialize()
 	pUI->addChild(label4);
 
 	Label* d_label1;
-	d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+	d_label1 = new Label(cryptor::create("APACHE ONLINE V1. Test").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(d_label1);
 	d_label1->setPosition(ImVec2(3.0, 3.0));
 

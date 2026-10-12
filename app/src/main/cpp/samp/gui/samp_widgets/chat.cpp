@@ -6,6 +6,7 @@
 #include <sstream>
 #include "../settings.h"
 #include "java/jniutil.h"
+#include "../../game/VehControls.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -122,13 +123,52 @@ bool ProcessClientCommands(const std::string& input)
 		return true;
 	}
 
-	if (cmd == "/handling") {
+	if (cmd == "/tuning") {
 		CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 		if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
 			pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
 			return true;
 		}
 		g_bShowHandlingDlg = !g_bShowHandlingDlg;
+		return true;
+	}
+
+	if (cmd == "/sinyal")
+	{
+		CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+		if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+			pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+			return true;
+		}
+
+		CVehicle* pVeh = nullptr;
+		if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+			CVehiclePool* pPool = pNetGame->GetVehiclePool();
+			VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+			if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+		}
+		if (!pVeh || !pVeh->m_pVehicle) {
+			pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+			return true;
+		}
+
+		std::string arg;
+		ss >> arg;
+		std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+
+		int mode = -1;
+		if (arg == "sol")                          mode = VEH_SIGNAL_LEFT;
+		else if (arg == "sag")                     mode = VEH_SIGNAL_RIGHT;
+		else if (arg == "avariya")                 mode = VEH_SIGNAL_HAZARD;
+		else if (arg == "off" || arg == "0")       mode = VEH_SIGNAL_OFF;
+
+		if (mode < 0) {
+			pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyal [sol|sag|avariya|off]");
+			return true;
+		}
+
+		VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
+		pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
 		return true;
 	}
 

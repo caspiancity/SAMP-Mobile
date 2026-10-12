@@ -11,6 +11,10 @@
 #include "game/Entity/CPedGTA.h"
 #include "game/Entity/CEntityGTA.h"
 #include "game/VehTuner.h"
+#include "game/VehControls.h"
+#include <unordered_map>
+#include <chrono>
+#include <cmath>
 
 void CVehicleGTA::RenderDriverAndPassengers() {
     if(IsRCVehicleModelID())
@@ -174,6 +178,8 @@ void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint
     ho.inTail  = false;
 
     thiz->m_nVehicleFlags.bEngineOn = old;
+
+    VehControls::RenderSignals(thiz);
 }
 
 // DUZELDILDI: parametr tipleri oyundaki real imza ile uygunlasdirildi
@@ -244,6 +250,99 @@ bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMat
 
     CCoronas::s_HeadlightOverride.inTail = false;
     return true;
+}
+
+// ---------------------------------------------------------------------------
+//  Sinyal sistemi (sol / sag / avariya). Narıncı koronalar on ve arxa isiq
+//  dummy-lerinde cekilir; her masinda isleyir. Hazirda yalniz yerli gorunur.
+// ---------------------------------------------------------------------------
+namespace VehControls
+{
+    static std::unordered_map<CVehicleGTA*, uint8_t> s_signals;
+
+    bool BlinkOn()
+    {
+        using namespace std::chrono;
+        const long long ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+        return ((ms / 330) & 1) == 0;
+    }
+
+    uint8_t GetSignal(CVehicleGTA* veh)
+    {
+        auto it = s_signals.find(veh);
+        return it == s_signals.end() ? (uint8_t)0 : it->second;
+    }
+
+    void SetSignal(CVehicleGTA* veh, uint8_t mode)
+    {
+        if (!veh) return;
+        if (mode == 0) s_signals.erase(veh);
+        else           s_signals[veh] = mode;
+    }
+
+    void ToggleSignal(CVehicleGTA* veh, uint8_t mode)
+    {
+        SetSignal(veh, GetSignal(veh) == mode ? (uint8_t)0 : mode);
+    }
+
+    void Forget(CVehicleGTA* veh)
+    {
+        s_signals.erase(veh);
+    }
+
+    void RenderSignals(CVehicleGTA* veh)
+    {
+        if (s_signals.empty() || !veh) return;
+
+        auto it = s_signals.find(veh);
+        if (it == s_signals.end()) return;
+        if (!BlinkOn()) return;
+
+        auto* pModelInfo = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+        if (!pModelInfo || !pModelInfo->m_pVehicleStruct) return;
+        const CVector* dummy = pModelInfo->m_pVehicleStruct->m_avDummyPos;
+
+        const uint8_t mode = it->second;
+
+        for (int side = 0; side < 2; ++side)          // 0 = sol, 1 = sag
+        {
+            const bool wanted = (mode == VEH_SIGNAL_HAZARD) ||
+                                (mode == VEH_SIGNAL_LEFT  && side == 0) ||
+                                (mode == VEH_SIGNAL_RIGHT && side == 1);
+            if (!wanted) continue;
+
+            for (int end = 0; end < 2; ++end)         // 0 = on, 1 = arxa
+            {
+                CVector v(dummy[end == 0 ? 0 : 1]);
+                if (fabsf(v.x) < 0.05f) continue;     // dummy yoxdur (motosiklet, qayiq ve s.)
+
+                if (!side) v.x = -v.x;                // oyunun oz mentiqi ile eyni
+                v.x += (v.x >= 0.0f ? 0.05f : -0.05f);
+                v.z += (end == 0 ? -0.06f : 0.05f);
+
+                CCoronas::RegisterCorona(
+                        (uint32)((uintptr)&veh->m_placement.m_vPosn.y + 40 + end * 2 + side),
+                        veh,
+                        255, 150, 20, 230,
+                        &v,
+                        end == 0 ? 0.50f : 0.55f,
+                        60.f,
+                        eCoronaType::CORONATYPE_HEADLIGHT,
+                        eCoronaFlareType::FLARETYPE_NONE,
+                        false,
+                        false,
+                        0,
+                        0.0f,
+                        false,
+                        0,
+                        0,
+                        15.0f,
+                        false,
+                        false
+                );
+            }
+        }
+    }
 }
 
 void CVehicleGTA::InjectHooks() {

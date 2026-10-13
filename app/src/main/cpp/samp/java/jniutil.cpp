@@ -33,6 +33,8 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_showEditObject = env->GetMethodID(clas, "showEditObject", "()V");
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
+    s_ytCommand = env->GetMethodID(clas, "ytCommand", "([B)V");
+
     env->DeleteLocalRef(clas);
 }
 
@@ -190,4 +192,22 @@ void CJavaWrapper::HideEditObject() {
     }
 
     env->CallVoidMethod(this->activity, this->s_hideEditObject);
+}
+
+void CJavaWrapper::YtCommand(const char* arg)
+{
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+
+    if (!env || !s_ytCommand)
+    {
+        FLog("No env or ytCommand");
+        return;
+    }
+
+    std::string s(arg ? arg : "");
+    jbyteArray bytes = as_byte_array((unsigned char*)s.c_str(), s.length());
+    env->CallVoidMethod(this->activity, this->s_ytCommand, bytes);
+    env->DeleteLocalRef(bytes);
+    EXCEPTION_CHECK(env);
 }

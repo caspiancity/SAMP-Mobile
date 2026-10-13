@@ -3,7 +3,7 @@
 #include "main.h"
 
 #define EXCEPTION_CHECK(env) \
-	if ((env)->ExceptionCheck()) \ 
+	if ((env)->ExceptionCheck()) \
 	{ \
 		(env)->ExceptionDescribe(); \
 		(env)->ExceptionClear(); \
@@ -43,6 +43,8 @@ public:
 	void ShowEditObject();
 	void HideEditObject();
 
+	void YtCommand(const char* arg);
+
     jobject activity;
     jmethodID s_setPauseState;
     jmethodID s_showLoadingScreen;
@@ -57,4 +59,5 @@ public:
 	jmethodID s_exitGame;
 	jmethodID s_showEditObject;
 	jmethodID s_hideEditObject;
+	jmethodID s_ytCommand;
 };

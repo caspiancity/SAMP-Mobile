@@ -1,5 +1,6 @@
 package com.samp.mobile.game;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -101,6 +102,28 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         final String leftBtnText = new String(bArr3, StandardCharsets.UTF_8);
         final String rightBtnText = new String(bArr4, StandardCharsets.UTF_8);
         runOnUiThread(() -> { this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText); });
+    }
+
+    /** /yt komandasi (C++ -> JNI -> buraya). Imza: ([B)V */
+    public void ytCommand(final byte[] data) {
+        String s = "";
+        try {
+            if (data != null) s = new String(data, "UTF-8");
+        } catch (Exception e) {
+            s = "";
+        }
+        final String arg = s;
+        final Activity a = this;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    YoutubeTablet.command(a, arg);
+                } catch (Throwable t) {
+                    Log.e(TAG, "ytCommand error: " + t);
+                }
+            }
+        });
     }
 
     private native void onInputEnd(byte[] str);
@@ -252,6 +275,11 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     @Override
     public void onDestroy() {
         Log.i(TAG, "**** onDestroy");
+        try {
+            YoutubeTablet.release();
+        } catch (Throwable t) {
+            Log.e(TAG, "YoutubeTablet.release error: " + t);
+        }
         super.onDestroy();
     }
 

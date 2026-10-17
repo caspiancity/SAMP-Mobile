@@ -232,14 +232,15 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           python3 - <<'PY'
-          import os, re
+          import os, re, json
 
           run_num = int(os.environ.get('RUN_NUMBER', 1))
           version_code = 300 + run_num
           version_name = f"0.3.{run_num}"
 
-          print(f"Paket adı dəyişdirilir: the.apaches | Version Name: {version_name} | Version Code: {version_code}")
+          print(f"Paket adı yenilənir: the.apaches | Version Name: {version_name} | Version Code: {version_code}")
 
+          # 1. Gradle fayllarını yenilə (applicationId, namespace, versionCode, versionName)
           gradle_files = ['app/build.gradle', 'app/build.gradle.kts']
           for g_file in gradle_files:
               if os.path.exists(g_file):
@@ -255,6 +256,7 @@ jobs:
                       f.write(content)
                   print(f"Uğurla yeniləndi: {g_file}")
 
+          # 2. AndroidManifest.xml faylını yenilə
           manifest_path = 'app/src/main/AndroidManifest.xml'
           if os.path.exists(manifest_path):
               with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -263,6 +265,23 @@ jobs:
               with open(manifest_path, 'w', encoding='utf-8') as f:
                   f.write(m_content)
               print("AndroidManifest.xml paket adı yeniləndi.")
+
+          # 3. google-services.json faylını yenilə (Firebase xətasına qarşı)
+          gs_path = 'app/google-services.json'
+          if os.path.exists(gs_path):
+              try:
+                  with open(gs_path, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  for client in data.get('client', []):
+                      client_info = client.get('client_info', {})
+                      android_client_info = client_info.get('android_client_info', {})
+                      if 'package_name' in android_client_info:
+                          android_client_info['package_name'] = 'the.apaches'
+                  with open(gs_path, 'w', encoding='utf-8') as f:
+                      json.dump(data, f, indent=4)
+                  print("google-services.json paket adı uğurla yeniləndi.")
+              except Exception as e:
+                  print(f"google-services.json yenilənərkən xəta: {e}")
           PY
 
       - name: Build debug APK

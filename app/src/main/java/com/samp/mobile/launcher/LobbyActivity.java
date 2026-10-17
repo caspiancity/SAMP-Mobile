@@ -80,8 +80,9 @@ public class LobbyActivity extends Activity {
     private static final String NAME_REGEX = "^[A-Za-z0-9_\\[\\]\\$=@\\(\\)\\.]{3,20}$";
     private static final String[] CHANGELOG = {
             "Yeni lobi və başlanğıc ekranı",
-            "Data yoxlanışı: data yoxdursa oyun crash etmir",
-            "/tuning menyusu, sinyal sistemi, /yt planşeti",
+            "/yt sistemi - canlı olaraq oyun içi youtube açıb istədiyin mahnıya qulaq asa bilmək.",
+            "/tuning sistemi - hand dəyişmək, far rəngini dəyişmək və s.",
+            "Və daha birçox şey yaxında gələcək!🙃",
     };
 
     private static final int C_PANEL = 0xFF14161C, C_CARD = 0xFF1A1D25, C_FIELD = 0xFF232733,
@@ -332,10 +333,10 @@ public class LobbyActivity extends Activity {
         boolean scanning = data == null;
         int col = scanning ? C_HINT : (data.ok ? C_OK : C_BAD);
         String sz = scanning ? "" : Formatter.formatShortFileSize(this, data.bytes);
-        String head = scanning ? "Yoxlanılır..." : (data.ok ? "Data hazırdır" : "Data tapılmadı");
+        String head = scanning ? "Yoxlanılır..." : (data.ok ? "Onlayn" : "Data tapılmadı");
 
         if (sideDot != null) sideDot.setBackground(oval(col));
-        if (sideDataTxt != null) sideDataTxt.setText(scanning ? "Data yoxlanılır" : (data.ok ? "Data hazırdır" : "Data yoxdur"));
+        if (sideDataTxt != null) sideDataTxt.setText(scanning ? "Data yoxlanılır" : (data.ok ? "Onlayn" : "Data yoxdur"));
         if (homeDataDot != null) homeDataDot.setBackground(oval(col));
         if (homeDataTxt != null) homeDataTxt.setText(scanning ? head : (data.ok ? head + " · " + sz : head + " · " + data.reason));
         if (dataStatusTxt != null) { dataStatusTxt.setText(scanning ? head : (data.ok ? head + " · " + sz : head)); dataStatusTxt.setTextColor(col); }
@@ -424,7 +425,7 @@ public class LobbyActivity extends Activity {
         LinearLayout bt = new LinearLayout(this);
         bt.setOrientation(LinearLayout.VERTICAL);
         bt.setPadding(dp(10), 0, 0, 0);
-        bt.addView(text("SA:MP", 20, C_TXT, true));
+        bt.addView(text("APACHE ONLINE", 20, C_TXT, true));
         bt.addView(text("Mobile · v" + versionName(), 12, C_HINT, false));
         brand.addView(bt);
         sb.addView(brand, new LinearLayout.LayoutParams(MATCH, WRAP));
@@ -504,7 +505,7 @@ public class LobbyActivity extends Activity {
         left.setPadding(0, 0, dp(22), 0);
 
         left.addView(text("Xoş gəldin", 32, C_TXT, true));
-        TextView sub = text("Adını seç və oyuna başla.", 15, C_HINT, false);
+        TextView sub = text("Sadəcə ad qoy və başla!", 15, C_HINT, false);
         sub.setPadding(0, dp(4), 0, dp(22));
         left.addView(sub);
 
@@ -845,7 +846,7 @@ public class LobbyActivity extends Activity {
     private View buildAbout() {
         LinearLayout col = pageColumn("Haqqında", "Versiya və dəyişikliklər");
         LinearLayout c = card();
-        c.addView(text("SA:MP Mobile", 22, C_TXT, true));
+        c.addView(text("APACHE ONLINE", 22, C_TXT, true));
         TextView v = text("Versiya " + versionName() + "   ·   " + getPackageName(), 13, C_HINT, false);
         v.setPadding(0, dp(4), 0, 0);
         c.addView(v);

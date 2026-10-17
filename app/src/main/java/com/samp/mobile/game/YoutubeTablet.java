@@ -54,3 +54,889 @@ import android.widget.TextView;
  *  - X: baglayir ve oynatmani dayandirir
  */
 public final class YoutubeTablet {
+
+    private static final String HOME = "https://m.youtube.com/";
+
+    private static final int C_BEZEL = 0xFF0B0D12;
+    private static final int C_INNER = 0xFF14161C;
+    private static final int C_BAR   = 0xFF1A1D25;
+    private static final int C_FIELD = 0xFF262A35;
+    private static final int C_TXT   = 0xFFE8EAF0;
+    private static final int C_HINT  = 0xFF8B92A3;
+    private static final int C_ACC   = 0xFFE53935;
+    private static final int C_ICON  = 0xFFD5D9E3;
+
+    private static final int MINI_W = 316, MINI_H = 85;          // dp (card)
+    private static final int PREV_W = 112, PREV_H = 63;          // dp (mini-de video penceresi)
+    private static final int VIRT_W = 480, VIRT_H = 270;         // dp (mini rejimde sehife bu olcude qurulur)
+    private static final int CHROME_H = 72;                      // dp (bashliq 26 + panel 44 + xett 2)
+
+    private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
+
+    /** sehife "gizli" olanda YouTube oynatmani dayandirmasin deye */
+    private static final String KEEPALIVE =
+            "(function(){try{if(window.__ytk)return;window.__ytk=1;"
+          + "Object.defineProperty(document,'hidden',{get:function(){return false;}});"
+          + "Object.defineProperty(document,'visibilityState',{get:function(){return 'visible';}});"
+          + "document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);"
+          + "}catch(e){}})();";
+
+    // ------------------------------------------------------------------ statik giris
+    private static YoutubeTablet sInst;
+
+    /** /yt [axtaris]  ->  bos: ac/bagla; metn: ac ve axtar */
+    public static void command(Activity act, String arg) {
+        if (act == null || act.isFinishing()) return;
+        if (sInst == null || sInst.act != act) {
+            if (sInst != null) sInst.destroy();
+            sInst = new YoutubeTablet(act);
+        }
+        sInst.onCommand(arg == null ? "" : arg.trim());
+    }
+
+    public static void hide() {
+        if (sInst != null) sInst.close();
+    }
+
+    public static void release() {
+        if (sInst != null) { sInst.destroy(); sInst = null; }
+    }
+
+    // ------------------------------------------------------------------ vezyyet
+    private final Activity act;
+    private final float dp;
+    private final SharedPreferences prefs;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+
+    private FrameLayout card, inner, webHolder, fsHolder;
+    private LinearLayout chrome, miniGroup, topBar;
+    private View handle, previewOverlay;
+    private Line line;
+    private EditText search;
+    private WebView web;
+    private Ic icBack, icFwd, icMax, icPlay, icGrip;
+    private TextView miniTitle;
+
+    private boolean built, attached, closing, mini, maximized, playing;
+    private int oldSoftMode = -1;
+
+    private int nx, ny, nw, nh;          // normal pencere (px)
+    private int mx = -1, my = -1;        // mini movqe (px)
+    private int pmx, pmy, pmw, pmh;      // boyutmeden evvel
+
+    private View customView;
+    private WebChromeClient.CustomViewCallback customCb;
+    private ValueAnimator rectAnim;
+
+    private YoutubeTablet(Activity act) {
+        this.act = act;
+        this.dp = act.getResources().getDisplayMetrics().density;
+        this.prefs = act.getSharedPreferences("yt_tablet", Context.MODE_PRIVATE);
+        nx = prefs.getInt("nx", 0);
+        ny = prefs.getInt("ny", 0);
+        nw = prefs.getInt("nw", 0);
+        nh = prefs.getInt("nh", 0);
+        mx = prefs.getInt("mx", -1);
+        my = prefs.getInt("my", -1);
+    }
+
+    private int dpx(float v) { return Math.round(v * dp); }
+    private static int clamp(int v, int a, int b) { return v < a ? a : (v > b ? Math.max(a, b) : v); }
+
+    private int screenW() {
+        if (card != null && card.getParent() instanceof View && ((View) card.getParent()).getWidth() > 0)
+            return ((View) card.getParent()).getWidth();
+        return act.getResources().getDisplayMetrics().widthPixels;
+    }
+
+    private int screenH() {
+        if (card != null && card.getParent() instanceof View && ((View) card.getParent()).getHeight() > 0)
+            return ((View) card.getParent()).getHeight();
+        return act.getResources().getDisplayMetrics().heightPixels;
+    }
+
+    private int curW() { return card.getLayoutParams() != null ? card.getLayoutParams().width : nw; }
+    private int curH() { return card.getLayoutParams() != null ? card.getLayoutParams().height : nh; }
+
+    // ------------------------------------------------------------------ komanda
+    private void onCommand(String arg) {
+        if (closing) return;
+        if (attached) {
+            if (arg.isEmpty()) { close(); return; }
+            if (mini) exitMini();
+            go(arg);
+            return;
+        }
+        open(arg);
+    }
+
+    private void open(String arg) {
+        if (!built) build();
+
+        ensureRect();
+        resetViewsToNormal();
+
+        card.setAlpha(0f);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(nw, nh, Gravity.TOP | Gravity.LEFT);
+        act.addContentView(card, lp);
+        card.setTranslationX(nx);
+        card.setTranslationY(ny);
+        attached = true;
+
+        oldSoftMode = act.getWindow().getAttributes().softInputMode;
+        act.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
+
+        card.setPivotX(nw / 2f);
+        card.setPivotY(nh / 2f);
+        card.setScaleX(0.92f);
+        card.setScaleY(0.92f);
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(230)
+                .setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f)).setListener(null).start();
+
+        if (arg.isEmpty()) web.loadUrl(HOME); else go(arg);
+    }
+
+    private void close() {
+        if (!attached || closing) return;
+        closing = true;
+        ui.removeCallbacks(poll);
+        exitFullscreenVideo();
+        hideIme();
+        if (rectAnim != null) rectAnim.cancel();
+        web.loadUrl("about:blank");           // oynatmani dayandir
+
+        card.setPivotX(curW() / 2f);
+        card.setPivotY(curH() / 2f);
+        card.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).setDuration(160)
+                .setInterpolator(new AccelerateInterpolator())
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(Animator a) {
+                        card.animate().setListener(null);
+                        detach();
+                    }
+                }).start();
+    }
+
+    private void detach() {
+        if (card.getParent() instanceof ViewGroup) ((ViewGroup) card.getParent()).removeView(card);
+        attached = false;
+        closing = false;
+        card.setScaleX(1f);
+        card.setScaleY(1f);
+        resetViewsToNormal();
+        if (oldSoftMode != -1) act.getWindow().setSoftInputMode(oldSoftMode);
+        savePrefs();
+    }
+
+    private void destroy() {
+        ui.removeCallbacksAndMessages(null);
+        if (rectAnim != null) rectAnim.cancel();
+        if (card != null && card.getParent() instanceof ViewGroup) ((ViewGroup) card.getParent()).removeView(card);
+        if (web != null) {
+            if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
+            web.destroy();
+            web = null;
+        }
+        attached = false;
+        built = false;
+    }
+
+    // ------------------------------------------------------------------ axtaris
+    private void go(String input) {
+        String t = input.trim();
+        if (t.isEmpty()) return;
+        String url;
+        if (t.startsWith("http://") || t.startsWith("https://")) url = t;
+        else if (t.contains("youtu.be/") || t.contains("youtube.com/")) url = "https://" + t;
+        else url = "https://m.youtube.com/results?search_query=" + Uri.encode(t);
+        web.loadUrl(url);
+    }
+
+    private void hideIme() {
+        InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null && search != null) imm.hideSoftInputFromWindow(search.getWindowToken(), 0);
+        if (search != null) search.clearFocus();
+    }
+
+    private void refreshNav() {
+        if (web == null) return;
+        icBack.setAlpha(web.canGoBack() ? 1f : 0.35f);
+        icFwd.setAlpha(web.canGoForward() ? 1f : 0.35f);
+    }
+
+    // ------------------------------------------------------------------ olcu / movqe
+    private void ensureRect() {
+        final int sw = screenW(), sh = screenH();
+        if (nw <= 0 || nh <= 0) {
+            nw = (int) Math.min(sw * 0.66f, dpx(760));
+            nh = (int) Math.min(sh * 0.80f, nw * 0.62f);
+            nx = (sw - nw) / 2;
+            ny = (sh - nh) / 2;
+        }
+        nw = clamp(nw, dpx(420), sw);
+        nh = clamp(nh, dpx(240), sh);
+        nx = clamp(nx, 0, sw - nw);
+        ny = clamp(ny, 0, sh - nh);
+        maximized = false;
+        icMax.setType(Ic.MAX);
+    }
+
+    private void rememberNormal() {
+        if (mini || maximized || card == null) return;
+        nx = Math.round(card.getTranslationX());
+        ny = Math.round(card.getTranslationY());
+        nw = curW();
+        nh = curH();
+    }
+
+    private void setLayoutSize(int w, int h) {
+        ViewGroup.LayoutParams lp = card.getLayoutParams();
+        if (lp != null && (lp.width != w || lp.height != h)) {
+            lp.width = w;
+            lp.height = h;
+            card.setLayoutParams(lp);
+        }
+    }
+
+    /** ani qoyma (suruklemede / olcu deyisende) */
+    private void applyRect(int x, int y, int w, int h) {
+        setLayoutSize(w, h);
+        card.setPivotX(0f);
+        card.setPivotY(0f);
+        card.setScaleX(1f);
+        card.setScaleY(1f);
+        card.setTranslationX(x);
+        card.setTranslationY(y);
+    }
+
+    /**
+     * Axici kecid (FLIP): yeni olcu bir defe teyin olunur, sonra GPU ile
+     * kohne cerceveden yeniye "scale + translate" animasiyasi gedir.
+     * Her kadrda WebView-ni yeniden olcmek lazim olmur.
+     */
+    private void animateRect(final int x, final int y, final int w, final int h) {
+        if (rectAnim != null) rectAnim.cancel();
+
+        final float vx = card.getTranslationX(), vy = card.getTranslationY();
+        final float vw = curW() * card.getScaleX(), vh = curH() * card.getScaleY();
+
+        setLayoutSize(w, h);
+        card.setPivotX(0f);
+        card.setPivotY(0f);
+        final float sx0 = vw / w, sy0 = vh / h;
+        card.setScaleX(sx0);
+        card.setScaleY(sy0);
+        card.setTranslationX(vx);
+        card.setTranslationY(vy);
+
+        rectAnim = ValueAnimator.ofFloat(0f, 1f);
+        rectAnim.setDuration(280);
+        rectAnim.setInterpolator(new PathInterpolator(0.22f, 1f, 0.36f, 1f));
+        rectAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator a) {
+                float f = (Float) a.getAnimatedValue();
+                card.setScaleX(sx0 + (1f - sx0) * f);
+                card.setScaleY(sy0 + (1f - sy0) * f);
+                card.setTranslationX(vx + (x - vx) * f);
+                card.setTranslationY(vy + (y - vy) * f);
+            }
+        });
+        rectAnim.addListener(new AnimatorListenerAdapter() {
+            private void settle() {
+                card.setScaleX(1f);
+                card.setScaleY(1f);
+                card.setTranslationX(x);
+                card.setTranslationY(y);
+                savePrefs();
+            }
+            @Override public void onAnimationCancel(Animator a) { settle(); }
+            @Override public void onAnimationEnd(Animator a) { settle(); }
+        });
+        rectAnim.start();
+    }
+
+    private void setPos(float x, float y) {
+        int px = clamp(Math.round(x), 0, screenW() - curW());
+        int py = clamp(Math.round(y), 0, screenH() - curH());
+        card.setTranslationX(px);
+        card.setTranslationY(py);
+        if (mini) { mx = px; my = py; } else if (!maximized) { nx = px; ny = py; }
+    }
+
+    private void savePrefs() {
+        if (card == null) return;
+        if (!mini && !maximized && attached) rememberNormal();
+        SharedPreferences.Editor e = prefs.edit();
+        e.putInt("nx", nx).putInt("ny", ny).putInt("nw", nw).putInt("nh", nh);
+        e.putInt("mx", mx).putInt("my", my);
+        e.apply();
+    }
+
+    private void toggleMaximize() {
+        if (mini) return;
+        if (!maximized) {
+            rememberNormal();
+            pmx = nx; pmy = ny; pmw = nw; pmh = nh;
+            final int m = dpx(10);
+            maximized = true;
+            icMax.setType(Ic.RESTORE);
+            animateRect(m, m, screenW() - 2 * m, screenH() - 2 * m);
+        } else {
+            maximized = false;
+            icMax.setType(Ic.MAX);
+            nx = pmx; ny = pmy; nw = pmw; nh = pmh;
+            animateRect(nx, ny, nw, nh);
+        }
+    }
+
+    // ------------------------------------------------------------------ mini pleyer
+    /**
+     * Rejimi deyisir. VACIB: WebView hec vaxt detach olunmur ve onun
+     * valideynlerinden hec biri GONE edilmir - yoxsa YouTube oynatmani dayandirir.
+     */
+    private void applyMode(boolean m) {
+        FrameLayout.LayoutParams wl;
+        FrameLayout.LayoutParams vl;
+        if (m) {
+            wl = new FrameLayout.LayoutParams(dpx(PREV_W), dpx(PREV_H), Gravity.TOP | Gravity.LEFT);
+            wl.leftMargin = dpx(6);
+            wl.topMargin = dpx(6);
+            vl = new FrameLayout.LayoutParams(dpx(VIRT_W), dpx(VIRT_H));
+            web.setLayoutParams(vl);
+            web.setPivotX(0f);
+            web.setPivotY(0f);
+            float sc = dpx(PREV_W) / (float) dpx(VIRT_W);
+            web.setScaleX(sc);
+            web.setScaleY(sc);
+        } else {
+            wl = new FrameLayout.LayoutParams(MATCH, MATCH);
+            wl.topMargin = dpx(CHROME_H);
+            vl = new FrameLayout.LayoutParams(MATCH, MATCH);
+            web.setLayoutParams(vl);
+            web.setScaleX(1f);
+            web.setScaleY(1f);
+        }
+        webHolder.setLayoutParams(wl);
+        webHolder.invalidateOutline();
+
+        chrome.setVisibility(m ? View.GONE : View.VISIBLE);
+        miniGroup.setVisibility(m ? View.VISIBLE : View.GONE);
+        previewOverlay.setVisibility(m ? View.VISIBLE : View.GONE);
+        icGrip.setVisibility(m ? View.GONE : View.VISIBLE);
+    }
+
+    private void enterMini() {
+        if (mini || !attached) return;
+        exitFullscreenVideo();
+        hideIme();
+        rememberNormal();
+        mini = true;
+        applyMode(true);
+
+        final int sw = screenW(), sh = screenH();
+        if (mx < 0 || my < 0) { mx = sw - dpx(MINI_W) - dpx(12); my = dpx(12); }
+        mx = clamp(mx, 0, sw - dpx(MINI_W));
+        my = clamp(my, 0, sh - dpx(MINI_H));
+        animateRect(mx, my, dpx(MINI_W), dpx(MINI_H));
+
+        icPlay.setType(Ic.PAUSE);
+        ui.removeCallbacks(poll);
+        ui.post(poll);
+    }
+
+    private void exitMini() {
+        if (!mini) return;
+        ui.removeCallbacks(poll);
+        mx = Math.round(card.getTranslationX());
+        my = Math.round(card.getTranslationY());
+        mini = false;
+        applyMode(false);
+
+        ensureRectKeepMax();
+        final int m = dpx(10);
+        if (maximized) animateRect(m, m, screenW() - 2 * m, screenH() - 2 * m);
+        else animateRect(nx, ny, nw, nh);
+    }
+
+    private void ensureRectKeepMax() {
+        final boolean wasMax = maximized;
+        final int sw = screenW(), sh = screenH();
+        nw = clamp(nw, dpx(420), sw);
+        nh = clamp(nh, dpx(240), sh);
+        nx = clamp(nx, 0, sw - nw);
+        ny = clamp(ny, 0, sh - nh);
+        maximized = wasMax;
+    }
+
+    /** mini pleyeri en yaxin kenara yapishdir */
+    private void snapMini() {
+        final int sw = screenW(), sh = screenH(), m = dpx(10);
+        int cx = Math.round(card.getTranslationX()) + curW() / 2;
+        int tx = cx < sw / 2 ? m : sw - curW() - m;
+        int ty = clamp(Math.round(card.getTranslationY()), m, sh - curH() - m);
+        mx = tx; my = ty;
+        animateRect(tx, ty, curW(), curH());
+    }
+
+    private void resetViewsToNormal() {
+        if (!built) return;
+        ui.removeCallbacks(poll);
+        mini = false;
+        applyMode(false);
+        maximized = false;
+        icMax.setType(Ic.MAX);
+    }
+
+    private final Runnable poll = new Runnable() {
+        @Override public void run() {
+            if (!attached || !mini || web == null) return;
+            web.evaluateJavascript(
+                    "(function(){var v=document.querySelector('video');return v?(v.paused?'0':'1'):'x';})()",
+                    new ValueCallback<String>() {
+                        @Override public void onReceiveValue(String s) {
+                            playing = s != null && s.contains("1");
+                            icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+                        }
+                    });
+            String t = web.getTitle();
+            if (t != null) miniTitle.setText(t.replace(" - YouTube", ""));
+            ui.postDelayed(this, 700);
+        }
+    };
+
+    private void togglePlay() {
+        web.evaluateJavascript(
+                "(function(){var v=document.querySelector('video');if(v){if(v.paused)v.play();else v.pause();}})()", null);
+        playing = !playing;
+        icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+    }
+
+    private void exitFullscreenVideo() {
+        if (customView == null) return;
+        fsHolder.removeView(customView);
+        fsHolder.setVisibility(View.GONE);
+        web.setVisibility(View.VISIBLE);
+        if (customCb != null) customCb.onCustomViewHidden();
+        customView = null;
+        customCb = null;
+    }
+
+    // ------------------------------------------------------------------ toxunus: surukleme
+    @SuppressLint("ClickableViewAccessibility")
+    private void attachDrag(View v, final Runnable onTap, final Runnable onDoubleTap) {
+        v.setOnTouchListener(new View.OnTouchListener() {
+            float sx, sy, stx, sty;
+            boolean moved;
+            long lastTap;
+
+            @Override public boolean onTouch(View view, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        if (rectAnim != null) rectAnim.cancel();
+                        sx = e.getRawX(); sy = e.getRawY();
+                        stx = card.getTranslationX(); sty = card.getTranslationY();
+                        moved = false;
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = e.getRawX() - sx, dy = e.getRawY() - sy;
+                        if (!moved && Math.hypot(dx, dy) > dpx(6)) {
+                            moved = true;
+                            card.animate().cancel();
+                            card.setAlpha(0.92f);          // suruklenende yungul seffaflig
+                        }
+                        if (moved) setPos(stx + dx, sty + dy);
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                        card.setAlpha(1f);
+                        if (!moved) {
+                            long now = SystemClock.uptimeMillis();
+                            if (onDoubleTap != null && now - lastTap < 320) { lastTap = 0; onDoubleTap.run(); }
+                            else { lastTap = now; if (onTap != null) onTap.run(); }
+                        } else if (mini) {
+                            snapMini();
+                        } else {
+                            savePrefs();
+                        }
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        card.setAlpha(1f);
+                        if (moved) { if (mini) snapMini(); else savePrefs(); }
+                        return true;
+                }
+                return false;
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ UI qurulumu
+    @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
+    private void build() {
+        // ---- korpus ----
+        card = new FrameLayout(act);
+        GradientDrawable bezel = new GradientDrawable();
+        bezel.setColor(C_BEZEL);
+        bezel.setCornerRadius(dpx(22));
+        bezel.setStroke(Math.max(1, dpx(1)), 0xFF2A2E38);
+        card.setBackground(bezel);
+        card.setPadding(dpx(5), dpx(5), dpx(5), dpx(5));
+        card.setElevation(dpx(18));
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setFocusableInTouchMode(true);
+
+        inner = new FrameLayout(act);
+        inner.setBackgroundColor(C_INNER);
+        inner.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dpx(17)); }
+        });
+        inner.setClipToOutline(true);
+        card.addView(inner, new FrameLayout.LayoutParams(MATCH, MATCH));
+
+        // ================= mini panel (en altda; webHolder onun ustunde preview kimi gorunur) =================
+        miniGroup = new LinearLayout(act);
+        miniGroup.setOrientation(LinearLayout.HORIZONTAL);
+        miniGroup.setGravity(Gravity.CENTER_VERTICAL);
+        miniGroup.setBackgroundColor(C_BAR);
+        miniGroup.setPadding(dpx(6 + PREV_W + 10), dpx(4), dpx(6), dpx(4));
+        miniGroup.setVisibility(View.GONE);
+        inner.addView(miniGroup, new FrameLayout.LayoutParams(MATCH, MATCH));
+        attachDrag(miniGroup, null, null);
+
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        miniGroup.addView(col, new LinearLayout.LayoutParams(0, MATCH, 1f));
+
+        miniTitle = new TextView(act);
+        miniTitle.setTextColor(C_TXT);
+        miniTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        miniTitle.setSingleLine(true);
+        miniTitle.setEllipsize(TextUtils.TruncateAt.END);
+        miniTitle.setGravity(Gravity.CENTER_VERTICAL);
+        miniTitle.setText("YouTube");
+        col.addView(miniTitle, new LinearLayout.LayoutParams(MATCH, 0, 1f));
+
+        LinearLayout ctr = new LinearLayout(act);
+        ctr.setOrientation(LinearLayout.HORIZONTAL);
+        ctr.setGravity(Gravity.CENTER_VERTICAL);
+        col.addView(ctr, new LinearLayout.LayoutParams(MATCH, dpx(38)));
+
+        icPlay = new Ic(act, Ic.PAUSE, dp);
+        Ic icExpand = new Ic(act, Ic.EXPAND, dp);
+        Ic icMiniClose = new Ic(act, Ic.CLOSE, dp);
+        ctr.addView(icPlay, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        ctr.addView(icExpand, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        ctr.addView(icMiniClose, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        icPlay.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { togglePlay(); } });
+        icExpand.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exitMini(); } });
+        icMiniClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { close(); } });
+
+        // ================= veb sahe (normalda butun sahe, mini-de sol-ust preview) =================
+        webHolder = new FrameLayout(act);
+        webHolder.setBackgroundColor(0xFF0F0F0F);
+        webHolder.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), mini ? dpx(8) : 0);
+            }
+        });
+        webHolder.setClipToOutline(true);
+        FrameLayout.LayoutParams whp = new FrameLayout.LayoutParams(MATCH, MATCH);
+        whp.topMargin = dpx(CHROME_H);
+        inner.addView(webHolder, whp);
+
+        web = new WebView(act);
+        web.setBackgroundColor(0xFF0F0F0F);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        s.setUserAgentString(s.getUserAgentString().replace("; wv", ""));
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(web, true);
+
+        web.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                String u = r.getUrl().toString();
+                return u.startsWith("intent:") || u.startsWith("vnd.youtube") || u.startsWith("market:") || u.startsWith("youtube:");
+            }
+            @Override public void onPageStarted(WebView v, String url, Bitmap fav) {
+                line.set(5);
+                v.evaluateJavascript(KEEPALIVE, null);
+            }
+            @Override public void onPageFinished(WebView v, String url) {
+                line.set(0);
+                refreshNav();
+                v.evaluateJavascript(KEEPALIVE, null);
+            }
+        });
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView v, int p) { line.set(p); }
+            @Override public Bitmap getDefaultVideoPoster() { return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); }
+            @Override public void onShowCustomView(View view, CustomViewCallback cb) {
+                if (customView != null) { cb.onCustomViewHidden(); return; }
+                customView = view;
+                customCb = cb;
+                fsHolder.addView(view, new FrameLayout.LayoutParams(MATCH, MATCH));
+                fsHolder.setVisibility(View.VISIBLE);
+                web.setVisibility(View.INVISIBLE);
+            }
+            @Override public void onHideCustomView() { exitFullscreenVideo(); }
+        });
+        web.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                if (search.hasFocus()) hideIme();
+                return false;
+            }
+        });
+        webHolder.addView(web, new FrameLayout.LayoutParams(MATCH, MATCH));
+
+        fsHolder = new FrameLayout(act);
+        fsHolder.setBackgroundColor(Color.BLACK);
+        fsHolder.setVisibility(View.GONE);
+        webHolder.addView(fsHolder, new FrameLayout.LayoutParams(MATCH, MATCH));
+
+        // ================= normal rejim: ust hisse (bashliq + panel + xett) =================
+        chrome = new LinearLayout(act);
+        chrome.setOrientation(LinearLayout.VERTICAL);
+        chrome.setBackgroundColor(C_BAR);
+        inner.addView(chrome, new FrameLayout.LayoutParams(MATCH, dpx(CHROME_H), Gravity.TOP));
+
+        handle = new View(act) {
+            final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG), pill = new Paint(Paint.ANTI_ALIAS_FLAG), tx = new Paint(Paint.ANTI_ALIAS_FLAG);
+            final RectF r = new RectF();
+            { bg.setColor(C_BAR); pill.setColor(0xFF4A4F5C); tx.setColor(C_HINT); tx.setTextSize(dpx(11)); tx.setTypeface(Typeface.DEFAULT_BOLD); }
+            @Override protected void onDraw(Canvas c) {
+                float w = getWidth(), h = getHeight();
+                c.drawRect(0, 0, w, h, bg);
+                r.set(w / 2f - dpx(18), h / 2f - dpx(2), w / 2f + dpx(18), h / 2f + dpx(2));
+                c.drawRoundRect(r, dpx(2), dpx(2), pill);
+                c.drawText("YouTube", dpx(14), h / 2f + dpx(4), tx);
+            }
+        };
+        chrome.addView(handle, new LinearLayout.LayoutParams(MATCH, dpx(26)));
+        attachDrag(handle, null, new Runnable() { @Override public void run() { toggleMaximize(); } });
+
+        topBar = new LinearLayout(act);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setBackgroundColor(C_BAR);
+        topBar.setPadding(dpx(4), 0, dpx(4), dpx(2));
+        chrome.addView(topBar, new LinearLayout.LayoutParams(MATCH, dpx(44)));
+
+        icBack = new Ic(act, Ic.BACK, dp);
+        icFwd  = new Ic(act, Ic.FWD, dp);
+        Ic icHome = new Ic(act, Ic.HOME, dp);
+        topBar.addView(icBack, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        topBar.addView(icFwd,  new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        topBar.addView(icHome, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+
+        search = new EditText(act);
+        search.setSingleLine(true);
+        search.setHint("YouTube-da axtar");
+        search.setHintTextColor(C_HINT);
+        search.setTextColor(C_TXT);
+        search.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        search.setPadding(dpx(14), 0, dpx(14), 0);
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        GradientDrawable fieldBg = new GradientDrawable();
+        fieldBg.setColor(C_FIELD);
+        fieldBg.setCornerRadius(dpx(17));
+        search.setBackground(fieldBg);
+        search.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent ev) {
+                if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE
+                        || (ev != null && ev.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER)) {
+                    go(search.getText().toString());
+                    hideIme();
+                    return true;
+                }
+                return false;
+            }
+        });
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, dpx(34), 1f);
+        slp.setMargins(dpx(4), 0, dpx(2), 0);
+        topBar.addView(search, slp);
+
+        Ic icGo   = new Ic(act, Ic.SEARCH, dp);
+        Ic icNote = new Ic(act, Ic.NOTE, dp);
+        icMax     = new Ic(act, Ic.MAX, dp);
+        Ic icClose = new Ic(act, Ic.CLOSE, dp);
+        topBar.addView(icGo,    new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        topBar.addView(icNote,  new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        topBar.addView(icMax,   new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        topBar.addView(icClose, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+
+        icBack.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (web.canGoBack()) web.goBack(); } });
+        icFwd.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (web.canGoForward()) web.goForward(); } });
+        icHome.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { web.loadUrl(HOME); } });
+        icGo.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { go(search.getText().toString()); hideIme(); } });
+        icNote.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { enterMini(); } });
+        icMax.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleMaximize(); } });
+        icClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { close(); } });
+
+        line = new Line(act);
+        chrome.addView(line, new LinearLayout.LayoutParams(MATCH, dpx(2)));
+
+        // ================= mini: preview ustunde toxunus qati (tap = geri boyut, surukle = movqe) =================
+        previewOverlay = new View(act);
+        previewOverlay.setVisibility(View.GONE);
+        FrameLayout.LayoutParams pop = new FrameLayout.LayoutParams(dpx(PREV_W), dpx(PREV_H), Gravity.TOP | Gravity.LEFT);
+        pop.leftMargin = dpx(6);
+        pop.topMargin = dpx(6);
+        inner.addView(previewOverlay, pop);
+        attachDrag(previewOverlay, new Runnable() { @Override public void run() { exitMini(); } }, null);
+
+        // ================= olcu kunci =================
+        icGrip = new Ic(act, Ic.GRIP, dp);
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dpx(34), dpx(34), Gravity.BOTTOM | Gravity.RIGHT);
+        card.addView(icGrip, glp);
+        icGrip.setOnTouchListener(new View.OnTouchListener() {
+            float sx, sy; int sw0, sh0;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        if (rectAnim != null) rectAnim.cancel();
+                        sx = e.getRawX(); sy = e.getRawY(); sw0 = curW(); sh0 = curH();
+                        card.getParent().requestDisallowInterceptTouchEvent(true);
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        int tx = Math.round(card.getTranslationX()), ty = Math.round(card.getTranslationY());
+                        int w = clamp(Math.round(sw0 + (e.getRawX() - sx)), dpx(420), screenW() - tx);
+                        int h = clamp(Math.round(sh0 + (e.getRawY() - sy)), dpx(240), screenH() - ty);
+                        maximized = false;
+                        icMax.setType(Ic.MAX);
+                        applyRect(tx, ty, w, h);
+                        nw = w; nh = h; nx = tx; ny = ty;
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        savePrefs();
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        built = true;
+        applyMode(false);
+    }
+
+    // ------------------------------------------------------------------ yardimci View-lar
+    /** nazik yukleme xetti */
+    private static final class Line extends View {
+        private final Paint p = new Paint();
+        private int pct;
+        Line(Context c) { super(c); p.setColor(C_ACC); }
+        void set(int v) { pct = v; invalidate(); }
+        @Override protected void onDraw(Canvas c) {
+            if (pct <= 0 || pct >= 100) return;
+            c.drawRect(0, 0, getWidth() * pct / 100f, getHeight(), p);
+        }
+    }
+
+    /** vektor ikonlar (resurs lazim deyil) */
+    private static final class Ic extends View {
+        static final int BACK = 0, FWD = 1, HOME = 2, SEARCH = 3, NOTE = 4, MAX = 5, RESTORE = 6,
+                         CLOSE = 7, PLAY = 8, PAUSE = 9, EXPAND = 10, GRIP = 11;
+
+        private int type;
+        private final float dp;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+
+        Ic(Context c, int type, float dp) {
+            super(c);
+            this.type = type;
+            this.dp = dp;
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeJoin(Paint.Join.ROUND);
+            if (type != GRIP) {
+                TypedValue tv = new TypedValue();
+                if (c.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true))
+                    setBackgroundResource(tv.resourceId);
+            }
+            setClickable(true);
+        }
+
+        void setType(int t) { if (type != t) { type = t; invalidate(); } }
+
+        @Override protected void onDraw(Canvas c) {
+            final float w = getWidth(), h = getHeight(), cx = w / 2f, cy = h / 2f, u = Math.min(w, h) / 24f;
+            p.setColor(C_ICON);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(2f * dp);
+            path.reset();
+            switch (type) {
+                case BACK:
+                    path.moveTo(cx + 3 * u, cy - 6 * u); path.lineTo(cx - 3 * u, cy); path.lineTo(cx + 3 * u, cy + 6 * u);
+                    c.drawPath(path, p);
+                    break;
+                case FWD:
+                    path.moveTo(cx - 3 * u, cy - 6 * u); path.lineTo(cx + 3 * u, cy); path.lineTo(cx - 3 * u, cy + 6 * u);
+                    c.drawPath(path, p);
+                    break;
+                case HOME:
+                    path.moveTo(cx - 7 * u, cy); path.lineTo(cx, cy - 6.5f * u); path.lineTo(cx + 7 * u, cy);
+                    c.drawPath(path, p);
+                    c.drawRect(cx - 4.5f * u, cy, cx + 4.5f * u, cy + 6.5f * u, p);
+                    break;
+                case SEARCH:
+                    c.drawCircle(cx - 1.5f * u, cy - 1.5f * u, 5.5f * u, p);
+                    c.drawLine(cx + 2.5f * u, cy + 2.5f * u, cx + 7 * u, cy + 7 * u, p);
+                    break;
+                case NOTE:
+                    p.setStyle(Paint.Style.FILL);
+                    c.drawCircle(cx - 3.5f * u, cy + 5 * u, 3f * u, p);
+                    p.setStyle(Paint.Style.STROKE);
+                    path.moveTo(cx - 0.6f * u, cy + 5 * u); path.lineTo(cx - 0.6f * u, cy - 6 * u); path.lineTo(cx + 5.5f * u, cy - 3.5f * u);
+                    c.drawPath(path, p);
+                    break;
+                case MAX:
+                    c.drawRoundRect(cx - 5.5f * u, cy - 5.5f * u, cx + 5.5f * u, cy + 5.5f * u, 1.5f * u, 1.5f * u, p);
+                    break;
+                case RESTORE:
+                    c.drawRoundRect(cx - 6f * u, cy - 2f * u, cx + 2f * u, cy + 6f * u, 1.2f * u, 1.2f * u, p);
+                    path.moveTo(cx - 2f * u, cy - 2f * u); path.lineTo(cx - 2f * u, cy - 6f * u);
+                    path.lineTo(cx + 6f * u, cy - 6f * u); path.lineTo(cx + 6f * u, cy + 2f * u); path.lineTo(cx + 2f * u, cy + 2f * u);
+                    c.drawPath(path, p);
+                    break;
+                case CLOSE:
+                    c.drawLine(cx - 5 * u, cy - 5 * u, cx + 5 * u, cy + 5 * u, p);
+                    c.drawLine(cx - 5 * u, cy + 5 * u, cx + 5 * u, cy - 5 * u, p);
+                    break;
+                case PLAY:
+                    p.setStyle(Paint.Style.FILL);
+                    path.moveTo(cx - 4 * u, cy - 6.5f * u); path.lineTo(cx + 6.5f * u, cy); path.lineTo(cx - 4 * u, cy + 6.5f * u); path.close();
+                    c.drawPath(path, p);
+                    break;
+                case PAUSE:
+                    p.setStyle(Paint.Style.FILL);
+                    c.drawRoundRect(cx - 5 * u, cy - 6 * u, cx - 1.5f * u, cy + 6 * u, u, u, p);
+                    c.drawRoundRect(cx + 1.5f * u, cy - 6 * u, cx + 5 * u, cy + 6 * u, u, u, p);
+                    break;
+                case EXPAND:
+                    c.drawLine(cx - 5 * u, cy + 5 * u, cx + 5 * u, cy - 5 * u, p);
+                    path.moveTo(cx + 0.5f * u, cy - 5 * u); path.lineTo(cx + 5 * u, cy - 5 * u); path.lineTo(cx + 5 * u, cy - 0.5f * u);
+                    c.drawPath(path, p);
+                    break;
+                case GRIP:
+                    p.setColor(0xFF6B7184);
+                    p.setStrokeWidth(1.6f * dp);
+                    c.drawLine(w - 4 * u, h - 14 * u, w - 14 * u, h - 4 * u, p);
+                    c.drawLine(w - 4 * u, h - 9 * u, w - 9 * u, h - 4 * u, p);
+                    break;
+            }
+        }
+    }
+}
+
+// ===== END OF YoutubeTablet.java =====

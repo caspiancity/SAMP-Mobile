@@ -240,7 +240,7 @@ jobs:
 
           print(f"Paket adı yenilənir: the.apaches | Version Name: {version_name} | Version Code: {version_code}")
 
-          # 1. Gradle fayllarını yenilə (applicationId, namespace, versionCode, versionName)
+          # 1. Gradle fayllarını yenilə
           gradle_files = ['app/build.gradle', 'app/build.gradle.kts']
           for g_file in gradle_files:
               if os.path.exists(g_file):
@@ -256,17 +256,19 @@ jobs:
                       f.write(content)
                   print(f"Uğurla yeniləndi: {g_file}")
 
-          # 2. AndroidManifest.xml faylını yenilə
+          # 2. AndroidManifest.xml faylını təmizlə və package atributunu sil
           manifest_path = 'app/src/main/AndroidManifest.xml'
           if os.path.exists(manifest_path):
               with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
                   m_content = f.read()
-              m_content = re.sub(r'package\s*=\s*[\'"][^\'"]+[\'"]', 'package="the.apaches"', m_content)
+              # Köhnə package atributunu silirik (namespace artıq gradle-da təyin olunub)
+              m_content = re.sub(r'\s*package\s*=\s*[\'"][^\'"]+[\'"]', '', m_content)
+              m_content = m_content.replace('com.samp.mobile', 'the.apaches')
               with open(manifest_path, 'w', encoding='utf-8') as f:
                   f.write(m_content)
-              print("AndroidManifest.xml paket adı yeniləndi.")
+              print("AndroidManifest.xml təmizləndi və yeniləndi.")
 
-          # 3. google-services.json faylını yenilə (Firebase xətasına qarşı)
+          # 3. google-services.json faylını yenilə
           gs_path = 'app/google-services.json'
           if os.path.exists(gs_path):
               try:
@@ -282,6 +284,26 @@ jobs:
                   print("google-services.json paket adı uğurla yeniləndi.")
               except Exception as e:
                   print(f"google-services.json yenilənərkən xəta: {e}")
+
+          # 4. Bütün Java/Kotlin və mənbə fayllarındakı com.samp.mobile ifadələrini the.apaches ilə əvəz et
+          src_dir = 'app/src/main'
+          changed_files = 0
+          if os.path.exists(src_dir):
+              for root, dirs, files in os.walk(src_dir):
+                  for file in files:
+                      if file.endswith(('.java', '.kt', '.xml', '.properties')):
+                          f_path = os.path.join(root, file)
+                          try:
+                              with open(f_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                  text = f.read()
+                              if 'com.samp.mobile' in text:
+                                  new_text = text.replace('com.samp.mobile', 'the.apaches')
+                                  with open(f_path, 'w', encoding='utf-8') as f:
+                                      f.write(new_text)
+                                  changed_files += 1
+                          except Exception:
+                              pass
+          print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
       - name: Build debug APK

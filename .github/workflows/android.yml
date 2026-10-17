@@ -226,6 +226,45 @@ jobs:
           git commit -m "Add persistent signing keystore [skip ci]"
           git push || echo "::warning::Could not push keystore (check Workflow permissions)"
 
+      - name: Update Package Name and Version
+        shell: bash
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+
+          run_num = int(os.environ.get('RUN_NUMBER', 1))
+          version_code = 300 + run_num
+          version_name = f"0.3.{run_num}"
+
+          print(f"Paket adı dəyişdirilir: the.apaches | Version Name: {version_name} | Version Code: {version_code}")
+
+          gradle_files = ['app/build.gradle', 'app/build.gradle.kts']
+          for g_file in gradle_files:
+              if os.path.exists(g_file):
+                  with open(g_file, 'r', encoding='utf-8') as f:
+                      content = f.read()
+
+                  content = re.sub(r'applicationId\s*=?\s*[\'"][^\'"]+[\'"]', 'applicationId "the.apaches"', content)
+                  content = re.sub(r'namespace\s*=?\s*[\'"][^\'"]+[\'"]', 'namespace "the.apaches"', content)
+                  content = re.sub(r'versionCode\s*=?\s*\d+', f'versionCode {version_code}', content)
+                  content = re.sub(r'versionName\s*=?\s*[\'"][^\'"]+[\'"]', f'versionName "{version_name}"', content)
+
+                  with open(g_file, 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print(f"Uğurla yeniləndi: {g_file}")
+
+          manifest_path = 'app/src/main/AndroidManifest.xml'
+          if os.path.exists(manifest_path):
+              with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+                  m_content = f.read()
+              m_content = re.sub(r'package\s*=\s*[\'"][^\'"]+[\'"]', 'package="the.apaches"', m_content)
+              with open(manifest_path, 'w', encoding='utf-8') as f:
+                  f.write(m_content)
+              print("AndroidManifest.xml paket adı yeniləndi.")
+          PY
+
       - name: Build debug APK
         shell: bash
         run: |

@@ -18,7 +18,7 @@ public:
 	void LinkToInterior(int iInterior);
 	void SetDamageStatus(uint32_t dwPanelDamageStatus, uint32_t dwDoorDamageStatus, uint8_t byteLightDamageStatus);
 	void SetTireDamageStatus(uint8_t byteTireDamageStatus);
-	void SetPlateText(const char* szPlateText) { strncpy(m_szPlateText, szPlateText, 32); }
+	void SetPlateText(const char* szPlateText);
 	void SetZAngle(float fAngle);
 	void ProcessMarkers();
 	bool IsOccupied();
@@ -114,3 +114,4 @@ public:
 	bool			m_bHasBeenDriven;
 	uint32_t		m_dwTimeSinceLastDriven;
 };
+// ===== END OF vehicle.h =====

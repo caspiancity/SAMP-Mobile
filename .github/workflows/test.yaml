@@ -1,0 +1,18 @@
+name: Check Lib Symbols
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run nm on 32-bit and 64-bit libGTASA.so
+        run: |
+          echo "=== 32-bit Results ==="
+          nm -D path/to/32/libGTASA.so | grep -i -E "plate|CustomCar" || true
+          
+          echo "=== 64-bit Results ==="
+          nm -D path/to/64/libGTASA.so | grep -i -E "plate|CustomCar" || true

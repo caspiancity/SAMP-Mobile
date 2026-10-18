@@ -55,3 +55,68 @@ public final class PlateGen {
         c.drawRoundRect(new RectF(4, 4, W - 4, H - 4), 13, 13, p);
 
         // --- sol hisse: bayraq + AZ ---
+        final float fx = 18, fy = 16, fw = 74, fh = 44;
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFF00B5E2);
+        c.drawRect(fx, fy, fx + fw, fy + fh / 3f, p);
+        p.setColor(0xFFEF3340);
+        c.drawRect(fx, fy + fh / 3f, fx + fw, fy + 2 * fh / 3f, p);
+        p.setColor(0xFF509E2F);
+        c.drawRect(fx, fy + 2 * fh / 3f, fx + fw, fy + fh, p);
+        // ay-ulduz
+        final float mx = fx + fw / 2f, my = fy + fh / 2f;
+        p.setColor(0xFFFFFFFF);
+        c.drawCircle(mx - 2, my, 7f, p);
+        p.setColor(0xFFEF3340);
+        c.drawCircle(mx + 0.5f, my, 5.6f, p);
+        p.setColor(0xFFFFFFFF);
+        Path star = new Path();
+        for (int i = 0; i < 10; i++) {
+            double a = -Math.PI / 2 + i * Math.PI / 5;
+            float r = (i % 2 == 0) ? 3.6f : 1.5f;
+            float sx = (float) (mx + 6 + Math.cos(a) * r), sy = (float) (my + Math.sin(a) * r);
+            if (i == 0) star.moveTo(sx, sy); else star.lineTo(sx, sy);
+        }
+        star.close();
+        c.drawPath(star, p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(1.5f);
+        p.setColor(0xFF555555);
+        c.drawRect(fx, fy, fx + fw, fy + fh, p);
+
+        // AZ qutusu
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(2.5f);
+        p.setColor(0xFF222222);
+        RectF az = new RectF(fx, 70, fx + fw, 112);
+        c.drawRoundRect(az, 8, 8, p);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFF111111);
+        p.setTypeface(Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD));
+        p.setTextSize(34f);
+        p.setTextAlign(Paint.Align.CENTER);
+        c.drawText("AZ", az.centerX(), az.centerY() + 12f, p);
+
+        // --- esas metn ---
+        final float tx0 = 108, tx1 = W - 18;
+        p.setTypeface(face(ctx));
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setColor(0xFF0B0B0B);
+        float size = 92f;
+        p.setTextSize(size);
+        float tw = p.measureText(text);
+        float maxW = tx1 - tx0;
+        if (tw > maxW) {
+            size = size * maxW / tw;
+            p.setTextSize(size);
+        }
+        Paint.FontMetrics fm = p.getFontMetrics();
+        float baseline = H / 2f - (fm.ascent + fm.descent) / 2f;
+        c.drawText(text, (tx0 + tx1) / 2f, baseline, p);
+
+        ByteBuffer buf = ByteBuffer.allocate(W * H * 4);
+        bmp.copyPixelsToBuffer(buf);
+        bmp.recycle();
+        return buf.array();   // RGBA (ARGB_8888 yaddas duzumu)
+    }
+}

@@ -3,7 +3,7 @@
 #include "../net/netgame.h"
 #include "../game/vehicle.h"
 #include "../game/VehTuner.h"
-#include "../game/VehControls.h"
+#include "../game/VehPlate.h"
 #include "gui.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -36,7 +36,7 @@ extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;
 
 // Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
-#define HND_DEBUG 0
+#define HND_DEBUG 1
 #if HND_DEBUG
 #define HND_LOG(...) FLog(__VA_ARGS__)
 #else
@@ -178,7 +178,7 @@ bool UI::initialize()
 	pUI->addChild(label4);
 
 	Label* d_label1;
-	d_label1 = new Label(cryptor::create("APACHE ONLINE V1. Test").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+	d_label1 = new Label(cryptor::create("APACHE ONLINE - test v1.0").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(d_label1);
 	d_label1->setPosition(ImVec2(3.0, 3.0));
 
@@ -188,7 +188,8 @@ bool UI::initialize()
 void UI::render()
 {
 	ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
-
+    VehPlate::Process();
+    
 	ImGuiWrapper::render();
 
 	renderDebug();
@@ -202,7 +203,7 @@ void UI::shutdown()
 }
 
 // ============================================================================
-//  TUNING MENYUSU  (oz cizgisi, oz toxunusu, animasiyali)
+//  MOD MENU  (oz cizgisi, oz toxunusu, animasiyali)
 // ============================================================================
 static bool   s_hndRectValid = false;
 static ImVec2 s_hndPos(0.0f, 0.0f);    // toxunus bloklamasi ucun panelin real sahesi
@@ -223,13 +224,10 @@ namespace mm
 	static float s_U = 1.0f;       // olcu vahidi (piksel)
 	static float s_A = 1.0f;       // umumi seffaflig
 	static int   s_act = 0;        // hazirda basili olan element
-	static float s_prs[96] = {};   // basma animasiyalari
+	static float s_prs[64] = {};   // basma animasiyalari
 	static float s_frac[8] = {};   // slider doldurma animasiyasi
-	static float s_sw[3] = {};     // acar animasiyalari
-	static float s_blink = 0.0f;   // sinyal yanib-sonme animasiyasi
 
-	enum { ID_DRAG = 1, ID_CLOSE = 2, ID_ZOOMP = 3, ID_ZOOMM = 4, ID_RESET = 5, ID_NAV0 = 6,
-	       ID_SLIDER = 16, ID_SWATCH = 40, ID_TOGGLE = 70, ID_SIG = 76 };
+	enum { ID_DRAG = 1, ID_CLOSE = 2, ID_ZOOMP = 3, ID_ZOOMM = 4, ID_NAV0 = 5, ID_RESET = 9, ID_SLIDER = 16, ID_SWATCH = 40 };
 
 #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18200
 	static const int kAllCorners = 0;
@@ -241,13 +239,13 @@ namespace mm
 	static inline float Clamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
 	static inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
 	static inline float Smooth(float cur, float target, float dt, float speed) { return Lerp(cur, target, 1.0f - expf(-dt * speed)); }
+	static inline float EaseOutBack(float t) { const float c1 = 1.70158f, c3 = c1 + 1.0f; const float p = t - 1.0f; return 1.0f + c3 * p * p * p + c1 * p * p; }
 	static inline float EaseOutCubic(float t) { const float p = 1.0f - t; return 1.0f - p * p * p; }
 	static inline bool  In(const Rc& r, float px, float py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
 	static inline Rc    Shrink(const Rc& r, float a) { return Rc{ r.x + a, r.y + a, r.w - 2.0f * a, r.h - 2.0f * a }; }
 
 	static inline ImU32 Col(int r, int g, int b, int a = 255) { return IM_COL32(r, g, b, (int)((float)a * s_A)); }
-	static inline ImU32 Accent(float /*istifade olunmur*/, int a = 255) { return Col(78, 142, 235, a); }
-	static inline ImU32 Orange(int a = 255) { return Col(255, 153, 28, a); }
+	static inline ImU32 Accent(float f, int a = 255) { return Col((int)Lerp(60.0f, 165.0f, f), (int)Lerp(165.0f, 95.0f, f), 255, a); }
 
 	static void Fill(const Rc& r, ImU32 c, float rad) { s_dl->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad); }
 	static void Stroke(const Rc& r, ImU32 c, float rad, float th) { s_dl->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad, kAllCorners, th); }
@@ -255,7 +253,7 @@ namespace mm
 
 	static float TW(float size, const char* s) { return ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x; }
 	static void  Txt(float size, float x, float y, ImU32 c, const char* s) { s_dl->AddText(ImGui::GetFont(), size, ImVec2(x, y), c, s); }
-	static void  TxtB(float size, float x, float y, ImU32 c, const char* s) { Txt(size, x, y, c, s); Txt(size, x + S(0.7f), y, c, s); }
+	static void  TxtB(float size, float x, float y, ImU32 c, const char* s) { Txt(size, x, y, c, s); Txt(size, x + S(0.8f), y, c, s); }
 	static void  TxtC(float size, const Rc& r, ImU32 c, const char* s, bool bold)
 	{
 		const float x = r.x + (r.w - TW(size, s)) * 0.5f;
@@ -265,7 +263,7 @@ namespace mm
 
 	static float Prs(int id, float dt)
 	{
-		if (id < 0 || id >= 96) return 0.0f;
+		if (id < 0 || id >= 64) return 0.0f;
 		float& p = s_prs[id];
 		p = Lerp(p, (s_act == id && g_mmTouch.down) ? 1.0f : 0.0f, 1.0f - expf(-dt * 24.0f));
 		return p;
@@ -283,14 +281,14 @@ namespace mm
 	static void HeaderBtn(int id, const Rc& r, float dt, const char* label, bool danger)
 	{
 		const float p = Prs(id, dt);
-		const Rc d = Shrink(r, S(1.5f) * p);
-		Fill(d, danger ? Col(196, 58, 70, 140 + (int)(70.0f * p)) : Col(255, 255, 255, 14 + (int)(34.0f * p)), S(8.0f));
+		const Rc d = Shrink(r, S(2.0f) * p);
+		Fill(d, danger ? Col(205, 55, 68, 150 + (int)(70.0f * p)) : Col(255, 255, 255, 16 + (int)(40.0f * p)), S(10.0f));
 		if (danger) {
-			const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.5f, k = S(6.0f);
-			s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(255, 255, 255, 235), S(2.0f));
-			s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(255, 255, 255, 235), S(2.0f));
+			const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.5f, k = S(6.5f);
+			s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(255, 255, 255, 240), S(2.2f));
+			s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(255, 255, 255, 240), S(2.2f));
 		} else {
-			TxtC(S(15.0f), d, Col(226, 230, 240), label, true);
+			TxtC(S(15.0f), d, Col(232, 236, 248), label, true);
 		}
 	}
 
@@ -333,112 +331,44 @@ namespace mm
 		const float fr = s_frac[idx];
 
 		// kart
-		Fill(row, Col(27, 30, 40, 255), S(10.0f));
-		if (dragging) Stroke(row, Accent(0.0f, 120), S(10.0f), S(1.2f));
+		Fill(row, Col(25, 29, 43, 255), S(13.0f));
+		if (dragging) Stroke(row, Accent(fr, 150), S(13.0f), S(1.6f));
 
-		Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(214, 220, 232), label);
+		Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(205, 212, 230), label);
 		char buf[16];
 		snprintf(buf, sizeof(buf), "%.0f%%", *v);
-		Txt(S(18.0f), row.x + row.w - S(16.0f) - TW(S(18.0f), buf), row.y + S(7.0f), Accent(0.0f), buf);
+		TxtB(S(18.0f), row.x + row.w - S(16.0f) - TW(S(18.0f), buf), row.y + S(7.0f), Accent(fr), buf);
 
 		// - / + duymeleri
 		const float pm = Prs(id + 1, dt), pp = Prs(id + 2, dt);
-		Dot(minus.x + minus.w * 0.5f, cy, S(15.0f) - S(1.5f) * pm, Col(255, 255, 255, 14 + (int)(36.0f * pm)));
-		Dot(plus.x + plus.w * 0.5f,  cy, S(15.0f) - S(1.5f) * pp, Col(255, 255, 255, 14 + (int)(36.0f * pp)));
+		Dot(minus.x + minus.w * 0.5f, cy, S(15.0f) - S(1.5f) * pm, Col(255, 255, 255, 16 + (int)(40.0f * pm)));
+		Dot(plus.x + plus.w * 0.5f,  cy, S(15.0f) - S(1.5f) * pp, Col(255, 255, 255, 16 + (int)(40.0f * pp)));
 		{
 			const float k = S(5.5f), mcx = minus.x + minus.w * 0.5f, pcx = plus.x + plus.w * 0.5f;
-			s_dl->AddLine(ImVec2(mcx - k, cy), ImVec2(mcx + k, cy), Col(226, 230, 240, 220), S(2.0f));
-			s_dl->AddLine(ImVec2(pcx - k, cy), ImVec2(pcx + k, cy), Col(226, 230, 240, 220), S(2.0f));
-			s_dl->AddLine(ImVec2(pcx, cy - k), ImVec2(pcx, cy + k), Col(226, 230, 240, 220), S(2.0f));
+			s_dl->AddLine(ImVec2(mcx - k, cy), ImVec2(mcx + k, cy), Col(235, 238, 248, 230), S(2.2f));
+			s_dl->AddLine(ImVec2(pcx - k, cy), ImVec2(pcx + k, cy), Col(235, 238, 248, 230), S(2.2f));
+			s_dl->AddLine(ImVec2(pcx, cy - k), ImVec2(pcx, cy + k), Col(235, 238, 248, 230), S(2.2f));
 		}
 
 		// yol (track)
-		const float th = S(6.0f), ty = cy - th * 0.5f;
-		Fill(Rc{ tx0, ty, tx1 - tx0, th }, Col(255, 255, 255, 22), S(3.0f));
+		const float th = S(8.0f), ty = cy - th * 0.5f;
+		Fill(Rc{ tx0, ty, tx1 - tx0, th }, Col(255, 255, 255, 24), S(4.0f));
 		const float kx = tx0 + (tx1 - tx0) * fr;
-		if (kx - tx0 > 1.0f) Fill(Rc{ tx0, ty, kx - tx0, th }, Accent(0.0f), S(3.0f));
+		if (kx - tx0 > 1.0f) Fill(Rc{ tx0, ty, kx - tx0, th }, Accent(fr), S(4.0f));
 
 		// "standart (100%)" ish
 		if (mn < 100.0f && mx > 100.0f) {
 			const float sx = tx0 + (tx1 - tx0) * ((100.0f - mn) / (mx - mn));
-			s_dl->AddLine(ImVec2(sx, ty - S(6.0f)), ImVec2(sx, ty + th + S(6.0f)), Col(255, 255, 255, 60), S(1.4f));
+			s_dl->AddLine(ImVec2(sx, ty - S(6.0f)), ImVec2(sx, ty + th + S(6.0f)), Col(255, 255, 255, 70), S(1.6f));
 		}
 
 		// topuz
-		const float kr = S(10.5f) + (dragging ? S(1.5f) : 0.0f);
-		Dot(kx, cy + S(1.0f), kr + S(1.5f), Col(0, 0, 0, 70));
-		Dot(kx, cy, kr, Col(245, 247, 252, 255));
+		const float kr = S(12.0f) + (dragging ? S(3.0f) : 0.0f);
+		if (dragging) Dot(kx, cy, kr + S(9.0f), Accent(fr, 55));
+		Dot(kx, cy, kr, Col(255, 255, 255, 255));
+		Dot(kx, cy, kr * 0.45f, Accent(fr));
 
 		return changed;
-	}
-
-	// acar (switch) satiri; toxunulubsa true
-	static bool ToggleRow(int idx, const Rc& row, const char* label, const char* sub, bool state, float dt, bool canInput)
-	{
-		const int id = ID_TOGGLE + idx;
-		const bool tapped = Tap(id, row, canInput);
-		const float p = Prs(id, dt);
-		s_sw[idx] = Smooth(s_sw[idx], state ? 1.0f : 0.0f, dt, 18.0f);
-		const float sw = s_sw[idx];
-
-		const Rc d = Shrink(row, S(1.5f) * p);
-		Fill(d, Col(27, 30, 40, 255), S(10.0f));
-		Txt(S(18.0f), d.x + S(18.0f), d.y + S(11.0f), Col(228, 232, 242), label);
-		Txt(S(13.0f), d.x + S(18.0f), d.y + S(36.0f), Col(124, 132, 152), sub);
-
-		const Rc tr{ d.x + d.w - S(18.0f) - S(54.0f), d.y + (d.h - S(28.0f)) * 0.5f, S(54.0f), S(28.0f) };
-		Fill(tr, Col((int)Lerp(62.0f, 78.0f, sw), (int)Lerp(68.0f, 142.0f, sw), (int)Lerp(84.0f, 235.0f, sw), 255), S(14.0f));
-		Dot(tr.x + S(14.0f) + sw * (tr.w - S(28.0f)), tr.y + tr.h * 0.5f, S(10.5f), Col(245, 247, 252, 255));
-
-		return tapped;
-	}
-
-	static void Arrow(float cx, float cy, float dir, ImU32 c)
-	{
-		const float tip = cx + dir * S(18.0f), base = cx + dir * S(2.0f), tail = cx - dir * S(18.0f);
-		s_dl->AddTriangleFilled(ImVec2(tip, cy), ImVec2(base, cy - S(12.0f)), ImVec2(base, cy + S(12.0f)), c);
-		const float x0 = std::min(base, tail), x1 = std::max(base, tail);
-		s_dl->AddRectFilled(ImVec2(x0, cy - S(5.0f)), ImVec2(x1, cy + S(5.0f)), c);
-	}
-
-	// sinyal bloku: Sol / Avariya / Sag
-	static void SignalBlock(const Rc& blk, uint8_t cur, CVehicleGTA* veh, float dt, bool canInput)
-	{
-		s_blink = Smooth(s_blink, VehControls::BlinkOn() ? 1.0f : 0.0f, dt, 28.0f);
-
-		Fill(blk, Col(27, 30, 40, 255), S(10.0f));
-		Txt(S(15.0f), blk.x + S(18.0f), blk.y + S(10.0f), Col(124, 132, 152), "Sinyal");
-
-		const float gap = S(10.0f);
-		const float bw = (blk.w - S(32.0f) - gap * 2.0f) / 3.0f;
-		static const char* kNames[3] = { "Sol", "Avariya", "Sağ" };
-		static const uint8_t kModes[3] = { VEH_SIGNAL_LEFT, VEH_SIGNAL_HAZARD, VEH_SIGNAL_RIGHT };
-
-		for (int k = 0; k < 3; ++k)
-		{
-			const Rc b{ blk.x + S(16.0f) + k * (bw + gap), blk.y + S(34.0f), bw, blk.h - S(50.0f) };
-			const int id = ID_SIG + k;
-			if (Tap(id, b, canInput) && veh) VehControls::ToggleSignal(veh, kModes[k]);
-
-			const float p = Prs(id, dt);
-			const Rc d = Shrink(b, S(1.5f) * p);
-			const bool on = (cur == kModes[k]);
-			const float glow = on ? (0.28f + 0.72f * s_blink) : 0.0f;
-
-			Fill(d, on ? Orange(30 + (int)(110.0f * glow)) : Col(36, 40, 52, 255), S(9.0f));
-			if (on) Stroke(d, Orange(120 + (int)(100.0f * glow)), S(9.0f), S(1.3f));
-
-			const ImU32 ic = on ? Col(255, 183, 84, 255) : Col(150, 158, 178, 255);
-			const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.38f;
-			if (k == 0)      Arrow(cx, cy, -1.0f, ic);
-			else if (k == 2) Arrow(cx, cy, +1.0f, ic);
-			else {
-				s_dl->AddTriangle(ImVec2(cx, cy - S(14.0f)), ImVec2(cx - S(16.0f), cy + S(12.0f)), ImVec2(cx + S(16.0f), cy + S(12.0f)), ic, S(2.2f));
-				s_dl->AddLine(ImVec2(cx, cy - S(5.0f)), ImVec2(cx, cy + S(2.0f)), ic, S(2.2f));
-				Dot(cx, cy + S(7.0f), S(1.7f), ic);
-			}
-			TxtC(S(15.0f), Rc{ d.x, d.y + d.h * 0.62f, d.w, d.h * 0.34f }, on ? Col(255, 224, 180, 255) : Col(190, 196, 212, 255), kNames[k], true);
-		}
 	}
 }
 
@@ -449,10 +379,6 @@ void RenderHandlingDialog()
 	static bool          s_wasOpen = false;
 	static CVehicleGTA*  s_lastVeh = nullptr;
 	static VehTune       s_tune;
-
-	// maşının real veziyyeti (yalniz acıq vaxt oxunur, baglanarkən kohne pointere toxunmuruq)
-	static bool    s_eng = false, s_lig = false, s_lock = false;
-	static uint8_t s_sig = 0;
 
 	static float s_t = 0.0f;                 // acilma/baglanma animasiyasi 0..1
 	static float s_cx = -1.0f, s_cy = -1.0f; // panel merkezi
@@ -479,7 +405,6 @@ void RenderHandlingDialog()
 	}
 
 	CVehicleGTA* gtaVeh = s_lastVeh;
-	CVehicle*    pVehW  = nullptr;
 
 	if (want)
 	{
@@ -502,7 +427,6 @@ void RenderHandlingDialog()
 			return;
 		}
 
-		pVehW  = pVeh;
 		gtaVeh = pVeh->m_pVehicle;
 
 		// Yeni acilis ve ya basqa masin -> deyerleri masinin real veziyyetinden oxu
@@ -514,25 +438,16 @@ void RenderHandlingDialog()
 			s_pageAnim = 0.0f;
 			HND_LOG("[HND] dialog opened");
 		}
-
-		// real veziyyet (her kadr)
-		s_eng  = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
-		s_lig  = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
-		{
-			const int lk = (int)gtaVeh->m_nDoorLock;
-			s_lock = (lk == 2 || lk == 3);
-		}
-		s_sig = VehControls::GetSignal(gtaVeh);
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
 	const ImVec2 disp = io.DisplaySize;
 
-	// ---- animasiya zamani (sakit, siçrayissiz) ----
-	s_t = Clamp(s_t + (want ? dt / 0.22f : -dt / 0.16f), 0.0f, 1.0f);
-	const float eAnim = EaseOutCubic(s_t);
-	s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
-	s_pageAnim = Clamp(s_pageAnim + dt / 0.22f, 0.0f, 1.0f);
+	// ---- animasiya zamani ----
+	s_t = Clamp(s_t + (want ? dt / 0.32f : -dt / 0.22f), 0.0f, 1.0f);
+	const float eAnim = want ? EaseOutBack(s_t) : EaseOutCubic(s_t);
+	s_A = Clamp(s_t * 2.0f, 0.0f, 1.0f);
+	s_pageAnim = Clamp(s_pageAnim + dt / 0.30f, 0.0f, 1.0f);
 	s_flash = Clamp(s_flash - dt / 1.4f, 0.0f, 1.0f);
 
 	// ---- olculer ----
@@ -540,7 +455,7 @@ void RenderHandlingDialog()
 	float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
 	u0 *= s_zoom;
 	u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
-	s_U = u0 * (0.96f + 0.04f * eAnim);
+	s_U = u0 * (0.86f + 0.14f * eAnim);
 
 	if (s_cx < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
 
@@ -583,19 +498,22 @@ void RenderHandlingDialog()
 
 	// ======================= CIZGI =======================
 	// kolge
-	for (int k = 0; k < 3; ++k) {
-		const float e = S(3.0f + k * 5.0f);
-		Fill(Rc{ P.x - e, P.y - e + S(5.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 22 - k * 6), S(14.0f) + e);
+	for (int k = 0; k < 5; ++k) {
+		const float e = S(4.0f + k * 5.0f);
+		Fill(Rc{ P.x - e, P.y - e + S(6.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 20 - k * 3), S(24.0f) + e);
 	}
 	// panel
-	Fill(P, Col(17, 19, 26, 246), S(14.0f));
-	Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
+	Fill(P, Col(14, 16, 26, 240), S(22.0f));
+	Stroke(P, Col(255, 255, 255, 26), S(22.0f), S(1.2f));
 
 	// --- basliq ---
 	{
-		Fill(Rc{ P.x + S(20.0f), P.y + S(15.0f), S(4.0f), S(26.0f) }, Accent(0.0f), S(2.0f));
-		TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "TUNING");
-		Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Maşın tənzimləmələri");
+		const Rc logo{ P.x + S(20.0f), P.y + S(11.0f), S(34.0f), S(34.0f) };
+		Fill(logo, Accent(0.1f), S(10.0f));
+		Fill(Shrink(logo, S(1.5f)), Accent(0.9f, 90), S(9.0f));
+		TxtC(S(20.0f), logo, Col(255, 255, 255), "M", true);
+		TxtB(S(21.0f), P.x + S(66.0f), P.y + S(8.0f), Col(240, 244, 255), "MOD MENU");
+		Txt(S(13.0f), P.x + S(66.0f), P.y + S(32.0f), Col(130, 140, 170), "v1.0  |  canlı tənzimləmə");
 
 		const Rc bClose{ P.x + P.w - S(54.0f),  P.y + S(10.0f), S(36.0f), S(36.0f) };
 		const Rc bZoomP{ P.x + P.w - S(100.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
@@ -609,71 +527,58 @@ void RenderHandlingDialog()
 		HeaderBtn(ID_ZOOMP, bZoomP, dt, "A+", false);
 		HeaderBtn(ID_CLOSE, bClose, dt, "", true);
 
-		s_dl->AddLine(ImVec2(P.x + S(1.0f), P.y + S(58.0f)), ImVec2(P.x + P.w - S(1.0f), P.y + S(58.0f)), Col(255, 255, 255, 16), S(1.0f));
+		// basliq altindaki rengli xett
+		s_dl->AddRectFilledMultiColor(ImVec2(P.x + S(1.0f), P.y + S(58.0f)), ImVec2(P.x + P.w - S(1.0f), P.y + S(60.0f)),
+		                              Accent(0.0f, 200), Accent(1.0f, 200), Accent(1.0f, 200), Accent(0.0f, 200));
 	}
 
 	// --- sidebar ---
-	static const char* kPages[5] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far" };
-	static const char* kSubs[5]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi" };
+	static const char* kPages[4]  = { "Mühərrik", "İdarəetmə", "Asma", "Far" };
+	static const char* kSubs[4]   = { "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi" };
 	{
-		s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
-		const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
-		Fill(ind, Col(255, 255, 255, 12), S(10.0f));
-		Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
+		s_navRel = Smooth(s_navRel, 74.0f + 60.0f * s_page, dt, 16.0f);
+		const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(52.0f) };
+		Fill(ind, Accent(0.2f, 50), S(13.0f));
+		Fill(Rc{ ind.x, ind.y + S(13.0f), S(4.0f), S(26.0f) }, Accent(0.2f), S(2.0f));
 
-		for (int i = 0; i < 5; ++i)
+		for (int i = 0; i < 4; ++i)
 		{
-			const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
+			const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 60.0f * i), S(166.0f), S(52.0f) };
 			if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
 				s_page = i;
 				s_pageAnim = 0.0f;
 				for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
 			}
-			Prs(ID_NAV0 + i, dt);
+			const float p = Prs(ID_NAV0 + i, dt);
 			const bool  on = (s_page == i);
-			const float ty = it.y + (it.h - S(17.0f)) * 0.5f;
-			if (on) TxtB(S(17.0f), it.x + S(20.0f), ty, Col(240, 243, 250), kPages[i]);
-			else    Txt (S(17.0f), it.x + S(20.0f), ty, Col(140, 148, 168), kPages[i]);
+			Dot(it.x + S(26.0f), it.y + it.h * 0.5f, S(5.0f) + S(1.0f) * p, on ? Accent(0.2f) : Col(120, 130, 160, 160));
+			if (on) TxtB(S(18.0f), it.x + S(44.0f), it.y + (it.h - S(18.0f)) * 0.5f, Col(245, 248, 255), kPages[i]);
+			else    Txt (S(18.0f), it.x + S(44.0f), it.y + (it.h - S(18.0f)) * 0.5f, Col(150, 158, 182), kPages[i]);
 		}
-		s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 16), S(1.0f));
+		s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 18), S(1.0f));
 	}
 
 	// --- mezmun ---
 	bool changed = false;
 	{
 		const float pe = EaseOutCubic(s_pageAnim);
-		const float ox = (1.0f - pe) * S(14.0f);
+		const float ox = (1.0f - pe) * S(26.0f);
 		const float cx0 = P.x + S(220.0f) + ox;
 		const float cw  = S(636.0f);
 		const float saveA = s_A;
 		s_A = saveA * pe;
 
-		TxtB(S(24.0f), cx0, P.y + S(68.0f), Col(240, 243, 250), kPages[s_page]);
-		Txt(S(14.0f), cx0, P.y + S(98.0f), Col(124, 132, 152), kSubs[s_page]);
+		TxtB(S(24.0f), cx0, P.y + S(68.0f), Col(244, 247, 255), kPages[s_page]);
+		Txt(S(14.0f), cx0, P.y + S(98.0f), Col(125, 135, 165), kSubs[s_page]);
 
 		struct Spec { const char* label; float* v; float mn; float mx; };
 
-		if (s_page == 0)          // NEZARET
-		{
-			const Rc r0{ cx0, P.y + S(124.0f), cw, S(66.0f) };
-			const Rc r1{ cx0, P.y + S(196.0f), cw, S(66.0f) };
-			const Rc r2{ cx0, P.y + S(268.0f), cw, S(66.0f) };
-
-			if (ToggleRow(0, r0, "Mühərrik", s_eng ? "İşləyir" : "Söndürülüb", s_eng, dt, canInput) && pVehW)
-				pVehW->ApplyEngineState(s_eng ? 0 : 1);
-			if (ToggleRow(1, r1, "Fara", s_lig ? "Yanır" : "Sönülü", s_lig, dt, canInput) && pVehW)
-				pVehW->ApplyLightState(s_lig ? 0 : 1);
-			if (ToggleRow(2, r2, "Qapılar", s_lock ? "Kilidli" : "Açıq", s_lock, dt, canInput) && pVehW)
-				pVehW->SetDoorState(s_lock ? 0 : 1);
-
-			SignalBlock(Rc{ cx0, P.y + S(346.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, canInput);
-		}
-		else if (s_page == 4)     // FAR
+		if (s_page == 3)
 		{
 			char hb[40];
 			if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far rəngi: Standart");
 			else                       snprintf(hb, sizeof(hb), "Far rəngi: #%d", (int)s_tune.headlight);
-			Txt(S(17.0f), cx0, P.y + S(128.0f), Col(214, 220, 232), hb);
+			Txt(S(17.0f), cx0, P.y + S(128.0f), Col(205, 212, 230), hb);
 
 			for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
 			{
@@ -690,20 +595,20 @@ void RenderHandlingDialog()
 
 				const float p = Prs(sid, dt);
 				Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
-				if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+				if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 235), 28, S(2.4f));
 			}
 		}
-		else                      // HANDLING SEHIFELERI
+		else
 		{
 			Spec sp[5];
 			int  n = 0;
-			if (s_page == 1) {
+			if (s_page == 0) {
 				sp[n++] = { "Yerindən götürmə (təcil)",    &s_tune.accelPct,   30.0f, 400.0f };
 				sp[n++] = { "Maksimum sürət",              &s_tune.speedPct,   50.0f, 250.0f };
 				sp[n++] = { "Mühərrik ətaləti (az = tez)", &s_tune.inertiaPct, 20.0f, 300.0f };
 				sp[n++] = { "Çəki / kütlə",                &s_tune.massPct,    30.0f, 300.0f };
 				sp[n++] = { "Hava müqaviməti",             &s_tune.dragPct,    20.0f, 300.0f };
-			} else if (s_page == 2) {
+			} else if (s_page == 1) {
 				sp[n++] = { "Tormoz gücü",                 &s_tune.brakePct,    30.0f, 300.0f };
 				sp[n++] = { "Manevr bucağı",               &s_tune.steerPct,    50.0f, 150.0f };
 				sp[n++] = { "Yol tutuş (traction)",        &s_tune.tractionPct, 50.0f, 200.0f };
@@ -721,28 +626,26 @@ void RenderHandlingDialog()
 			}
 		}
 
-		// --- alt sira: Sifirla (yalniz handling sehifelerinde) + status ---
-		if (s_page >= 1)
-		{
-			const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
-			if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
-				VehTuner::Reset(gtaVeh);
-				s_tune = VehTune();
-				changed = false;
-				s_flash = 1.0f;
-				for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
-				if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Tuning]: Standart dəyərlər qaytarıldı.");
-			}
-			const float rp = Prs(ID_RESET, dt);
-			const Rc rd = Shrink(rb, S(1.5f) * rp);
-			Fill(rd, Accent(0.0f, 20 + (int)(36.0f * rp)), S(9.0f));
-			Stroke(rd, Accent(0.0f, 170), S(9.0f), S(1.3f));
-			TxtC(S(16.0f), rd, Col(232, 238, 250), "Sıfırla", true);
+		// --- alt sira: Sifirla + status ---
+		const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
+		if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
+			VehTuner::Reset(gtaVeh);
+			s_tune = VehTune();
+			changed = false;
+			s_flash = 1.0f;
+			for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+			if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Handling]: Standart dəyərlər qaytarıldı.");
+		}
+		const float rp = Prs(ID_RESET, dt);
+		const Rc rd = Shrink(rb, S(2.0f) * rp);
+		Fill(rd, Accent(0.2f, 22 + (int)(40.0f * rp)), S(12.0f));
+		Stroke(rd, Accent(0.2f, 190), S(12.0f), S(1.6f));
+		TxtC(S(17.0f), rd, Col(235, 242, 255), "Sıfırla", true);
 
-			if (s_flash > 0.01f) {
-				Dot(cx0 + S(174.0f), rb.y + rb.h * 0.5f, S(4.5f), Col(90, 205, 140, (int)(255.0f * s_flash)));
-				Txt(S(15.0f), cx0 + S(188.0f), rb.y + (rb.h - S(15.0f)) * 0.5f, Col(120, 215, 160, (int)(255.0f * s_flash)), "Tətbiq edildi");
-			}
+		if (s_flash > 0.01f) {
+			const char* msg = "Tətbiq edildi";
+			Dot(cx0 + S(176.0f), rb.y + rb.h * 0.5f, S(5.0f), Col(90, 225, 145, (int)(255.0f * s_flash)));
+			Txt(S(16.0f), cx0 + S(190.0f), rb.y + (rb.h - S(16.0f)) * 0.5f, Col(120, 230, 160, (int)(255.0f * s_flash)), msg);
 		}
 
 		s_A = saveA;

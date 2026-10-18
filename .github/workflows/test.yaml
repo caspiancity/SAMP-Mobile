@@ -9,10 +9,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run nm on 32-bit and 64-bit libGTASA.so
+      - name: Find and run nm on all libGTASA.so files
         run: |
-          echo "=== 32-bit Results ==="
-          nm -D path/to/32/libGTASA.so | grep -i -E "plate|CustomCar" || true
+          echo "=== Tapılan libGTASA.so faylları və simvollar ==="
           
-          echo "=== 64-bit Results ==="
-          nm -D path/to/64/libGTASA.so | grep -i -E "plate|CustomCar" || true
+          # Repoda nə qədər libGTASA.so varsa hamısını avtomatik tapır və yoxlayır
+          find . -name "libGTASA.so" | while read -r file; do
+            echo ""
+            echo "----------------------------------------"
+            echo "Fayl tapıldı: $file"
+            echo "----------------------------------------"
+            nm -D "$file" | grep -i -E "plate|CustomCar" || echo "Bu faylda uyğun simvol tapılmadı."
+          done

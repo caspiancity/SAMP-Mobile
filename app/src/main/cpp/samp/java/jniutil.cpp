@@ -34,6 +34,10 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
     s_ytCommand = env->GetMethodID(clas, "ytCommand", "([B)V");
+    if (env->ExceptionCheck()) { env->ExceptionClear(); s_ytCommand = nullptr; }
+
+    s_makePlate = env->GetMethodID(clas, "makePlate", "(J[B)V");
+    if (env->ExceptionCheck()) { env->ExceptionClear(); s_makePlate = nullptr; }
 
     env->DeleteLocalRef(clas);
 }
@@ -208,6 +212,24 @@ void CJavaWrapper::YtCommand(const char* arg)
     std::string s(arg ? arg : "");
     jbyteArray bytes = as_byte_array((unsigned char*)s.c_str(), s.length());
     env->CallVoidMethod(this->activity, this->s_ytCommand, bytes);
+    env->DeleteLocalRef(bytes);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::RequestPlate(uint64_t key, const char* text)
+{
+    JNIEnv* env;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+
+    if (!env || !s_makePlate)
+    {
+        FLog("No env or makePlate");
+        return;
+    }
+
+    std::string s(text ? text : "");
+    jbyteArray bytes = as_byte_array((unsigned char*)s.c_str(), s.length());
+    env->CallVoidMethod(this->activity, this->s_makePlate, (jlong)key, bytes);
     env->DeleteLocalRef(bytes);
     EXCEPTION_CHECK(env);
 }

@@ -1,0 +1,5 @@
+      - name: Symbolize crash
+        run: |
+          SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name libsamp.so | head -1)
+          ADDR2LINE=$(find $ANDROID_NDK_HOME -name "llvm-addr2line" | head -1)
+          $ADDR2LINE -f -C -e "$SO" 0x16a0c0 0x16d19c 0x16b61c 0x16bc80 0x131f6c 0x17334c

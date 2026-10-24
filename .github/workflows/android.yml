@@ -306,6 +306,14 @@ jobs:
           print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
+   
+      - name: Build debug APK
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+
       - name: Symbolize crash (libsamp.so)
         shell: bash
         run: |
@@ -326,12 +334,6 @@ jobs:
           "$ADDR2LINE" -f -C -e "$SO" 0x16a0c0 0x16d19c 0x16b61c 0x16bc80 0x131f6c 0x17334c
           echo "====================="
 
-
-      - name: Build debug APK
-        shell: bash
-        run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

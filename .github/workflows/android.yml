@@ -306,6 +306,27 @@ jobs:
           print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
+      - name: Symbolize crash (libsamp.so)
+        shell: bash
+        run: |
+          SO=$(find app/build/intermediates -path "*arm64-v8a*" -name "libsamp.so" | head -1)
+          if [ -z "$SO" ]; then
+            SO=$(find . -path "*/build/*" -name "libsamp.so" | grep arm64 | head -1)
+          fi
+          echo "libsamp.so: $SO"
+          if [ -z "$SO" ]; then
+            echo "libsamp.so tapilmadi"
+            exit 0
+          fi
+
+          ADDR2LINE=$(find "$ANDROID_HOME/ndk" -name "llvm-addr2line" | head -1)
+          echo "addr2line: $ADDR2LINE"
+
+          echo "===== SYMBOLIZE ====="
+          "$ADDR2LINE" -f -C -e "$SO" 0x16a0c0 0x16d19c 0x16b61c 0x16bc80 0x131f6c 0x17334c
+          echo "====================="
+
+
       - name: Build debug APK
         shell: bash
         run: |

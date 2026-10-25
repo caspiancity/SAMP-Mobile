@@ -252,7 +252,7 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend
     CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList
 
-    #define ENABLE_CUSTOM_PLATE 1
+    #define ENABLE_CUSTOM_PLATE 0
 #if !ENABLE_CUSTOM_PLATE
 CHook::RET("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo");
 

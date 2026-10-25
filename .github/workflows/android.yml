@@ -378,32 +378,45 @@ jobs:
           print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
+      - name: Enable native debug symbols
+        shell: bash
+        run: |
+          if ! grep -q "debugSymbolLevel" app/build.gradle; then
+            sed -i '/defaultConfig *{/a\        ndk { debugSymbolLevel "FULL" }' app/build.gradle
+          fi
+          grep -n "debugSymbolLevel" app/build.gradle || echo "DEBUG ayarı tapılmadı"
+
       - name: Build debug APK
         shell: bash
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
 
-
-
       - name: Symbolize crash
         if: always()
         shell: bash
         run: |
-          SO=$(find app/build/intermediates/cxx -path "*/obj/arm64-v8a/libsamp.so" | head -1)
+          ZIP=$(find app/build/outputs -name "native-debug-symbols.zip" | head -1)
+          echo "ZIP: $ZIP"
+          if [ -z "$ZIP" ]; then
+            echo "native-debug-symbols.zip tapılmadı"
+            find app/build -name "libsamp.so" -exec ls -l {} \;
+            exit 0
+          fi
+          rm -rf /tmp/sym && mkdir -p /tmp/sym
+          unzip -q "$ZIP" -d /tmp/sym
+          SO=$(find /tmp/sym -path "*arm64-v8a/libsamp.so" | head -1)
           echo "SO: $SO"
-          ls -l "$SO"
           BIN=$(dirname "$(find "$ANDROID_HOME/ndk" -name llvm-addr2line | head -1)")
 
           echo "===== DEBUG VARMI ====="
           "$BIN/llvm-readelf" -S "$SO" | grep -E "debug_info|symtab" || echo "DEBUG YOXDUR"
 
           echo "===== ADDR2LINE ====="
-          for a in 0x16c814 0x16c818 0x16c81c 0x16fb40 0x175cf0 0x16dfc0; do
+          for a in 0x16c814 0x16c818 0x16c81c 0x16fb40 0x175cf0 0x16dfc0 0x16e624 0x134f9c; do
             echo "--- $a"
             "$BIN/llvm-addr2line" -f -C -i -e "$SO" "$a"
           done
-
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

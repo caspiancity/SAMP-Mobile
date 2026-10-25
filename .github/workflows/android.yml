@@ -317,10 +317,7 @@ jobs:
       - name: Symbolize crash (libsamp.so)
         shell: bash
         run: |
-          SO=$(find app/build/intermediates -path "*arm64-v8a*" -name "libsamp.so" | head -1)
-          if [ -z "$SO" ]; then
-            SO=$(find . -path "*/build/*" -name "libsamp.so" | grep arm64 | head -1)
-          fi
+          SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name "libsamp.so" | head -1)
           echo "libsamp.so: $SO"
           if [ -z "$SO" ]; then
             echo "libsamp.so tapilmadi"
@@ -331,9 +328,8 @@ jobs:
           echo "addr2line: $ADDR2LINE"
 
           echo "===== SYMBOLIZE ====="
-          "$ADDR2LINE" -f -C -e "$SO" 0x16a0c0 0x16d19c 0x16b61c 0x16bc80 0x131f6c 0x17334c
+          "$ADDR2LINE" -f -C -e "$SO" 0x16c704 0x16c700 0x175bd8 0x16dea8 0x16e50c 0x134f0c
           echo "====================="
-
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

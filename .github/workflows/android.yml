@@ -384,34 +384,30 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Symbolize crash (libsamp.so)
+
+
+      - name: Symbolize crash
+        if: always()
         shell: bash
         run: |
-          SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name "libsamp.so" | head -1)
-          echo "libsamp.so: $SO"
-          NM=$(find "$ANDROID_HOME/ndk" -name "llvm-nm" | head -1)
-          RE=$(find "$ANDROID_HOME/ndk" -name "llvm-readelf" | head -1)
+          SO=$(find app/build -name libsamp.so -path "*arm64-v8a*" -printf "%s %p\n" | sort -n | tail -1 | cut -d' ' -f2-)
+          echo "SO: $SO"
+          ls -l "$SO"
+          BIN=$(dirname "$(find "$ANDROID_HOME/ndk" -name llvm-addr2line | head -1)")
 
-          echo "===== SIMVOL VARMI? ====="
-          "$RE" -S "$SO" | grep -E "symtab|debug_info" || echo "SIMVOL YOXDUR"
+          echo "===== SIMVOL VARMI ====="
+          "$BIN/llvm-readelf" -S "$SO" | grep -E "symtab|debug_info" || echo "SIMVOL YOXDUR"
 
-          echo "===== YAXIN FUNKSIYALAR ====="
-          "$NM" -D --defined-only -n "$SO" > /tmp/syms.txt
-          python3 - <<'PY'
-          syms = []
-          for l in open('/tmp/syms.txt'):
-              p = l.split()
-              if len(p) >= 3:
-                  syms.append((int(p[0], 16), p[2]))
-          syms.sort()
-          for a in [0x16c704, 0x175bd8, 0x16dea8, 0x16e50c, 0x134f0c]:
-              best = None
-              for v, n in syms:
-                  if v <= a:
-                      best = (v, n)
-              print(hex(a), '->', best[1] if best else '??', hex(a - best[0]) if best else '')
-          PY
-          echo "========================="
+          echo "===== ADDR2LINE ====="
+          for a in $(cat crash_addrs.txt); do
+            echo "--- $a"
+            "$BIN/llvm-addr2line" -f -C -i -e "$SO" $a
+          done
+
+          echo "===== DISASM (crash yeri 0x16c81c) ====="
+          "$BIN/llvm-objdump" -d -C --start-address=0x16c7d0 --stop-address=0x16c830 "$SO"
+
+
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

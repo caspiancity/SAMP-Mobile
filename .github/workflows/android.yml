@@ -226,6 +226,79 @@ jobs:
           git commit -m "Add persistent signing keystore [skip ci]"
           git push || echo "::warning::Could not push keystore (check Workflow permissions)"
 
+      - name: Rename package everywhere (the.apaches)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, shutil
+
+          ROOT = os.getcwd()
+          SKIP = {'.git', 'build', '.gradle', '.cxx', 'node_modules', 'keystore'}
+          TEXT_EXT = {'.java', '.kt', '.kts', '.xml', '.gradle', '.properties',
+                      '.cpp', '.cc', '.c', '.h', '.hpp', '.inc', '.cmake',
+                      '.txt', '.json', '.mk', '.pro'}
+          PAIRS = [
+              ('com/samp/mobile', 'the/apaches'),
+              ('com.samp.mobile', 'the.apaches'),
+              ('com_samp_mobile', 'the_apaches'),
+          ]
+
+          # 1. Bütün mətn fayllarında əvəz et (C++ JNI daxil)
+          changed = 0
+          for d, dn, fn in os.walk(ROOT):
+              dn[:] = [x for x in dn if x not in SKIP]
+              for f in fn:
+                  if os.path.splitext(f)[1].lower() not in TEXT_EXT and f != 'CMakeLists.txt':
+                      continue
+                  p = os.path.join(d, f)
+                  try:
+                      with open(p, 'r', encoding='utf-8', errors='surrogateescape', newline='') as fh:
+                          s = fh.read()
+                  except Exception:
+                      continue
+                  n = s
+                  for a, b in PAIRS:
+                      n = n.replace(a, b)
+                  if n != s:
+                      with open(p, 'w', encoding='utf-8', errors='surrogateescape', newline='') as fh:
+                          fh.write(n)
+                      changed += 1
+                      print('updated:', os.path.relpath(p, ROOT))
+          print('Yenilənmiş fayllar:', changed)
+
+          # 2. Qovluqları köçür: .../com/samp/mobile -> .../the/apaches
+          dirs = []
+          for d, dn, fn in os.walk(os.path.join(ROOT, 'app', 'src')):
+              if os.path.normpath(d).replace(os.sep, '/').endswith('/com/samp/mobile'):
+                  dirs.append(d)
+          for d in dirs:
+              src_root = os.path.dirname(os.path.dirname(os.path.dirname(d)))
+              dst = os.path.join(src_root, 'the', 'apaches')
+              os.makedirs(os.path.dirname(dst), exist_ok=True)
+              shutil.copytree(d, dst, dirs_exist_ok=True)
+              shutil.rmtree(d)
+              print('moved:', os.path.relpath(d, ROOT), '->', os.path.relpath(dst, ROOT))
+              for parent in [os.path.dirname(d), os.path.dirname(os.path.dirname(d))]:
+                  try:
+                      os.rmdir(parent)
+                  except OSError:
+                      pass
+
+          # 3. Qalan köhnə adları yoxla
+          left = []
+          for d, dn, fn in os.walk(ROOT):
+              dn[:] = [x for x in dn if x not in SKIP]
+              for f in fn:
+                  if os.path.splitext(f)[1].lower() in TEXT_EXT:
+                      try:
+                          s = open(os.path.join(d, f), encoding='utf-8', errors='ignore').read()
+                      except Exception:
+                          continue
+                      if 'com.samp.mobile' in s or 'com/samp/mobile' in s or 'com_samp_mobile' in s:
+                          left.append(os.path.relpath(os.path.join(d, f), ROOT))
+          print('Qalan köhnə ad olan fayllar:', left or 'yoxdur')
+          PY
+
       - name: Update Package Name and Version
         shell: bash
         env:
@@ -261,7 +334,6 @@ jobs:
           if os.path.exists(manifest_path):
               with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
                   m_content = f.read()
-              # Köhnə package atributunu silirik (namespace artıq gradle-da təyin olunub)
               m_content = re.sub(r'\s*package\s*=\s*[\'"][^\'"]+[\'"]', '', m_content)
               m_content = m_content.replace('com.samp.mobile', 'the.apaches')
               with open(manifest_path, 'w', encoding='utf-8') as f:
@@ -306,7 +378,6 @@ jobs:
           print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
-   
       - name: Build debug APK
         shell: bash
         run: |

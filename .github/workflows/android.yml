@@ -313,23 +313,34 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
 
-
       - name: Symbolize crash (libsamp.so)
         shell: bash
         run: |
           SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name "libsamp.so" | head -1)
           echo "libsamp.so: $SO"
-          if [ -z "$SO" ]; then
-            echo "libsamp.so tapilmadi"
-            exit 0
-          fi
+          NM=$(find "$ANDROID_HOME/ndk" -name "llvm-nm" | head -1)
+          RE=$(find "$ANDROID_HOME/ndk" -name "llvm-readelf" | head -1)
 
-          ADDR2LINE=$(find "$ANDROID_HOME/ndk" -name "llvm-addr2line" | head -1)
-          echo "addr2line: $ADDR2LINE"
+          echo "===== SIMVOL VARMI? ====="
+          "$RE" -S "$SO" | grep -E "symtab|debug_info" || echo "SIMVOL YOXDUR"
 
-          echo "===== SYMBOLIZE ====="
-          "$ADDR2LINE" -f -C -e "$SO" 0x16c704 0x16c700 0x175bd8 0x16dea8 0x16e50c 0x134f0c
-          echo "====================="
+          echo "===== YAXIN FUNKSIYALAR ====="
+          "$NM" -D --defined-only -n "$SO" > /tmp/syms.txt
+          python3 - <<'PY'
+          syms = []
+          for l in open('/tmp/syms.txt'):
+              p = l.split()
+              if len(p) >= 3:
+                  syms.append((int(p[0], 16), p[2]))
+          syms.sort()
+          for a in [0x16c704, 0x175bd8, 0x16dea8, 0x16e50c, 0x134f0c]:
+              best = None
+              for v, n in syms:
+                  if v <= a:
+                      best = (v, n)
+              print(hex(a), '->', best[1] if best else '??', hex(a - best[0]) if best else '')
+          PY
+          echo "========================="
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

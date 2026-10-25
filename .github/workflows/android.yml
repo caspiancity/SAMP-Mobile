@@ -390,23 +390,19 @@ jobs:
         if: always()
         shell: bash
         run: |
-          SO=$(find app/build -name libsamp.so -path "*arm64-v8a*" -printf "%s %p\n" | sort -n | tail -1 | cut -d' ' -f2-)
+          SO=$(find app/build/intermediates/cxx -path "*/obj/arm64-v8a/libsamp.so" | head -1)
           echo "SO: $SO"
           ls -l "$SO"
           BIN=$(dirname "$(find "$ANDROID_HOME/ndk" -name llvm-addr2line | head -1)")
 
-          echo "===== SIMVOL VARMI ====="
-          "$BIN/llvm-readelf" -S "$SO" | grep -E "symtab|debug_info" || echo "SIMVOL YOXDUR"
+          echo "===== DEBUG VARMI ====="
+          "$BIN/llvm-readelf" -S "$SO" | grep -E "debug_info|symtab" || echo "DEBUG YOXDUR"
 
           echo "===== ADDR2LINE ====="
-          for a in $(cat crash_addrs.txt); do
+          for a in 0x16c814 0x16c818 0x16c81c 0x16fb40 0x175cf0 0x16dfc0; do
             echo "--- $a"
-            "$BIN/llvm-addr2line" -f -C -i -e "$SO" $a
+            "$BIN/llvm-addr2line" -f -C -i -e "$SO" "$a"
           done
-
-          echo "===== DISASM (crash yeri 0x16c81c) ====="
-          "$BIN/llvm-objdump" -d -C --start-address=0x16c7d0 --stop-address=0x16c830 "$SO"
-
 
 
       - name: Upload APK

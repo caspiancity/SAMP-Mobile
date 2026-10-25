@@ -364,17 +364,17 @@ jobs:
               for root, dirs, files in os.walk(src_dir):
                   for file in files:
                       if file.endswith(('.java', '.kt', '.xml', '.properties')):
-                          f_path = os.path.join(root, file)
-                          try:
-                              with open(f_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                  text = f.read()
-                              if 'com.samp.mobile' in text:
-                                  new_text = text.replace('com.samp.mobile', 'the.apaches')
-                                  with open(f_path, 'w', encoding='utf-8') as f:
-                                      f.write(new_text)
-                                  changed_files += 1
-                          except Exception:
-                              pass
+                        f_path = os.path.join(root, file)
+                        try:
+                            with open(f_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                text = f.read()
+                            if 'com.samp.mobile' in text:
+                                new_text = text.replace('com.samp.mobile', 'the.apaches')
+                                with open(f_path, 'w', encoding='utf-8') as f:
+                                    f.write(new_text)
+                                changed_files += 1
+                        except Exception:
+                            pass
           print(f"Cəmi {changed_files} mənbə faylında paket adı 'the.apaches' olaraq yeniləndi.")
           PY
 
@@ -398,24 +398,37 @@ jobs:
         run: |
           ZIP=$(find app/build/outputs -name "native-debug-symbols.zip" | head -1)
           echo "ZIP: $ZIP"
-          if [ -z "$ZIP" ]; then
-            echo "native-debug-symbols.zip tapılmadı"
-            find app/build -name "libsamp.so" -exec ls -l {} \;
-            exit 0
-          fi
+          [ -z "$ZIP" ] && { echo "zip tapılmadı"; exit 0; }
+
           rm -rf /tmp/sym && mkdir -p /tmp/sym
           unzip -q "$ZIP" -d /tmp/sym
-          SO=$(find /tmp/sym -path "*arm64-v8a/libsamp.so" | head -1)
+
+          echo "===== ZIP MƏZMUNU ====="
+          find /tmp/sym -type f | head -50
+
+          SO=$(find /tmp/sym -name "libsamp.so" | grep -i arm64 | head -1)
+          [ -z "$SO" ] && SO=$(find /tmp/sym -name "libsamp.so" | head -1)
           echo "SO: $SO"
-          BIN=$(dirname "$(find "$ANDROID_HOME/ndk" -name llvm-addr2line | head -1)")
+          [ -z "$SO" ] && { echo "libsamp.so zip-in içində yoxdur"; exit 0; }
+
+          echo "===== NDK ALƏTLƏRİ ====="
+          find "$ANDROID_HOME/ndk" -type f \( -name "llvm-addr2line*" -o -name "llvm-symbolizer*" -o -name "llvm-readelf*" \) | grep "linux-x86_64/bin" | head
+
+          A2L=$(find "$ANDROID_HOME/ndk" -type f -name "llvm-symbolizer" | grep "linux-x86_64/bin" | head -1)
+          [ -z "$A2L" ] && A2L=$(find "$ANDROID_HOME/ndk" -type f -name "llvm-addr2line" | grep "linux-x86_64/bin" | head -1)
+          READELF=$(find "$ANDROID_HOME/ndk" -type f -name "llvm-readelf" | grep "linux-x86_64/bin" | head -1)
 
           echo "===== DEBUG VARMI ====="
-          "$BIN/llvm-readelf" -S "$SO" | grep -E "debug_info|symtab" || echo "DEBUG YOXDUR"
+          "$READELF" -S "$SO" | grep -E "debug_info|symtab" || echo "DEBUG YOXDUR"
 
-          echo "===== ADDR2LINE ====="
+          echo "===== SİMVOLLAR ====="
           for a in 0x16c814 0x16c818 0x16c81c 0x16fb40 0x175cf0 0x16dfc0 0x16e624 0x134f9c; do
             echo "--- $a"
-            "$BIN/llvm-addr2line" -f -C -i -e "$SO" "$a"
+            if [[ "$(basename "$A2L")" == "llvm-symbolizer" ]]; then
+              "$A2L" -e "$SO" -f -C -i "$a"
+            else
+              "$A2L" -f -C -i -e "$SO" "$a"
+            fi
           done
 
       - name: Upload APK

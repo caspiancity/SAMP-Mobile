@@ -3,7 +3,6 @@
 #include "../net/netgame.h"
 #include "vehicle.h"
 #include "Streaming.h"
-#include "VehPlate.h"
 #include "VehControls.h"
 
 #include <cstdlib>

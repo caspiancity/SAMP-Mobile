@@ -20,6 +20,8 @@
 #include "game/Pools.h"
 #include "game/Entity/CPedGTA.h"
 #include "game/Enums/ePedType.h"
+#include "game/World.h"
+#include "game/playerped.h"
 
 #include <algorithm>
 #include <chrono>
@@ -517,7 +519,7 @@ void RenderHandlingDialog()
 
         if (want)
         {
-                PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
                         g_bShowHandlingDlg = false;
                         s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
@@ -836,7 +838,7 @@ void RenderTpDialog()
         const bool want = g_bShowTpDlg;
         if (!want && s_t <= 0.0f) { s_tpRectValid = false; return; }
 
-        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -882,20 +884,22 @@ void RenderTpDialog()
                 if (p > 0.01f) Stroke(d, Accent(0.0f, 140), S(10.0f), S(1.2f));
                 Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kTpSpots[i].name);
 
-                if (tapped && pLocalPlayer)
+                if (tapped && pLocalPlayer && pLocalPlayer->m_pPed)
                 {
                         const TpSpot& sp = kTpSpots[i];
-                        float gz = World::FindGroundZForCoord(sp.x, sp.y);
+                        float gz = CWorld::FindGroundZForCoord(sp.x, sp.y);
                         if (gz < -90.0f) gz = sp.z; // fallback, yer tapilmadi
 
-                        pLocalPlayer->Remove();
-                        pLocalPlayer->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
-                        pLocalPlayer->Add();
-                        if (pLocalPlayer->IsInVehicle() && pLocalPlayer->pVehicle)
+                        CWorld::Remove(pLocalPlayer->m_pPed);
+                        pLocalPlayer->m_pPed->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
+                        CWorld::Add(pLocalPlayer->m_pPed);
+
+                        if (pLocalPlayer->IsInVehicle() && pLocalPlayer->m_pPed->pVehicle)
                         {
-                                pLocalPlayer->pVehicle->Remove();
-                                pLocalPlayer->pVehicle->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
-                                pLocalPlayer->pVehicle->Add();
+                                CVehicleGTA* veh = pLocalPlayer->m_pPed->pVehicle;
+                                CWorld::Remove(veh);
+                                veh->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
+                                CWorld::Add(veh);
                         }
                         g_bShowTpDlg = false;
                         if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Teleport edildi: %s", sp.name);
@@ -924,7 +928,7 @@ void RenderSettingsDialog()
         const bool want = g_bShowSettingsDlg;
         if (!want && s_t <= 0.0f) { s_setRectValid = false; return; }
 
-        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -956,18 +960,18 @@ void RenderSettingsDialog()
         if (Tap(ID_SET_CLOSE, bClose, canInput)) g_bShowSettingsDlg = false;
         HeaderBtn(ID_SET_CLOSE, bClose, dt, "", true);
 
-        if (pLocalPlayer)
+        if (pLocalPlayer && pLocalPlayer->m_pPed)
         {
-                s_godmode = PlayerPedGta::bDebugPlayerInvincible;
+                s_godmode = pLocalPlayer->m_pPed->bInvulnerable;
 
                 const Rc rGod{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(66.0f) };
                 if (ToggleRow(0, rGod, "Godmode", s_godmode ? "Aktiv" : "Deaktiv", s_godmode, dt, canInput))
-                        PlayerPedGta::bDebugPlayerInvincible = !s_godmode;
+                        pLocalPlayer->m_pPed->bInvulnerable = !s_godmode;
 
                 const Rc rHp{ P.x + S(20.0f), P.y + S(138.0f), P.w - S(40.0f), S(50.0f) };
                 if (Tap(ID_SET_FULLHP, rHp, canInput)) {
-                        pLocalPlayer->m_fHealth = pLocalPlayer->m_fMaxHealth;
-                        pLocalPlayer->m_fArmour = 100.0f;
+                        pLocalPlayer->SetHealth(100.0f);
+                        pLocalPlayer->SetArmour(100.0f);
                 }
                 {
                         const float p = Prs(ID_SET_FULLHP, dt);
@@ -1020,11 +1024,11 @@ static CVehicleGTA* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
 {
         if (!CPools::ms_pVehiclePool) return nullptr;
 
-        if (!Streaming::IsModelLoaded(modelId)) {
-                Streaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
-                Streaming::LoadAllRequestedModels(false);
+        if (!CStreaming::IsModelLoaded(modelId)) {
+                CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
+                CStreaming::LoadAllRequestedModels(false);
         }
-        if (!Streaming::IsModelLoaded(modelId)) {
+        if (!CStreaming::IsModelLoaded(modelId)) {
                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Model yuklenmedi (%d).", modelId);
                 return nullptr;
         }
@@ -1057,7 +1061,7 @@ void RenderVehicleMenuDialog()
         const bool want = g_bShowVehDlg;
         if (!want && s_t <= 0.0f) { s_vehRectValid = false; return; }
 
-        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -1098,9 +1102,9 @@ void RenderVehicleMenuDialog()
                 Fill(d, Col(27, 30, 40, 255), S(10.0f));
                 Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kVehList[i].name);
 
-                if (tapped && pLocalPlayer)
+                if (tapped && pLocalPlayer && pLocalPlayer->m_pPed)
                 {
-                        CVector base = pLocalPlayer->m_placement.m_vPosn;
+                        CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
                         CVector spawnPos(base.x + 4.0f, base.y + 2.0f, base.z);
                         CVehicleGTA* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
                         g_bShowVehDlg = false;
@@ -1115,9 +1119,9 @@ void RenderVehicleMenuDialog()
 // ============================================================================
 static std::vector<CPedGTA*> s_npcList;
 
-static CPedGTA* SpawnNpcNearPlayer(PlayerPed* pPlayerPed, const CVector& pos)
+static CPedGTA* SpawnNpcNearPlayer(CPlayerPed* pPlayerPed, const CVector& pos)
 {
-        if (!CPools::ms_pPedPool || !pPlayerPed) return nullptr;
+        if (!CPools::ms_pPedPool || !pPlayerPed || !pPlayerPed->m_pPed) return nullptr;
 
         void* slot = CPools::ms_pPedPool->New();
         if (!slot) return nullptr;
@@ -1125,7 +1129,7 @@ static CPedGTA* SpawnNpcNearPlayer(PlayerPed* pPlayerPed, const CVector& pos)
         CPedGTA* pNpc = new (slot) CPedGTA(PEDTYPE_CIVMALE);
         if (!pNpc) return nullptr;
 
-        pNpc->SetModelIndex(pPlayerPed->m_nModelIndex);
+        pNpc->SetModelIndex(pPlayerPed->m_pPed->m_nModelIndex);
 
         pNpc->m_placement.m_vPosn = pos;
         pNpc->Add();
@@ -1161,7 +1165,7 @@ void RenderNpcDialog()
         const bool want = g_bShowNpcDlg;
         if (!want && s_t <= 0.0f) { s_npcRectValid = false; return; }
 
-        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -1197,9 +1201,9 @@ void RenderNpcDialog()
         HeaderBtn(ID_NPC_CLOSE, bClose, dt, "", true);
 
         const Rc rSpawn{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(56.0f) };
-        if (Tap(ID_NPC_SPAWN, rSpawn, canInput) && pLocalPlayer)
+        if (Tap(ID_NPC_SPAWN, rSpawn, canInput) && pLocalPlayer && pLocalPlayer->m_pPed)
         {
-                CVector base = pLocalPlayer->m_placement.m_vPosn;
+                CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
                 CVector spawnPos(base.x + 2.0f, base.y + 2.0f, base.z);
                 SpawnNpcNearPlayer(pLocalPlayer, spawnPos);
         }

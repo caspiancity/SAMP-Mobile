@@ -28,7 +28,6 @@ import android.os.Looper;
 import android.os.StatFs;
 import android.text.Editable;
 import android.text.InputType;
-import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.format.Formatter;
 import android.util.TypedValue;
@@ -69,10 +68,11 @@ import java.util.Locale;
  *  - ayarlar (settings.ini), aletler, haqqinda
  *  - BASLA -> oyun OFFLINE rejimde basladilir (SAMP activity, extra "offline_mode"=true)
  *
- *  QEYD: Onlayn rejim və server seçimi UI-dən çıxarılıb (onlayn tərəf hazırda inkişaf
- *  mərhələsindədir). Oyun local/offline rejimdə başladılır. /tp, /m, /ayarlar komandaları,
- *  NPC spawn məntiqi və musiqi slotlarının faktiki çalınması bu fayldan kənarda, oyun
- *  tərəfində (SAMP.java / native tərəf) işlənməlidir — bax: handoff qeydləri.
+ *  QEYD: "offline_mode" extra-sı hazırda yalnız Java tərəfdən göndərilir — native (C++)
+ *  tərəfdə hələ oxunmur, ona görə indiki halda oyun yenə öz adi qoşulma axınına girir.
+ *  Bunu bağlamaq üçün native connection-flow faylı lazımdır.
+ *
+ *  Arxa fon musiqisi bu fayldan çıxarılıb — istifadəçi onu özü ayrıca idarə edəcək.
  *
  * Hec bir XML/resurs lazim deyil, butun UI proqramla qurulur.
  */
@@ -89,12 +89,14 @@ public class LobbyActivity extends Activity {
             "/tp sistemi — fərqli nöqtələrə teleport",
             "/m sistemi — menyulu maşın seçimi",
             "/ayarlar — silah, skin, godmode, star və s. idarəetməsi",
-            "Arxa fon musiqisi: 3 slot, səs səviyyəsi tənzimlənə bilən",
-            "Daha sürətli, daha axıcı animasiyalı interfeys",
+            "/npc — yanına statik NPC yaratma",
+            "Tamamilə yeniləndi: dizayn, rənglər və keçid animasiyaları",
     };
 
-    private static final int C_PANEL = 0xFF14161C, C_CARD = 0xFF1A1D25, C_FIELD = 0xFF232733,
-            C_TXT = 0xFFE8EAF0, C_HINT = 0xFF8B92A3, C_ACC = 0xFF4E8EEB, C_OK = 0xFF4CAF7A, C_BAD = 0xFFE5534B;
+    // --- rəng palitrası: dərin gecə + bənövşəyi-mavi aksent ---
+    private static final int C_PANEL = 0xFF0E1016, C_CARD = 0xFF171B24, C_FIELD = 0xFF212632,
+            C_TXT = 0xFFEDEFF5, C_HINT = 0xFF8D93A6, C_ACC = 0xFF6C7CF2, C_ACC2 = 0xFF9B6CF2,
+            C_OK = 0xFF48C78E, C_BAD = 0xFFE5534B;
 
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT, WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
 
@@ -102,7 +104,6 @@ public class LobbyActivity extends Activity {
             "[client]\nname = \nmode = offline\n\n"
           + "[debug]\ndebug = true\nonline = false\n\n"
           + "[offline]\nnpc = true\n\n"
-          + "[music]\nslot1 = \nslot1vol = 40\nslot2 = \nslot2vol = 40\nslot3 = \nslot3vol = 40\n\n"
           + "[gui]\nandroidkeyboard = false\nautoaim = true\nfps = 90\nFPSLimit = 90\nChatMaxMessages = 10\n"
           + "Font = arial.ttf\nFontSize = 30.000000\nFontOutline = 2\nChatPosX = 325.000000\nChatPosY = 25.000000\n"
           + "ChatSizeX = 1150.000000\nChatSizeY = 220.000000\nHealthBarWidth = 60.000000\nHealthBarHeight = 10.000000\n"
@@ -150,7 +151,7 @@ public class LobbyActivity extends Activity {
         content.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(content, new FrameLayout.LayoutParams(MATCH, MATCH));
 
-        content.addView(buildSidebar(), new LinearLayout.LayoutParams(dp(210), MATCH));
+        content.addView(buildSidebar(), new LinearLayout.LayoutParams(dp(216), MATCH));
 
         pageHost = new FrameLayout(this);
         content.addView(pageHost, new LinearLayout.LayoutParams(0, MATCH, 1f));
@@ -159,7 +160,7 @@ public class LobbyActivity extends Activity {
         banner.setTextColor(C_TXT);
         banner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         banner.setPadding(dp(18), dp(11), dp(18), dp(11));
-        banner.setBackground(rr(0xF2262A35, 12, 0x33FFFFFF));
+        banner.setBackground(rr(0xF2222733, 12, 0x33FFFFFF));
         banner.setAlpha(0f);
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         blp.bottomMargin = dp(22);
@@ -426,14 +427,14 @@ public class LobbyActivity extends Activity {
     private View buildSidebar() {
         LinearLayout sb = new LinearLayout(this);
         sb.setOrientation(LinearLayout.VERTICAL);
-        sb.setBackgroundColor(0x99101218);
+        sb.setBackgroundColor(0x990A0C12);
         sb.setPadding(dp(16), dp(22), dp(12), dp(16));
 
         LinearLayout brand = new LinearLayout(this);
         brand.setOrientation(LinearLayout.HORIZONTAL);
         brand.setGravity(Gravity.CENTER_VERTICAL);
         View bar = new View(this);
-        bar.setBackground(rr(C_ACC, 2, 0));
+        bar.setBackground(accentPill());
         brand.addView(bar, new LinearLayout.LayoutParams(dp(4), dp(34)));
         LinearLayout bt = new LinearLayout(this);
         bt.setOrientation(LinearLayout.VERTICAL);
@@ -444,7 +445,7 @@ public class LobbyActivity extends Activity {
         sb.addView(brand, new LinearLayout.LayoutParams(MATCH, WRAP));
 
         View gap = new View(this);
-        sb.addView(gap, new LinearLayout.LayoutParams(MATCH, dp(22)));
+        sb.addView(gap, new LinearLayout.LayoutParams(MATCH, dp(24)));
 
         for (int i = 0; i < 5; i++) {
             final int idx = i;
@@ -480,15 +481,15 @@ public class LobbyActivity extends Activity {
         if (next.getParent() != null) ((ViewGroup) next.getParent()).removeView(next);
         pageHost.addView(next, new FrameLayout.LayoutParams(MATCH, MATCH));
         next.setAlpha(0f);
-        next.setTranslationX(dp(26));
-        next.setScaleX(0.985f);
-        next.setScaleY(0.985f);
-        next.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f).setDuration(260)
-                .setInterpolator(new DecelerateInterpolator(1.8f)).start();
+        next.setTranslationX(dp(30));
+        next.setScaleX(0.97f);
+        next.setScaleY(0.97f);
+        next.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f).setDuration(300)
+                .setInterpolator(new OvershootInterpolator(0.9f)).start();
 
         if (cur >= 0) {
             final View old = pages[cur];
-            old.animate().alpha(0f).translationX(-dp(10)).setDuration(140).withEndAction(new Runnable() {
+            old.animate().alpha(0f).translationX(-dp(14)).scaleX(0.97f).scaleY(0.97f).setDuration(150).withEndAction(new Runnable() {
                 @Override public void run() { if (old.getParent() == pageHost && old != pages[cur]) pageHost.removeView(old); }
             }).start();
         }
@@ -513,9 +514,12 @@ public class LobbyActivity extends Activity {
     private void animIn(View v) {
         final int i = animIdx++;
         v.setAlpha(0f);
-        v.setTranslationY(dp(16));
-        v.animate().alpha(1f).translationY(0f).setStartDelay(Math.min(i, 6) * 45L).setDuration(280)
-                .setInterpolator(new DecelerateInterpolator(1.6f)).start();
+        v.setTranslationY(dp(22));
+        v.setScaleX(0.94f);
+        v.setScaleY(0.94f);
+        v.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                .setStartDelay(Math.min(i, 6) * 55L).setDuration(360)
+                .setInterpolator(new OvershootInterpolator(1.1f)).start();
     }
 
     // ============================== SEHIFE: BASLA ==============================
@@ -556,7 +560,7 @@ public class LobbyActivity extends Activity {
 
         startBtn = new StartBtn(this, dp);
         startBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { onStartPressed(); } });
-        left.addView(startBtn, new LinearLayout.LayoutParams(MATCH, dp(58)));
+        left.addView(startBtn, new LinearLayout.LayoutParams(MATCH, dp(60)));
         row.addView(left, new LinearLayout.LayoutParams(0, MATCH, 1.25f));
 
         LinearLayout right = new LinearLayout(this);
@@ -697,26 +701,14 @@ public class LobbyActivity extends Activity {
         col.addView(g4, cardLp());
         animIn(g4);
 
-        // --- musiqi ---
-        LinearLayout g5 = card();
-        g5.addView(label("ARXA FON MUSİQİSİ  (3 slot)"));
-        TextView musInfo = text("Hər slota mahnının fayl yolunu yaz. Səs səviyyəsi aşağı saxlanılır ki, oyunu batırmasın.", 13, C_HINT, false);
-        musInfo.setPadding(0, 0, 0, dp(10));
-        g5.addView(musInfo);
-        addMusicSlot(g5, "Slot 1", "slot1", "slot1vol");
-        addMusicSlot(g5, "Slot 2", "slot2", "slot2vol");
-        addMusicSlot(g5, "Slot 3", "slot3", "slot3vol");
-        col.addView(g5, cardLp());
-        animIn(g5);
-
         // --- sifirla ---
-        LinearLayout g6 = card();
-        g6.addView(label("SIFIRLA"));
-        g6.addView(button("İnterfeys və qrafikanı standarta qaytar", false, new View.OnClickListener() {
+        LinearLayout g5 = card();
+        g5.addView(label("SIFIRLA"));
+        g5.addView(button("İnterfeys və qrafikanı standarta qaytar", false, new View.OnClickListener() {
             @Override public void onClick(View v) { resetGui(); banner("Standart dəyərlər qaytarıldı"); pages[2] = null; rebuildPage(2); }
         }), btnLp());
-        col.addView(g6, cardLp());
-        animIn(g6);
+        col.addView(g5, cardLp());
+        animIn(g5);
 
         return scroll(col);
     }
@@ -752,47 +744,6 @@ public class LobbyActivity extends Activity {
         parent.addView(row);
     }
 
-    /** Musiqi slotu: fayl yolu sahəsi + həcm slayderi. Faktiki çalma oyun tərəfində edilməlidir. */
-    private void addMusicSlot(LinearLayout parent, String title, final String pathKey, final String volKey) {
-        LinearLayout wrap = new LinearLayout(this);
-        wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.setPadding(0, dp(10), 0, dp(4));
-        wrap.addView(text(title, 13, C_HINT, true));
-
-        final EditText path = field("Mahnı faylının yolu (məs: Music/slot1.mp3)");
-        path.setText(ini.get("music", pathKey, ""));
-        path.setSingleLine(true);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(MATCH, dp(44));
-        plp.topMargin = dp(6);
-        wrap.addView(path, plp);
-        path.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean hasFocus) {
-                if (!hasFocus) iniSet("music", pathKey, path.getText().toString().trim());
-            }
-        });
-
-        LinearLayout volRow = new LinearLayout(this);
-        volRow.setGravity(Gravity.CENTER_VERTICAL);
-        volRow.setPadding(0, dp(6), 0, 0);
-        volRow.addView(text("Səs", 12, C_HINT, false), new LinearLayout.LayoutParams(dp(34), WRAP));
-        float curVol = parseFloat(ini.get("music", volKey, "40"), 40);
-        final TextView volVal = text(Math.round(curVol) + "%", 12, C_ACC, true);
-        Sl vs = new Sl(this, dp, 0, 100, curVol);
-        vs.setListener(new Sl.Listener() {
-            @Override public void onValue(float v, boolean fin) {
-                volVal.setText(Math.round(v) + "%");
-                if (fin) iniSet("music", volKey, String.valueOf(Math.round(v)));
-            }
-        });
-        volRow.addView(vs, new LinearLayout.LayoutParams(0, dp(30), 1f));
-        LinearLayout.LayoutParams vvlp = new LinearLayout.LayoutParams(dp(42), WRAP);
-        vvlp.leftMargin = dp(8);
-        volRow.addView(volVal, vvlp);
-        wrap.addView(volRow);
-
-        parent.addView(wrap);
-    }
-
     private void resetGui() {
         IniFile def = new IniFile(new File("/nonexistent"));
         for (String l : DEFAULT_INI.split("\n")) def.lines.add(l);
@@ -813,7 +764,6 @@ public class LobbyActivity extends Activity {
     }
 
     // ============================== SEHIFE: ALETLER ==============================
-    // Yalnız əsl faydası olan alətlər saxlanılıb; onlayn/server ilə bağlı olanlar çıxarılıb.
     private View buildTools() {
         animIdx = 0;
         LinearLayout col = pageColumn("Alətlər", "Faydalı sistem funksiyaları");
@@ -957,7 +907,7 @@ public class LobbyActivity extends Activity {
         banner.setText(msg);
         banner.animate().cancel();
         banner.setTranslationY(dp(14));
-        banner.animate().alpha(1f).translationY(0f).setDuration(180).setInterpolator(new DecelerateInterpolator()).start();
+        banner.animate().alpha(1f).translationY(0f).setDuration(200).setInterpolator(new OvershootInterpolator(1.2f)).start();
         if (bannerHide != null) ui.removeCallbacks(bannerHide);
         bannerHide = new Runnable() { @Override public void run() { banner.animate().alpha(0f).translationY(dp(10)).setDuration(220).start(); } };
         ui.postDelayed(bannerHide, 2600);
@@ -983,6 +933,12 @@ public class LobbyActivity extends Activity {
         g.setColor(color);
         g.setCornerRadius(dp(radiusDp));
         if (stroke != 0) g.setStroke(Math.max(1, dp(1)), stroke);
+        return g;
+    }
+
+    private GradientDrawable accentPill() {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{ C_ACC, C_ACC2 });
+        g.setCornerRadius(dp(2));
         return g;
     }
 
@@ -1012,7 +968,7 @@ public class LobbyActivity extends Activity {
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackground(rr(0xCC1A1D25, 14, 0x1AFFFFFF));
+        c.setBackground(rr(0xCC171B24, 16, 0x1FFFFFFF));
         c.setPadding(dp(18), dp(16), dp(18), dp(16));
         return c;
     }
@@ -1037,7 +993,7 @@ public class LobbyActivity extends Activity {
         e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         e.setSingleLine(true);
         e.setPadding(dp(14), 0, dp(14), 0);
-        e.setBackground(rr(C_FIELD, 12, 0x14FFFFFF));
+        e.setBackground(rr(C_FIELD, 12, 0x18FFFFFF));
         e.setImeOptions(EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         return e;
     }
@@ -1046,17 +1002,23 @@ public class LobbyActivity extends Activity {
         final TextView b = text(s, 14, primary ? Color.WHITE : C_TXT, true);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(18), 0, dp(18), 0);
-        b.setBackground(primary ? rr(C_ACC, 11, 0) : rr(0x14FFFFFF, 11, 0x22FFFFFF));
+        b.setBackground(primary ? accentGrad() : rr(0x16FFFFFF, 11, 0x26FFFFFF));
         b.setOnClickListener(l);
         b.setOnTouchListener(new View.OnTouchListener() {
             @Override public boolean onTouch(View v, MotionEvent e) {
                 int a = e.getActionMasked();
-                if (a == MotionEvent.ACTION_DOWN) v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(80).start();
-                else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) v.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+                if (a == MotionEvent.ACTION_DOWN) v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(80).start();
+                else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) v.animate().scaleX(1f).scaleY(1f).setDuration(160).setInterpolator(new OvershootInterpolator(2f)).start();
                 return false;
             }
         });
         return b;
+    }
+
+    private GradientDrawable accentGrad() {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{ C_ACC, C_ACC2 });
+        g.setCornerRadius(dp(11));
+        return g;
     }
 
     private TextView chip(String s, boolean sel) {
@@ -1067,8 +1029,14 @@ public class LobbyActivity extends Activity {
     }
 
     private void styleChip(TextView t, boolean sel) {
-        t.setBackground(sel ? rr(C_ACC, 10, 0) : rr(0x14FFFFFF, 10, 0x22FFFFFF));
+        t.setBackground(sel ? accentGrad10() : rr(0x14FFFFFF, 10, 0x22FFFFFF));
         t.setTextColor(sel ? Color.WHITE : C_TXT);
+    }
+
+    private GradientDrawable accentGrad10() {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{ C_ACC, C_ACC2 });
+        g.setCornerRadius(dp(10));
+        return g;
     }
 
     private LinearLayout pageColumn(String title, String sub) {
@@ -1091,7 +1059,7 @@ public class LobbyActivity extends Activity {
     }
 
     // ============================== ozel View-lar ==============================
-    /** yavas hereketli yumsaq arxa fon */
+    /** yavas hereketli, chox qatli (aurora-tipli) arxa fon */
     private static final class Backdrop extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
@@ -1101,7 +1069,7 @@ public class LobbyActivity extends Activity {
 
         Backdrop(Context c) {
             super(c);
-            anim.setDuration(45000);
+            anim.setDuration(52000);
             anim.setRepeatCount(ValueAnimator.INFINITE);
             anim.setInterpolator(new LinearInterpolator());
             anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
@@ -1115,15 +1083,16 @@ public class LobbyActivity extends Activity {
         @Override protected void onDraw(Canvas c) {
             final int w = getWidth(), h = getHeight();
             if (lg == null || lw != w || lh != h) {
-                lg = new LinearGradient(0, 0, 0, h, 0xFF0B0D12, 0xFF11141B, Shader.TileMode.CLAMP);
+                lg = new LinearGradient(0, 0, 0, h, 0xFF070810, 0xFF0D0F18, Shader.TileMode.CLAMP);
                 lw = w; lh = h;
             }
             p.setShader(lg);
             c.drawRect(0, 0, w, h, p);
             final float a = t * (float) (Math.PI * 2);
-            blob(c, w * (0.22f + 0.07f * (float) Math.sin(a)), h * (0.28f + 0.10f * (float) Math.cos(a)), h * 0.95f, 0x264E8EEB);
-            blob(c, w * (0.82f + 0.06f * (float) Math.cos(a)), h * (0.80f + 0.08f * (float) Math.sin(a)), h * 0.85f, 0x1C3F6FD0);
-            blob(c, w * (0.55f + 0.10f * (float) Math.sin(a * 2f)), h * (0.10f + 0.05f * (float) Math.cos(a)), h * 0.55f, 0x143A8F9E);
+            blob(c, w * (0.20f + 0.08f * (float) Math.sin(a)), h * (0.26f + 0.11f * (float) Math.cos(a)), h * 1.0f, 0x2A6C7CF2);
+            blob(c, w * (0.84f + 0.06f * (float) Math.cos(a * 1.3f)), h * (0.78f + 0.09f * (float) Math.sin(a)), h * 0.9f, 0x229B6CF2);
+            blob(c, w * (0.55f + 0.11f * (float) Math.sin(a * 2.1f)), h * (0.08f + 0.05f * (float) Math.cos(a)), h * 0.5f, 0x163FA0C8);
+            blob(c, w * (0.08f + 0.05f * (float) Math.cos(a * 1.7f)), h * (0.86f + 0.06f * (float) Math.sin(a * 1.4f)), h * 0.45f, 0x14C86CF2);
             p.setShader(null);
         }
 
@@ -1153,8 +1122,8 @@ public class LobbyActivity extends Activity {
         void setSelectedAnimated(boolean on) {
             if (anim != null) anim.cancel();
             anim = ValueAnimator.ofFloat(sel, on ? 1f : 0f);
-            anim.setDuration(200);
-            anim.setInterpolator(new DecelerateInterpolator());
+            anim.setDuration(220);
+            anim.setInterpolator(new DecelerateInterpolator(1.4f));
             anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override public void onAnimationUpdate(ValueAnimator a) { sel = (Float) a.getAnimatedValue(); invalidate(); }
             });
@@ -1163,16 +1132,17 @@ public class LobbyActivity extends Activity {
 
         @Override protected void onDraw(Canvas c) {
             final float w = getWidth(), h = getHeight();
-            if (sel > 0.01f) {
+            final float selC = Math.max(0f, Math.min(1f, sel));
+            if (selC > 0.01f) {
                 p.setStyle(Paint.Style.FILL);
-                p.setColor(Color.argb((int) (34 * sel), 78, 142, 235));
+                p.setColor(Color.argb((int) (36 * selC), 108, 124, 242));
                 r.set(0, 0, w, h);
                 c.drawRoundRect(r, 11 * dp, 11 * dp, p);
-                p.setColor(Color.argb((int) (255 * sel), 78, 142, 235));
+                p.setColor(Color.argb((int) (255 * selC), 108, 124, 242));
                 r.set(0, h * 0.28f, 3 * dp, h * 0.72f);
                 c.drawRoundRect(r, 2 * dp, 2 * dp, p);
             }
-            final int col = blend(0xFF8B92A3, 0xFFE8EAF0, sel);
+            final int col = blend(0xFF8D93A6, 0xFFEDEFF5, selC);
             p.setColor(col);
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(1.9f * dp);
@@ -1213,7 +1183,7 @@ public class LobbyActivity extends Activity {
             }
             p.setStyle(Paint.Style.FILL);
             p.setTextSize(15 * dp);
-            p.setTypeface(sel > 0.5f ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            p.setTypeface(selC > 0.5f ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
             c.drawText(label, 46 * dp, cy + 5.2f * dp, p);
         }
 
@@ -1224,13 +1194,14 @@ public class LobbyActivity extends Activity {
         }
     }
 
-    /** boyuk OFFLİNE BAŞLA duymesi (yumsaq isiq zolagi animasiyasi ile) */
+    /** boyuk OFFLİNE BAŞLA duymesi — nebz kimi doyunan xarici parlaqlıq + isiq zolagi */
     private static final class StartBtn extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
         private final float dp;
         private final ValueAnimator shimmer = ValueAnimator.ofFloat(0f, 1f);
-        private float sh, press, busyT;
+        private final ValueAnimator pulse = ValueAnimator.ofFloat(0f, 1f);
+        private float sh, pulseT, busyT;
         private boolean enabledLook = true, busy;
         private String label = "OFFLİNE BAŞLA";
 
@@ -1248,33 +1219,57 @@ public class LobbyActivity extends Activity {
                     invalidate();
                 }
             });
+            pulse.setDuration(1800);
+            pulse.setRepeatCount(ValueAnimator.INFINITE);
+            pulse.setRepeatMode(ValueAnimator.REVERSE);
+            pulse.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+            pulse.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override public void onAnimationUpdate(ValueAnimator a) { pulseT = (Float) a.getAnimatedValue(); invalidate(); }
+            });
         }
 
         void setState(boolean ok, String text) { enabledLook = ok; label = text; invalidate(); }
 
         void setBusy(boolean b) { busy = b; if (b) label = "Yüklənir..."; else if (enabledLook) label = "OFFLİNE BAŞLA"; invalidate(); }
 
-        @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); shimmer.start(); }
-        @Override protected void onDetachedFromWindow() { shimmer.cancel(); super.onDetachedFromWindow(); }
+        @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); shimmer.start(); pulse.start(); }
+        @Override protected void onDetachedFromWindow() { shimmer.cancel(); pulse.cancel(); super.onDetachedFromWindow(); }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
             int a = e.getActionMasked();
-            if (a == MotionEvent.ACTION_DOWN) { animate().scaleX(0.975f).scaleY(0.975f).setDuration(90).start(); }
-            else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) { animate().scaleX(1f).scaleY(1f).setDuration(140).start(); }
+            if (a == MotionEvent.ACTION_DOWN) { animate().scaleX(0.97f).scaleY(0.97f).setDuration(90).start(); }
+            else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) { animate().scaleX(1f).scaleY(1f).setDuration(160).setInterpolator(new android.view.animation.OvershootInterpolator(2.4f)).start(); }
             return super.onTouchEvent(e);
         }
 
         @Override protected void onDraw(Canvas c) {
             final float w = getWidth(), h = getHeight(), rad = 14 * dp;
+
+            // nebz kimi doyunan xarici halqa (yalniz aktiv ve bosh vaxt)
+            if (enabledLook && !busy) {
+                final float glowA = 0.10f + 0.10f * pulseT;
+                final float grow = pulseT * 5f * dp;
+                r.set(-grow, -grow, w + grow, h + grow);
+                p.setStyle(Paint.Style.FILL);
+                p.setShader(null);
+                p.setColor(Color.argb((int) (glowA * 255), 108, 124, 242));
+                c.drawRoundRect(r, rad + grow, rad + grow, p);
+            }
+
             r.set(0, 0, w, h);
             p.setStyle(Paint.Style.FILL);
             p.setShader(null);
-            p.setColor(enabledLook ? 0xFF4E8EEB : 0xFF2A2F3B);
+            if (enabledLook) {
+                p.setShader(new LinearGradient(0, 0, w, 0, 0xFF6C7CF2, 0xFF9B6CF2, Shader.TileMode.CLAMP));
+            } else {
+                p.setColor(0xFF262A36);
+            }
             c.drawRoundRect(r, rad, rad, p);
+            p.setShader(null);
 
             if (enabledLook && !busy) {
                 final float x = -w * 0.3f + (w * 1.6f) * sh;
-                p.setShader(new LinearGradient(x, 0, x + w * 0.28f, 0, 0x00FFFFFF, 0x33FFFFFF, Shader.TileMode.CLAMP));
+                p.setShader(new LinearGradient(x, 0, x + w * 0.28f, 0, 0x00FFFFFF, 0x3DFFFFFF, Shader.TileMode.CLAMP));
                 c.save();
                 c.clipPath(roundPath(w, h, rad));
                 c.drawRect(x, 0, x + w * 0.28f, h, p);
@@ -1327,9 +1322,10 @@ public class LobbyActivity extends Activity {
                 @Override public void onClick(View v) {
                     Sw.this.on = !Sw.this.on;
                     ValueAnimator a = ValueAnimator.ofFloat(t, Sw.this.on ? 1f : 0f);
-                    a.setDuration(180);
+                    a.setDuration(200);
+                    a.setInterpolator(new OvershootInterpolator(1.6f));
                     a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                        @Override public void onAnimationUpdate(ValueAnimator an) { t = (Float) an.getAnimatedValue(); invalidate(); }
+                        @Override public void onAnimationUpdate(ValueAnimator an) { t = Math.max(0f, Math.min(1f, (Float) an.getAnimatedValue())); invalidate(); }
                     });
                     a.start();
                     if (l != null) l.onChange(Sw.this.on);
@@ -1343,7 +1339,7 @@ public class LobbyActivity extends Activity {
             final float w = getWidth(), h = getHeight();
             r.set(0, 0, w, h);
             p.setStyle(Paint.Style.FILL);
-            p.setColor(Color.rgb((int) (58 + (78 - 58) * t), (int) (64 + (142 - 64) * t), (int) (80 + (235 - 80) * t)));
+            p.setColor(Color.rgb((int) (58 + (108 - 58) * t), (int) (64 + (124 - 64) * t), (int) (80 + (242 - 80) * t)));
             c.drawRoundRect(r, h / 2f, h / 2f, p);
             p.setColor(0xFFF2F4F8);
             c.drawCircle(h / 2f + t * (w - h), h / 2f, h / 2f - 3.5f * dp, p);
@@ -1389,9 +1385,10 @@ public class LobbyActivity extends Activity {
             p.setColor(0x22FFFFFF);
             r.set(pad, cy - 3 * dp, w - pad, cy + 3 * dp);
             c.drawRoundRect(r, 3 * dp, 3 * dp, p);
-            p.setColor(0xFF4E8EEB);
+            p.setShader(new LinearGradient(pad, 0, x, 0, 0xFF6C7CF2, 0xFF9B6CF2, Shader.TileMode.CLAMP));
             r.set(pad, cy - 3 * dp, x, cy + 3 * dp);
             c.drawRoundRect(r, 3 * dp, 3 * dp, p);
+            p.setShader(null);
             p.setColor(0x55000000);
             c.drawCircle(x, cy + dp, 10.5f * dp, p);
             p.setColor(0xFFF2F4F8);

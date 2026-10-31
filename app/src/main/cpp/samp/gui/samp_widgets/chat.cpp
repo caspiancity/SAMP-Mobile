@@ -16,6 +16,10 @@ extern CJavaWrapper *pJavaWrapper;
 
 bool g_bHideAllUI = false;
 bool g_bShowHandlingDlg = false;
+bool g_bShowTpDlg = false;
+bool g_bShowSettingsDlg = false;
+bool g_bShowVehDlg = false;
+bool g_bShowNpcDlg = false;
 
 Chat::Chat()
         : ListBox()
@@ -139,6 +143,26 @@ bool ProcessClientCommands(const std::string& input)
                         return true;
                 }
                 g_bShowHandlingDlg = !g_bShowHandlingDlg;
+                return true;
+        }
+
+        if (cmd == "/tp") {
+                g_bShowTpDlg = !g_bShowTpDlg;
+                return true;
+        }
+
+        if (cmd == "/ayarlar") {
+                g_bShowSettingsDlg = !g_bShowSettingsDlg;
+                return true;
+        }
+
+        if (cmd == "/m") {
+                g_bShowVehDlg = !g_bShowVehDlg;
+                return true;
+        }
+
+        if (cmd == "/npc") {
+                g_bShowNpcDlg = !g_bShowNpcDlg;
                 return true;
         }
 

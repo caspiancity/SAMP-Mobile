@@ -12,7 +12,6 @@ import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.game.ui.AttachEdit;
 import com.samp.mobile.game.ui.CustomKeyboard;
 import com.samp.mobile.game.ui.LoadingScreen;
-import com.samp.mobile.game.ui.PlateGen;
 import com.samp.mobile.game.ui.dialog.DialogManager;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
 import com.samp.mobile.launcher.util.SignatureChecker;
@@ -126,27 +125,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
                 }
             }
         });
-    }
-
-    /** Nomre nisani: C++ sorgu gonderir, Java cizir, native-e geri qaytarir */
-    public native void onPlateBitmap(long key, int w, int h, byte[] rgba);
-
-    public void makePlate(final long key, final byte[] textUtf8) {
-        final String text;
-        String t = "";
-        try { if (textUtf8 != null) t = new String(textUtf8, "UTF-8"); } catch (Exception e) { t = ""; }
-        text = t;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    byte[] px = PlateGen.render(SAMP.this, text);
-                    onPlateBitmap(key, PlateGen.W, PlateGen.H, px);
-                } catch (Throwable e) {
-                    Log.e(TAG, "makePlate error: " + e);
-                }
-            }
-        }, "PlateGen").start();
     }
 
     private native void onInputEnd(byte[] str);

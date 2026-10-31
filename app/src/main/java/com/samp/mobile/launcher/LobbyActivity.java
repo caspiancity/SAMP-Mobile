@@ -66,8 +66,14 @@ import java.util.Locale;
  * LOBI: oyun acilanda ilk bu ekran gorunur (LAUNCHER).
  *  - oyunci adi (settings.ini -> [client] name)
  *  - data yoxlanisi (data yoxdursa oyun BASLAMIR, crash olmur)
- *  - ayarlar (settings.ini), alətler, haqqinda
- *  - BASLA -> oyun (SAMP activity)
+ *  - ayarlar (settings.ini), aletler, haqqinda
+ *  - BASLA -> oyun OFFLINE rejimde basladilir (SAMP activity, extra "offline_mode"=true)
+ *
+ *  QEYD: Onlayn rejim və server seçimi UI-dən çıxarılıb (onlayn tərəf hazırda inkişaf
+ *  mərhələsindədir). Oyun local/offline rejimdə başladılır. /tp, /m, /ayarlar komandaları,
+ *  NPC spawn məntiqi və musiqi slotlarının faktiki çalınması bu fayldan kənarda, oyun
+ *  tərəfində (SAMP.java / native tərəf) işlənməlidir — bax: handoff qeydləri.
+ *
  * Hec bir XML/resurs lazim deyil, butun UI proqramla qurulur.
  */
 public class LobbyActivity extends Activity {
@@ -79,10 +85,12 @@ public class LobbyActivity extends Activity {
     private static final String[] REQUIRED_FILES = { "SAMP/main.scm" };
     private static final String NAME_REGEX = "^[A-Za-z0-9_\\[\\]\\$=@\\(\\)\\.]{3,20}$";
     private static final String[] CHANGELOG = {
-            "Yeni lobi və başlanğıc ekranı",
-            "/yt sistemi - canlı olaraq oyun içi youtube açıb istədiyin mahnıya qulaq asa bilmək.",
-            "/tuning sistemi - hand dəyişmək, far rəngini dəyişmək və s.",
-            "Və daha birçox şey yaxında gələcək!🙃",
+            "Offline rejim: local serverdə NPC-lərlə oynama sistemi",
+            "/tp sistemi — fərqli nöqtələrə teleport",
+            "/m sistemi — menyulu maşın seçimi",
+            "/ayarlar — silah, skin, godmode, star və s. idarəetməsi",
+            "Arxa fon musiqisi: 3 slot, səs səviyyəsi tənzimlənə bilən",
+            "Daha sürətli, daha axıcı animasiyalı interfeys",
     };
 
     private static final int C_PANEL = 0xFF14161C, C_CARD = 0xFF1A1D25, C_FIELD = 0xFF232733,
@@ -91,8 +99,10 @@ public class LobbyActivity extends Activity {
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT, WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
 
     private static final String DEFAULT_INI =
-            "[client]\nname = \npassword = \nhost = \nport = \n\n"
-          + "[debug]\ndebug = true\nonline = true\n\n"
+            "[client]\nname = \nmode = offline\n\n"
+          + "[debug]\ndebug = true\nonline = false\n\n"
+          + "[offline]\nnpc = true\n\n"
+          + "[music]\nslot1 = \nslot1vol = 40\nslot2 = \nslot2vol = 40\nslot3 = \nslot3vol = 40\n\n"
           + "[gui]\nandroidkeyboard = false\nautoaim = true\nfps = 90\nFPSLimit = 90\nChatMaxMessages = 10\n"
           + "Font = arial.ttf\nFontSize = 30.000000\nFontOutline = 2\nChatPosX = 325.000000\nChatPosY = 25.000000\n"
           + "ChatSizeX = 1150.000000\nChatSizeY = 220.000000\nHealthBarWidth = 60.000000\nHealthBarHeight = 10.000000\n"
@@ -104,6 +114,7 @@ public class LobbyActivity extends Activity {
     private IniFile ini;
     private DataStatus data;                // null = yoxlanilir
     private boolean starting;
+    private int animIdx;                    // kart giris animasiyasi ucun sayğac
 
     private FrameLayout pageHost;
     private final View[] pages = new View[5];
@@ -116,7 +127,7 @@ public class LobbyActivity extends Activity {
     private EditText nameField;
     private TextView nameHelp;
     private StartBtn startBtn;
-    private TextView homeDataTxt, homeConnTxt, homePerfTxt;
+    private TextView homeDataTxt, homeModeTxt, homePerfTxt;
     private View homeDataDot, sideDot;
     private TextView sideDataTxt;
     private TextView dataStatusTxt, dataPathTxt, dataFilesTxt;
@@ -333,10 +344,10 @@ public class LobbyActivity extends Activity {
         boolean scanning = data == null;
         int col = scanning ? C_HINT : (data.ok ? C_OK : C_BAD);
         String sz = scanning ? "" : Formatter.formatShortFileSize(this, data.bytes);
-        String head = scanning ? "Yoxlanılır..." : (data.ok ? "Onlayn" : "Data tapılmadı");
+        String head = scanning ? "Yoxlanılır..." : (data.ok ? "Hazırdır" : "Data tapılmadı");
 
         if (sideDot != null) sideDot.setBackground(oval(col));
-        if (sideDataTxt != null) sideDataTxt.setText(scanning ? "Data yoxlanılır" : (data.ok ? "Onlayn" : "Data yoxdur"));
+        if (sideDataTxt != null) sideDataTxt.setText(scanning ? "Data yoxlanılır" : (data.ok ? "Hazırdır" : "Data yoxdur"));
         if (homeDataDot != null) homeDataDot.setBackground(oval(col));
         if (homeDataTxt != null) homeDataTxt.setText(scanning ? head : (data.ok ? head + " · " + sz : head + " · " + data.reason));
         if (dataStatusTxt != null) { dataStatusTxt.setText(scanning ? head : (data.ok ? head + " · " + sz : head)); dataStatusTxt.setTextColor(col); }
@@ -345,7 +356,7 @@ public class LobbyActivity extends Activity {
         if (startBtn != null) {
             if (scanning) startBtn.setState(false, "Yoxlanılır...");
             else if (!data.ok) startBtn.setState(false, "DATA YOXDUR");
-            else startBtn.setState(true, "BAŞLA");
+            else startBtn.setState(true, "OFFLİNE BAŞLA");
         }
     }
 
@@ -373,6 +384,7 @@ public class LobbyActivity extends Activity {
             return;
         }
         iniSet("client", "name", name);
+        iniSet("client", "mode", "offline");
 
         if (!data.ok) {
             banner("Data tapılmadı. Data bölməsinə bax.");
@@ -385,7 +397,9 @@ public class LobbyActivity extends Activity {
         ui.postDelayed(new Runnable() {
             @Override public void run() {
                 try {
-                    startActivity(new Intent(LobbyActivity.this, SAMP.class));
+                    Intent it = new Intent(LobbyActivity.this, SAMP.class);
+                    it.putExtra("offline_mode", true);
+                    startActivity(it);
                     overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
                     finish();
                 } catch (Throwable t) {
@@ -398,9 +412,8 @@ public class LobbyActivity extends Activity {
     }
 
     private void refreshHome() {
-        if (homeConnTxt != null) {
-            String h = ini.get("client", "host", ""), p = ini.get("client", "port", "");
-            homeConnTxt.setText(h.isEmpty() ? "Standart server" : (h + (p.isEmpty() ? "" : ":" + p)));
+        if (homeModeTxt != null) {
+            homeModeTxt.setText("Offline · Local server");
         }
         if (homePerfTxt != null) {
             homePerfTxt.setText("FPS limit: " + ini.get("gui", "FPSLimit", "90") + "   ·   Şrift: " + ini.get("gui", "FontSize", "30").replaceAll("\\.0+$", ""));
@@ -426,7 +439,7 @@ public class LobbyActivity extends Activity {
         bt.setOrientation(LinearLayout.VERTICAL);
         bt.setPadding(dp(10), 0, 0, 0);
         bt.addView(text("APACHE ONLINE", 20, C_TXT, true));
-        bt.addView(text("Mobile · v" + versionName(), 12, C_HINT, false));
+        bt.addView(text("Mobile · v" + versionName() + " · Offline", 12, C_HINT, false));
         brand.addView(bt);
         sb.addView(brand, new LinearLayout.LayoutParams(MATCH, WRAP));
 
@@ -467,12 +480,15 @@ public class LobbyActivity extends Activity {
         if (next.getParent() != null) ((ViewGroup) next.getParent()).removeView(next);
         pageHost.addView(next, new FrameLayout.LayoutParams(MATCH, MATCH));
         next.setAlpha(0f);
-        next.setTranslationX(dp(18));
-        next.animate().alpha(1f).translationX(0f).setDuration(220).setInterpolator(new DecelerateInterpolator(1.5f)).start();
+        next.setTranslationX(dp(26));
+        next.setScaleX(0.985f);
+        next.setScaleY(0.985f);
+        next.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f).setDuration(260)
+                .setInterpolator(new DecelerateInterpolator(1.8f)).start();
 
         if (cur >= 0) {
             final View old = pages[cur];
-            old.animate().alpha(0f).setDuration(120).withEndAction(new Runnable() {
+            old.animate().alpha(0f).translationX(-dp(10)).setDuration(140).withEndAction(new Runnable() {
                 @Override public void run() { if (old.getParent() == pageHost && old != pages[cur]) pageHost.removeView(old); }
             }).start();
         }
@@ -493,8 +509,18 @@ public class LobbyActivity extends Activity {
         }
     }
 
+    // ============================== kart giris animasiyasi ==============================
+    private void animIn(View v) {
+        final int i = animIdx++;
+        v.setAlpha(0f);
+        v.setTranslationY(dp(16));
+        v.animate().alpha(1f).translationY(0f).setStartDelay(Math.min(i, 6) * 45L).setDuration(280)
+                .setInterpolator(new DecelerateInterpolator(1.6f)).start();
+    }
+
     // ============================== SEHIFE: BASLA ==============================
     private View buildHome() {
+        animIdx = 0;
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(dp(26), dp(24), dp(26), dp(22));
@@ -505,7 +531,7 @@ public class LobbyActivity extends Activity {
         left.setPadding(0, 0, dp(22), 0);
 
         left.addView(text("Xoş gəldin", 32, C_TXT, true));
-        TextView sub = text("Sadəcə ad qoy və başla!", 15, C_HINT, false);
+        TextView sub = text("Sadəcə ad qoy və offline rejimdə başla!", 15, C_HINT, false);
         sub.setPadding(0, dp(4), 0, dp(22));
         left.addView(sub);
 
@@ -549,18 +575,21 @@ public class LobbyActivity extends Activity {
         r1.addView(homeDataTxt);
         c1.addView(r1);
         right.addView(c1, cardLp());
+        animIn(c1);
 
         LinearLayout c2 = card();
-        c2.addView(label("QOŞULMA"));
-        homeConnTxt = text("", 14, C_TXT, false);
-        c2.addView(homeConnTxt);
+        c2.addView(label("REJİM"));
+        homeModeTxt = text("", 14, C_TXT, false);
+        c2.addView(homeModeTxt);
         right.addView(c2, cardLp());
+        animIn(c2);
 
         LinearLayout c3 = card();
         c3.addView(label("PERFORMANS"));
         homePerfTxt = text("", 14, C_TXT, false);
         c3.addView(homePerfTxt);
         right.addView(c3, cardLp());
+        animIn(c3);
 
         row.addView(right, new LinearLayout.LayoutParams(0, MATCH, 1f));
 
@@ -571,6 +600,7 @@ public class LobbyActivity extends Activity {
 
     // ============================== SEHIFE: DATA ==============================
     private View buildData() {
+        animIdx = 0;
         LinearLayout col = pageColumn("Data", "Oyun faylları və yoxlanış");
 
         LinearLayout c = card();
@@ -588,11 +618,9 @@ public class LobbyActivity extends Activity {
         btns.addView(button("Yolu kopyala", false, new View.OnClickListener() {
             @Override public void onClick(View v) { copy(filesDir().getAbsolutePath()); banner("Yol kopyalandı"); }
         }), btnLp());
-        btns.addView(button("Datanı yüklə", true, new View.OnClickListener() {
-            @Override public void onClick(View v) { banner("Test mərhələsi: data yükləmə hələ aktiv deyil"); }
-        }), btnLp());
         c.addView(btns);
         col.addView(c, cardLp());
+        animIn(c);
 
         LinearLayout c2 = card();
         c2.addView(label("YOXLANIŞ"));
@@ -601,11 +629,7 @@ public class LobbyActivity extends Activity {
         dataFilesTxt.setLineSpacing(dp(3), 1f);
         c2.addView(dataFilesTxt);
         col.addView(c2, cardLp());
-
-        LinearLayout c3 = card();
-        c3.addView(label("YÜKLƏMƏ"));
-        c3.addView(text("Hələlik test mərhələsindədir. Data yükləmə sonradan əlavə olunacaq.", 13, C_HINT, false));
-        col.addView(c3, cardLp());
+        animIn(c2);
 
         applyData();
         return scroll(col);
@@ -613,13 +637,14 @@ public class LobbyActivity extends Activity {
 
     // ============================== SEHIFE: AYARLAR ==============================
     private View buildSettings() {
+        animIdx = 0;
         LinearLayout col = pageColumn("Ayarlar", "Dəyişikliklər avtomatik saxlanılır və növbəti oyun açılışında tətbiq olunur");
 
         // --- qrafika ---
         LinearLayout g1 = card();
         g1.addView(label("QRAFİKA"));
         g1.addView(text("FPS limiti", 14, C_TXT, false));
-        final int[] fpsVals = { 30, 45, 60, 90, 120 };
+        final int[] fpsVals = { 30, 60, 90, 120, 144 };
         int curFps = parseInt(ini.get("gui", "FPSLimit", "90"), 90);
         final TextView[] chips = new TextView[fpsVals.length];
         LinearLayout chipRow = new LinearLayout(this);
@@ -634,12 +659,13 @@ public class LobbyActivity extends Activity {
                     iniSet("gui", "FPSLimit", String.valueOf(v));
                 }
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(64), dp(38));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(58), dp(38));
             lp.rightMargin = dp(8);
             chipRow.addView(chips[i], lp);
         }
         g1.addView(chipRow);
         col.addView(g1, cardLp());
+        animIn(g1);
 
         // --- interfeys ---
         LinearLayout g2 = card();
@@ -651,55 +677,46 @@ public class LobbyActivity extends Activity {
         addSlider(g2, "Can zolağı hündürlüyü", "HealthBarHeight", 5, 20, true, "");
         addSlider(g2, "Mikrofon ölçüsü", "MicrophoneSize", 100, 250, true, "");
         col.addView(g2, cardLp());
+        animIn(g2);
 
         // --- nezaret ---
         LinearLayout g3 = card();
         g3.addView(label("NƏZARƏT"));
-        addSwitch(g3, "Android klaviaturası", "androidkeyboard");
-        addSwitch(g3, "Avto-hədəf", "autoaim");
+        addSwitch(g3, "Android klaviaturası", "gui", "androidkeyboard");
+        addSwitch(g3, "Avto-hədəf", "gui", "autoaim");
         col.addView(g3, cardLp());
+        animIn(g3);
 
-        // --- qosulma ---
+        // --- offline ---
         LinearLayout g4 = card();
-        g4.addView(label("QOŞULMA  (boş = standart)"));
-        final EditText host = field("Server ünvanı (host)");
-        host.setText(ini.get("client", "host", ""));
-        final EditText port = field("Port");
-        port.setInputType(InputType.TYPE_CLASS_NUMBER);
-        port.setText(ini.get("client", "port", ""));
-        final EditText pass = field("Parol");
-        pass.setText(ini.get("client", "password", ""));
-        LinearLayout hp = new LinearLayout(this);
-        hp.addView(host, new LinearLayout.LayoutParams(0, dp(46), 1f));
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(110), dp(46));
-        plp.leftMargin = dp(10);
-        hp.addView(port, plp);
-        g4.addView(hp);
-        LinearLayout.LayoutParams passLp = new LinearLayout.LayoutParams(MATCH, dp(46));
-        passLp.topMargin = dp(10);
-        g4.addView(pass, passLp);
-        LinearLayout sv = new LinearLayout(this);
-        sv.setPadding(0, dp(12), 0, 0);
-        sv.addView(button("Yadda saxla", true, new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                ini.set("client", "host", host.getText().toString().trim());
-                ini.set("client", "port", port.getText().toString().trim());
-                ini.set("client", "password", pass.getText().toString());
-                ini.save();
-                refreshHome();
-                banner("Qoşulma ayarları saxlanıldı");
-            }
-        }), btnLp());
-        g4.addView(sv);
+        g4.addView(label("OFFLİNE REJİM"));
+        TextView offInfo = text("Onlayn rejim hazırda inkişaf mərhələsindədir və bağlıdır. Oyun yalnız local serverdə, NPC-lərlə offline rejimdə başlayır.", 13, C_HINT, false);
+        offInfo.setPadding(0, 0, 0, dp(10));
+        g4.addView(offInfo);
+        addSwitch(g4, "NPC-lər aktiv", "offline", "npc");
         col.addView(g4, cardLp());
+        animIn(g4);
+
+        // --- musiqi ---
+        LinearLayout g5 = card();
+        g5.addView(label("ARXA FON MUSİQİSİ  (3 slot)"));
+        TextView musInfo = text("Hər slota mahnının fayl yolunu yaz. Səs səviyyəsi aşağı saxlanılır ki, oyunu batırmasın.", 13, C_HINT, false);
+        musInfo.setPadding(0, 0, 0, dp(10));
+        g5.addView(musInfo);
+        addMusicSlot(g5, "Slot 1", "slot1", "slot1vol");
+        addMusicSlot(g5, "Slot 2", "slot2", "slot2vol");
+        addMusicSlot(g5, "Slot 3", "slot3", "slot3vol");
+        col.addView(g5, cardLp());
+        animIn(g5);
 
         // --- sifirla ---
-        LinearLayout g5 = card();
-        g5.addView(label("SIFIRLA"));
-        g5.addView(button("İnterfeys və qrafikanı standarta qaytar", false, new View.OnClickListener() {
+        LinearLayout g6 = card();
+        g6.addView(label("SIFIRLA"));
+        g6.addView(button("İnterfeys və qrafikanı standarta qaytar", false, new View.OnClickListener() {
             @Override public void onClick(View v) { resetGui(); banner("Standart dəyərlər qaytarıldı"); pages[2] = null; rebuildPage(2); }
         }), btnLp());
-        col.addView(g5, cardLp());
+        col.addView(g6, cardLp());
+        animIn(g6);
 
         return scroll(col);
     }
@@ -723,16 +740,57 @@ public class LobbyActivity extends Activity {
         parent.addView(sl, new LinearLayout.LayoutParams(MATCH, dp(34)));
     }
 
-    private void addSwitch(LinearLayout parent, String title, final String key) {
+    private void addSwitch(LinearLayout parent, String title, final String sec, final String key) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(10), 0, dp(4));
         row.addView(text(title, 14, C_TXT, false), new LinearLayout.LayoutParams(0, WRAP, 1f));
-        boolean on = "true".equalsIgnoreCase(ini.get("gui", key, "false")) || "1".equals(ini.get("gui", key, "0"));
+        boolean on = "true".equalsIgnoreCase(ini.get(sec, key, "false")) || "1".equals(ini.get(sec, key, "0"));
         final Sw sw = new Sw(this, dp, on);
-        sw.setListener(new Sw.Listener() { @Override public void onChange(boolean c) { iniSet("gui", key, c ? "true" : "false"); } });
+        sw.setListener(new Sw.Listener() { @Override public void onChange(boolean c) { iniSet(sec, key, c ? "true" : "false"); } });
         row.addView(sw, new LinearLayout.LayoutParams(dp(52), dp(30)));
         parent.addView(row);
+    }
+
+    /** Musiqi slotu: fayl yolu sahəsi + həcm slayderi. Faktiki çalma oyun tərəfində edilməlidir. */
+    private void addMusicSlot(LinearLayout parent, String title, final String pathKey, final String volKey) {
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.setPadding(0, dp(10), 0, dp(4));
+        wrap.addView(text(title, 13, C_HINT, true));
+
+        final EditText path = field("Mahnı faylının yolu (məs: Music/slot1.mp3)");
+        path.setText(ini.get("music", pathKey, ""));
+        path.setSingleLine(true);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(MATCH, dp(44));
+        plp.topMargin = dp(6);
+        wrap.addView(path, plp);
+        path.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) iniSet("music", pathKey, path.getText().toString().trim());
+            }
+        });
+
+        LinearLayout volRow = new LinearLayout(this);
+        volRow.setGravity(Gravity.CENTER_VERTICAL);
+        volRow.setPadding(0, dp(6), 0, 0);
+        volRow.addView(text("Səs", 12, C_HINT, false), new LinearLayout.LayoutParams(dp(34), WRAP));
+        float curVol = parseFloat(ini.get("music", volKey, "40"), 40);
+        final TextView volVal = text(Math.round(curVol) + "%", 12, C_ACC, true);
+        Sl vs = new Sl(this, dp, 0, 100, curVol);
+        vs.setListener(new Sl.Listener() {
+            @Override public void onValue(float v, boolean fin) {
+                volVal.setText(Math.round(v) + "%");
+                if (fin) iniSet("music", volKey, String.valueOf(Math.round(v)));
+            }
+        });
+        volRow.addView(vs, new LinearLayout.LayoutParams(0, dp(30), 1f));
+        LinearLayout.LayoutParams vvlp = new LinearLayout.LayoutParams(dp(42), WRAP);
+        vvlp.leftMargin = dp(8);
+        volRow.addView(volVal, vvlp);
+        wrap.addView(volRow);
+
+        parent.addView(wrap);
     }
 
     private void resetGui() {
@@ -755,14 +813,13 @@ public class LobbyActivity extends Activity {
     }
 
     // ============================== SEHIFE: ALETLER ==============================
+    // Yalnız əsl faydası olan alətlər saxlanılıb; onlayn/server ilə bağlı olanlar çıxarılıb.
     private View buildTools() {
+        animIdx = 0;
         LinearLayout col = pageColumn("Alətlər", "Faydalı sistem funksiyaları");
 
         addTool(col, "Cihaz məlumatı", "Model, Android, RAM, yaddaş", "Kopyala", new Runnable() {
-            @Override public void run() { String s = deviceInfo(); copy(s); banner(s.replace('\n', ' ') .length() > 90 ? "Cihaz məlumatı kopyalandı" : s); }
-        });
-        addTool(col, "Data yolu", "Oyun fayllarının qovluğu", "Kopyala", new Runnable() {
-            @Override public void run() { copy(filesDir().getAbsolutePath()); banner("Yol kopyalandı"); }
+            @Override public void run() { String s = deviceInfo(); copy(s); banner(s.replace('\n', ' ').length() > 90 ? "Cihaz məlumatı kopyalandı" : s); }
         });
         addTool(col, "Keşi təmizlə", "Müvəqqəti faylları silir (data silinmir)", "Təmizlə", new Runnable() {
             @Override public void run() {
@@ -790,15 +847,6 @@ public class LobbyActivity extends Activity {
                 banner(ok ? "Ayarlar bərpa olundu" : "Bərpa alınmadı");
             }
         });
-        addTool(col, "İnternet yoxla", "Şəbəkə bağlantısının vəziyyəti", "Yoxla", new Runnable() {
-            @Override public void run() { banner(hasInternet() ? "İnternet bağlantısı var" : "İnternet bağlantısı yoxdur"); }
-        });
-        addTool(col, "Server siyahısı", "Köhnə launcher (server seçimi)", "Aç", new Runnable() {
-            @Override public void run() {
-                try { startActivity(new Intent(LobbyActivity.this, MainActivity.class)); }
-                catch (Throwable t) { banner("Açıla bilmədi"); }
-            }
-        });
         return scroll(col);
     }
 
@@ -816,6 +864,7 @@ public class LobbyActivity extends Activity {
         c.addView(button(action, false, new View.OnClickListener() { @Override public void onClick(View v) { run.run(); } }),
                 new LinearLayout.LayoutParams(WRAP, dp(40)));
         parent.addView(c, cardLp());
+        animIn(c);
     }
 
     private String deviceInfo() {
@@ -830,20 +879,9 @@ public class LobbyActivity extends Activity {
                 + "\nVersiya: " + versionName();
     }
 
-    private boolean hasInternet() {
-        try {
-            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-            Network n = cm.getActiveNetwork();
-            if (n == null) return false;
-            NetworkCapabilities nc = cm.getNetworkCapabilities(n);
-            return nc != null && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
     // ============================== SEHIFE: HAQQINDA ==============================
     private View buildAbout() {
+        animIdx = 0;
         LinearLayout col = pageColumn("Haqqında", "Versiya və dəyişikliklər");
         LinearLayout c = card();
         c.addView(text("APACHE ONLINE", 22, C_TXT, true));
@@ -851,6 +889,7 @@ public class LobbyActivity extends Activity {
         v.setPadding(0, dp(4), 0, 0);
         c.addView(v);
         col.addView(c, cardLp());
+        animIn(c);
 
         LinearLayout c2 = card();
         c2.addView(label("YENİLİKLƏR"));
@@ -860,6 +899,7 @@ public class LobbyActivity extends Activity {
             c2.addView(t);
         }
         col.addView(c2, cardLp());
+        animIn(c2);
         return scroll(col);
     }
 
@@ -1184,7 +1224,7 @@ public class LobbyActivity extends Activity {
         }
     }
 
-    /** boyuk BASLA duymesi (yumsaq isiq zolagi animasiyasi ile) */
+    /** boyuk OFFLİNE BAŞLA duymesi (yumsaq isiq zolagi animasiyasi ile) */
     private static final class StartBtn extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
@@ -1192,13 +1232,13 @@ public class LobbyActivity extends Activity {
         private final ValueAnimator shimmer = ValueAnimator.ofFloat(0f, 1f);
         private float sh, press, busyT;
         private boolean enabledLook = true, busy;
-        private String label = "BAŞLA";
+        private String label = "OFFLİNE BAŞLA";
 
         StartBtn(Context c, float dp) {
             super(c);
             this.dp = dp;
             setClickable(true);
-            shimmer.setDuration(2600);
+            shimmer.setDuration(2200);
             shimmer.setRepeatCount(ValueAnimator.INFINITE);
             shimmer.setInterpolator(new LinearInterpolator());
             shimmer.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
@@ -1212,7 +1252,7 @@ public class LobbyActivity extends Activity {
 
         void setState(boolean ok, String text) { enabledLook = ok; label = text; invalidate(); }
 
-        void setBusy(boolean b) { busy = b; if (b) label = "Yüklənir..."; else if (enabledLook) label = "BAŞLA"; invalidate(); }
+        void setBusy(boolean b) { busy = b; if (b) label = "Yüklənir..."; else if (enabledLook) label = "OFFLİNE BAŞLA"; invalidate(); }
 
         @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); shimmer.start(); }
         @Override protected void onDetachedFromWindow() { shimmer.cancel(); super.onDetachedFromWindow(); }

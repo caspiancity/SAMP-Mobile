@@ -18,6 +18,8 @@
 #include "game/Textures/TextureDatabaseRuntime.h"
 #include "game/Streaming.h"
 #include "game/Pools.h"
+#include "game/Entity/CPedGTA.h"
+#include "game/Enums/ePedType.h"
 
 #include <algorithm>
 #include <chrono>
@@ -26,6 +28,7 @@
 #include <cstdio>
 #include <deque>
 #include <mutex>
+#include <vector>
 
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -36,6 +39,8 @@ extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;
 extern bool g_bShowTpDlg;
 extern bool g_bShowSettingsDlg;
+extern bool g_bShowVehDlg;
+extern bool g_bShowNpcDlg;
 
 // Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
 #define HND_DEBUG 0
@@ -217,23 +222,31 @@ bool UI_IsPointInHandlingDlg(const ImVec2& p)
                p.y >= s_hndPos.y && p.y <= s_hndPos.y + s_hndSize.y;
 }
 
+// ============================================================================
+//  Butun yeni mod-menyularin (/tp, /ayarlar, /m, /npc) toxunus bloklamasi
+// ============================================================================
 static bool   s_tpRectValid = false;
 static ImVec2 s_tpPos(0.0f, 0.0f), s_tpSize(0.0f, 0.0f);
 static bool   s_setRectValid = false;
 static ImVec2 s_setPos(0.0f, 0.0f), s_setSize(0.0f, 0.0f);
+static bool   s_vehRectValid = false;
+static ImVec2 s_vehPos(0.0f, 0.0f), s_vehSize(0.0f, 0.0f);
+static bool   s_npcRectValid = false;
+static ImVec2 s_npcPos(0.0f, 0.0f), s_npcSize(0.0f, 0.0f);
 
-static bool PtIn(const ImVec2& p, bool valid, const ImVec2& pos, const ImVec2& size)
+static bool PtInRect(const ImVec2& p, bool valid, const ImVec2& pos, const ImVec2& size)
 {
         if (!valid) return false;
         return p.x >= pos.x && p.x <= pos.x + size.x && p.y >= pos.y && p.y <= pos.y + size.y;
 }
 
-// butun mod-menyularin birlesmis toxunus bloklamasi
 bool UI_IsPointInAnyModDlg(const ImVec2& p)
 {
         return UI_IsPointInHandlingDlg(p)
-            || (g_bShowTpDlg     && PtIn(p, s_tpRectValid, s_tpPos, s_tpSize))
-            || (g_bShowSettingsDlg && PtIn(p, s_setRectValid, s_setPos, s_setSize));
+            || (g_bShowTpDlg       && PtInRect(p, s_tpRectValid,  s_tpPos,  s_tpSize))
+            || (g_bShowSettingsDlg && PtInRect(p, s_setRectValid, s_setPos, s_setSize))
+            || (g_bShowVehDlg      && PtInRect(p, s_vehRectValid, s_vehPos, s_vehSize))
+            || (g_bShowNpcDlg      && PtInRect(p, s_npcRectValid, s_npcPos, s_npcSize));
 }
 
 namespace mm
@@ -810,7 +823,7 @@ void RenderTpDialog()
 {
         using namespace mm;
 
-        static float s_t = 0.0f, s_A2 = 1.0f;
+        static float s_t = 0.0f;
         static ImVec2 panelCenter(-1.0f, -1.0f);
         static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
         enum { ID_TP_CLOSE = 200, ID_TP_SPOT0 = 210 };
@@ -826,26 +839,24 @@ void RenderTpDialog()
         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
-        s_A2 = Clamp(s_t * 2.4f, 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
 
         ImGuiIO& io = ImGui::GetIO();
         const ImVec2 disp = io.DisplaySize;
         const float W0 = 560.0f, H0 = 440.0f;
-        const float u = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
+        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
+        s_U = U;
 
         if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
-        const float U = u;
         const float pw = W0 * U, ph = H0 * U;
         const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
 
         s_tpRectValid = (s_t > 0.05f);
-        s_tpPos = ImVec2(P.x, P.y);
+        s_tpPos  = ImVec2(P.x, P.y);
         s_tpSize = ImVec2(P.w, P.h);
 
         s_dl = ImGui::GetForegroundDrawList();
-        s_A = s_A2;
-        s_U = U;
 
         const bool canInput = want && s_t > 0.75f;
         const MMTouch& tch = g_mmTouch;
@@ -876,6 +887,9 @@ void RenderTpDialog()
                         const TpSpot& sp = kTpSpots[i];
                         float gz = CWorld::FindGroundZForCoord(sp.x, sp.y);
                         if (gz < -90.0f) gz = sp.z; // fallback, yer tapilmadi
+
+                        // ASSUMPTION: m_placement.m_vPosn birbaşa mövqe sahəsidir (CVehicleGTA.cpp-dəki
+                        // istifadədən götürülüb); CPlaceable-də hazır SetPosition() varsa, onu işlət.
                         pLocalPlayer->Remove();
                         pLocalPlayer->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
                         pLocalPlayer->Add();
@@ -889,8 +903,6 @@ void RenderTpDialog()
                         if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Teleport edildi: %s", sp.name);
                 }
         }
-
-        if (tch.released || !tch.down) { /* ID sifirlanmasi mm::s_act ile umumidir, RenderHandlingDialog oz sonunda edir */ }
 }
 
 // ============================================================================
@@ -904,7 +916,7 @@ void RenderSettingsDialog()
         static ImVec2 panelCenter(-1.0f, -1.0f);
         static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
         static bool s_godmode = false;
-        enum { ID_SET_CLOSE = 300, ID_SET_FULLHP = 301, ID_SET_GOD = 302, ID_SET_W0 = 310 };
+        enum { ID_SET_CLOSE = 300, ID_SET_FULLHP = 301, ID_SET_W0 = 310 };
 
         const auto now = std::chrono::steady_clock::now();
         float dt = std::chrono::duration<float>(now - s_last).count();
@@ -931,7 +943,7 @@ void RenderSettingsDialog()
         const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
 
         s_setRectValid = (s_t > 0.05f);
-        s_setPos = ImVec2(P.x, P.y);
+        s_setPos  = ImVec2(P.x, P.y);
         s_setSize = ImVec2(P.w, P.h);
 
         s_dl = ImGui::GetForegroundDrawList();
@@ -990,12 +1002,241 @@ void RenderSettingsDialog()
         }
 }
 
+// ============================================================================
+//  /m  — maşın seçmə menyusu
+// ============================================================================
+struct VehSpot { const char* name; int32_t model; };
+static const VehSpot kVehList[] = {
+        { "Infernus",   411 },
+        { "Bullet",     541 },
+        { "Banshee",    429 },
+        { "Elegy",      562 },
+        { "Sultan",     560 },
+        { "NRG-500",    522 },
+        { "Police LS",  596 },
+        { "Hydra",      520 },
+};
+static const int kVehCount = (int)(sizeof(kVehList) / sizeof(kVehList[0]));
+
+// DIQQET: model yuklenmesi CStreaming ile edilir; CVehicleGTA(modelId, createdBy)
+// konstruktoru plugin-sdk konvensiyasina esasen yazilib — bu layihede teyin olunmayib, test et.
+static CVehicleGTA* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
+{
+        if (!CPools::ms_pVehiclePool) return nullptr;
+
+        if (!CStreaming::IsModelLoaded(modelId)) {
+                CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
+                CStreaming::LoadAllRequestedModels(false); // senkron — bir anlik donma ola biler
+        }
+        if (!CStreaming::IsModelLoaded(modelId)) {
+                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Model yuklenmedi (%d).", modelId);
+                return nullptr;
+        }
+
+        void* slot = CPools::ms_pVehiclePool->New();
+        if (!slot) return nullptr;
+
+        CVehicleGTA* pVeh = new (slot) CVehicleGTA((int32)modelId, (uint8_t)MISSION_VEHICLE);
+        if (!pVeh) return nullptr;
+
+        pVeh->m_placement.m_vPosn = pos;
+        pVeh->Add();
+        return pVeh;
+}
+
+void RenderVehicleMenuDialog()
+{
+        using namespace mm;
+
+        static float s_t = 0.0f;
+        static ImVec2 panelCenter(-1.0f, -1.0f);
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+        enum { ID_VEH_CLOSE = 400, ID_VEH0 = 410 };
+
+        const auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        dt = Clamp(dt, 0.0f, 0.05f);
+
+        const bool want = g_bShowVehDlg;
+        if (!want && s_t <= 0.0f) { s_vehRectValid = false; return; }
+
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
+        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
+        const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+        const float W0 = 560.0f, H0 = 560.0f;
+        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
+        s_U = U;
+
+        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
+        const float pw = W0 * U, ph = H0 * U;
+        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
+
+        s_vehRectValid = (s_t > 0.05f);
+        s_vehPos  = ImVec2(P.x, P.y);
+        s_vehSize = ImVec2(P.w, P.h);
+
+        const bool canInput = want && s_t > 0.75f;
+        s_dl = ImGui::GetForegroundDrawList();
+
+        Fill(P, Col(17, 19, 26, 246), S(14.0f));
+        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
+        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "MAŞIN SEÇ");
+
+        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
+        if (Tap(ID_VEH_CLOSE, bClose, canInput)) g_bShowVehDlg = false;
+        HeaderBtn(ID_VEH_CLOSE, bClose, dt, "", true);
+
+        for (int i = 0; i < kVehCount; ++i)
+        {
+                const Rc row{ P.x + S(20.0f), P.y + S(66.0f) + i * S(58.0f), P.w - S(40.0f), S(50.0f) };
+                const int id = ID_VEH0 + i;
+                const bool tapped = Tap(id, row, canInput);
+                const float p = Prs(id, dt);
+                const Rc d = Shrink(row, S(1.2f) * p);
+                Fill(d, Col(27, 30, 40, 255), S(10.0f));
+                Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kVehList[i].name);
+
+                if (tapped && pLocalPlayer)
+                {
+                        CVector base = pLocalPlayer->m_placement.m_vPosn;
+                        CVector spawnPos(base.x + 4.0f, base.y + 2.0f, base.z);
+                        CVehicleGTA* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
+                        g_bShowVehDlg = false;
+                        if (pUI && pUI->chat())
+                                pUI->chat()->addDebugMessage(pVeh ? "{00FF00}[Client]: %s yaradıldı." : "{FF0000}[Client]: Maşın yaradıla bilmədi.", kVehList[i].name);
+                }
+        }
+}
+
+// ============================================================================
+//  /npc  — oyunçunun öz modeli ilə statik NPC yaratma (streaming lazim deyil)
+//  QEYD: bu NPC-ler HEREKETSIZ dayanir — yerimə/reaksiya ucun CPedIntelligence/
+//  Task sistemi lazimdir, hele bu layihede paylasilmayib.
+// ============================================================================
+static std::vector<CPedGTA*> s_npcList;
+
+static CPedGTA* SpawnNpcNearPlayer(CPedGTA* pPlayerPed, const CVector& pos)
+{
+        if (!CPools::ms_pPedPool || !pPlayerPed) return nullptr;
+
+        void* slot = CPools::ms_pPedPool->New();
+        if (!slot) return nullptr;
+
+        // ASSUMPTION: CPedGTA(ePedType) konstruktoru CPedGTA.h-de beledir; PEDTYPE_CIVMALE
+        // GTA SA-nin tanis ePedType qiymetidir — test lazimdir.
+        CPedGTA* pNpc = new (slot) CPedGTA(PEDTYPE_CIVMALE);
+        if (!pNpc) return nullptr;
+
+        // Oyuncunun oz modelini kopyala — bu model artiq yuklenib, streaming lazim deyil.
+        pNpc->SetModelIndex(pPlayerPed->m_nModelIndex);
+
+        pNpc->m_placement.m_vPosn = pos;
+        pNpc->Add();
+
+        s_npcList.push_back(pNpc);
+        return pNpc;
+}
+
+static void RemoveAllNpcs()
+{
+        for (CPedGTA* p : s_npcList) {
+                if (!p) continue;
+                p->Remove();
+                // ASSUMPTION: CPool<T>::Delete(T*) plugin-sdk konvensiyasidir, bu layihede teyin olunmayib.
+                if (CPools::ms_pPedPool) CPools::ms_pPedPool->Delete(p);
+        }
+        s_npcList.clear();
+}
+
+void RenderNpcDialog()
+{
+        using namespace mm;
+
+        static float s_t = 0.0f;
+        static ImVec2 panelCenter(-1.0f, -1.0f);
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+        enum { ID_NPC_CLOSE = 500, ID_NPC_SPAWN = 501, ID_NPC_CLEAR = 502 };
+
+        const auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        dt = Clamp(dt, 0.0f, 0.05f);
+
+        const bool want = g_bShowNpcDlg;
+        if (!want && s_t <= 0.0f) { s_npcRectValid = false; return; }
+
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
+        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
+        const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+        const float W0 = 480.0f, H0 = 260.0f;
+        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
+        s_U = U;
+
+        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
+        const float pw = W0 * U, ph = H0 * U;
+        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
+
+        s_npcRectValid = (s_t > 0.05f);
+        s_npcPos  = ImVec2(P.x, P.y);
+        s_npcSize = ImVec2(P.w, P.h);
+
+        const bool canInput = want && s_t > 0.75f;
+        s_dl = ImGui::GetForegroundDrawList();
+
+        Fill(P, Col(17, 19, 26, 246), S(14.0f));
+        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
+        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "NPC");
+
+        char cnt[32];
+        snprintf(cnt, sizeof(cnt), "Yaradılmış: %d", (int)s_npcList.size());
+        Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), cnt);
+
+        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
+        if (Tap(ID_NPC_CLOSE, bClose, canInput)) g_bShowNpcDlg = false;
+        HeaderBtn(ID_NPC_CLOSE, bClose, dt, "", true);
+
+        const Rc rSpawn{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(56.0f) };
+        if (Tap(ID_NPC_SPAWN, rSpawn, canInput) && pLocalPlayer)
+        {
+                CVector base = pLocalPlayer->m_placement.m_vPosn;
+                CVector spawnPos(base.x + 2.0f, base.y + 2.0f, base.z);
+                SpawnNpcNearPlayer(pLocalPlayer, spawnPos);
+        }
+        {
+                const float p = Prs(ID_NPC_SPAWN, dt);
+                const Rc d = Shrink(rSpawn, S(1.2f) * p);
+                Fill(d, Accent(0.0f, 24 + (int)(40.0f * p)), S(10.0f));
+                Stroke(d, Accent(0.0f, 160), S(10.0f), S(1.2f));
+                TxtC(S(16.0f), d, Col(232, 238, 250), "NPC Yarat (yanıma)", true);
+        }
+
+        const Rc rClear{ P.x + S(20.0f), P.y + S(134.0f), P.w - S(40.0f), S(50.0f) };
+        if (Tap(ID_NPC_CLEAR, rClear, canInput)) RemoveAllNpcs();
+        {
+                const float p = Prs(ID_NPC_CLEAR, dt);
+                const Rc d = Shrink(rClear, S(1.2f) * p);
+                Fill(d, Col(27, 30, 40, 255), S(10.0f));
+                TxtC(S(15.0f), d, Col(226, 230, 240), "Hamısını sil", true);
+        }
+
+        Txt(S(12.0f), P.x + S(20.0f), P.y + P.h - S(28.0f), Col(124, 132, 152), "NPC-lər hərəkətsizdir (statik).");
+}
+
 void UI::drawList()
 {
         if (g_bHideAllUI) {
                 RenderHandlingDialog();
-                RenderTpDialog();
-                RenderSettingsDialog();
                 return;
         }
 
@@ -1010,6 +1251,8 @@ void UI::drawList()
         RenderHandlingDialog();   // mod menyu hamisinin ustunde
         RenderTpDialog();
         RenderSettingsDialog();
+        RenderVehicleMenuDialog();
+        RenderNpcDialog();
 }
 
 // Toxunus mod menyuya "tutulubmu" (basma panelin icinde baslayibsa, barmaq disari cixsa da eyni toxunus bitene qeder tutulur)
@@ -1029,8 +1272,9 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
         if (tt != TOUCH_MOVE)
                 HND_LOG("[HND] touch type=%d x=%.0f y=%.0f dlg=%d", tt, pos.x, pos.y, (int)g_bShowHandlingDlg);
 
-        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
-        if (g_bHideAllUI && !g_bShowHandlingDlg && !g_bShowTpDlg && !g_bShowSettingsDlg && tt == TOUCH_PUSH) {
+        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (hec bir mod menyu aciq deyilse)
+        const bool anyModOpen = g_bShowHandlingDlg || g_bShowTpDlg || g_bShowSettingsDlg || g_bShowVehDlg || g_bShowNpcDlg;
+        if (g_bHideAllUI && !anyModOpen && tt == TOUCH_PUSH) {
                 g_bHideAllUI = false;
                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
                 s_dlgCapturedEvent = false;
@@ -1072,8 +1316,8 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
         if (type != TOUCH_MOVE)
                 HND_LOG("[HND] touch type=%d x=%d y=%d dlg=%d", type, x, y, (int)g_bShowHandlingDlg);
 
-        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
-        if (g_bHideAllUI && !g_bShowHandlingDlg && !g_bShowTpDlg && !g_bShowSettingsDlg && type == TOUCH_PUSH) {
+        const bool anyModOpen = g_bShowHandlingDlg || g_bShowTpDlg || g_bShowSettingsDlg || g_bShowVehDlg || g_bShowNpcDlg;
+        if (g_bHideAllUI && !anyModOpen && type == TOUCH_PUSH) {
                 g_bHideAllUI = false;
                 if (pUI && pUI->chat()) {
                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");

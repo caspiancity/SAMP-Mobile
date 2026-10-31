@@ -517,7 +517,7 @@ void RenderHandlingDialog()
 
         if (want)
         {
-                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
                         g_bShowHandlingDlg = false;
                         s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
@@ -836,7 +836,7 @@ void RenderTpDialog()
         const bool want = g_bShowTpDlg;
         if (!want && s_t <= 0.0f) { s_tpRectValid = false; return; }
 
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -885,11 +885,9 @@ void RenderTpDialog()
                 if (tapped && pLocalPlayer)
                 {
                         const TpSpot& sp = kTpSpots[i];
-                        float gz = CWorld::FindGroundZForCoord(sp.x, sp.y);
+                        float gz = World::FindGroundZForCoord(sp.x, sp.y);
                         if (gz < -90.0f) gz = sp.z; // fallback, yer tapilmadi
 
-                        // ASSUMPTION: m_placement.m_vPosn birbaşa mövqe sahəsidir (CVehicleGTA.cpp-dəki
-                        // istifadədən götürülüb); CPlaceable-də hazır SetPosition() varsa, onu işlət.
                         pLocalPlayer->Remove();
                         pLocalPlayer->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
                         pLocalPlayer->Add();
@@ -926,7 +924,7 @@ void RenderSettingsDialog()
         const bool want = g_bShowSettingsDlg;
         if (!want && s_t <= 0.0f) { s_setRectValid = false; return; }
 
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -960,11 +958,11 @@ void RenderSettingsDialog()
 
         if (pLocalPlayer)
         {
-                s_godmode = CPlayerPedGta::bDebugPlayerInvincible;
+                s_godmode = PlayerPedGta::bDebugPlayerInvincible;
 
                 const Rc rGod{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(66.0f) };
                 if (ToggleRow(0, rGod, "Godmode", s_godmode ? "Aktiv" : "Deaktiv", s_godmode, dt, canInput))
-                        CPlayerPedGta::bDebugPlayerInvincible = !s_godmode;
+                        PlayerPedGta::bDebugPlayerInvincible = !s_godmode;
 
                 const Rc rHp{ P.x + S(20.0f), P.y + S(138.0f), P.w - S(40.0f), S(50.0f) };
                 if (Tap(ID_SET_FULLHP, rHp, canInput)) {
@@ -1018,17 +1016,15 @@ static const VehSpot kVehList[] = {
 };
 static const int kVehCount = (int)(sizeof(kVehList) / sizeof(kVehList[0]));
 
-// DIQQET: model yuklenmesi CStreaming ile edilir; CVehicleGTA(modelId, createdBy)
-// konstruktoru plugin-sdk konvensiyasina esasen yazilib — bu layihede teyin olunmayib, test et.
 static CVehicleGTA* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
 {
         if (!CPools::ms_pVehiclePool) return nullptr;
 
-        if (!CStreaming::IsModelLoaded(modelId)) {
-                CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
-                CStreaming::LoadAllRequestedModels(false); // senkron — bir anlik donma ola biler
+        if (!Streaming::IsModelLoaded(modelId)) {
+                Streaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
+                Streaming::LoadAllRequestedModels(false);
         }
-        if (!CStreaming::IsModelLoaded(modelId)) {
+        if (!Streaming::IsModelLoaded(modelId)) {
                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Model yuklenmedi (%d).", modelId);
                 return nullptr;
         }
@@ -1061,7 +1057,7 @@ void RenderVehicleMenuDialog()
         const bool want = g_bShowVehDlg;
         if (!want && s_t <= 0.0f) { s_vehRectValid = false; return; }
 
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -1115,25 +1111,20 @@ void RenderVehicleMenuDialog()
 }
 
 // ============================================================================
-//  /npc  — oyunçunun öz modeli ilə statik NPC yaratma (streaming lazim deyil)
-//  QEYD: bu NPC-ler HEREKETSIZ dayanir — yerimə/reaksiya ucun CPedIntelligence/
-//  Task sistemi lazimdir, hele bu layihede paylasilmayib.
+//  /npc  — oyunçunun öz modeli ilə statik NPC yaratma
 // ============================================================================
 static std::vector<CPedGTA*> s_npcList;
 
-static CPedGTA* SpawnNpcNearPlayer(CPedGTA* pPlayerPed, const CVector& pos)
+static CPedGTA* SpawnNpcNearPlayer(PlayerPed* pPlayerPed, const CVector& pos)
 {
         if (!CPools::ms_pPedPool || !pPlayerPed) return nullptr;
 
         void* slot = CPools::ms_pPedPool->New();
         if (!slot) return nullptr;
 
-        // ASSUMPTION: CPedGTA(ePedType) konstruktoru CPedGTA.h-de beledir; PEDTYPE_CIVMALE
-        // GTA SA-nin tanis ePedType qiymetidir — test lazimdir.
         CPedGTA* pNpc = new (slot) CPedGTA(PEDTYPE_CIVMALE);
         if (!pNpc) return nullptr;
 
-        // Oyuncunun oz modelini kopyala — bu model artiq yuklenib, streaming lazim deyil.
         pNpc->SetModelIndex(pPlayerPed->m_nModelIndex);
 
         pNpc->m_placement.m_vPosn = pos;
@@ -1148,7 +1139,6 @@ static void RemoveAllNpcs()
         for (CPedGTA* p : s_npcList) {
                 if (!p) continue;
                 p->Remove();
-                // ASSUMPTION: CPool<T>::Delete(T*) plugin-sdk konvensiyasidir, bu layihede teyin olunmayib.
                 if (CPools::ms_pPedPool) CPools::ms_pPedPool->Delete(p);
         }
         s_npcList.clear();
@@ -1171,7 +1161,7 @@ void RenderNpcDialog()
         const bool want = g_bShowNpcDlg;
         if (!want && s_t <= 0.0f) { s_npcRectValid = false; return; }
 
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        PlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
         const float eAnim = EaseOutCubic(s_t);
@@ -1248,23 +1238,21 @@ void UI::drawList()
 
         draw(renderer());
 
-        RenderHandlingDialog();   // mod menyu hamisinin ustunde
+        RenderHandlingDialog();
         RenderTpDialog();
         RenderSettingsDialog();
         RenderVehicleMenuDialog();
         RenderNpcDialog();
 }
 
-// Toxunus mod menyuya "tutulubmu" (basma panelin icinde baslayibsa, barmaq disari cixsa da eyni toxunus bitene qeder tutulur)
-static bool s_dlgCapture      = false;   // cari toxunus paneldedir
-static bool s_dlgCapturedEvent = false;  // SON hadise menyuya aiddir (hooks.cpp bunu oxuyur)
+static bool s_dlgCapture      = false;
+static bool s_dlgCapturedEvent = false;
 
 bool UI_HandlingDlgCapturedEvent()
 {
         return s_dlgCapturedEvent;
 }
 
-// hooks.cpp -> AND_TouchEvent_hook bu funksiyani cagirir (pUI->touchEvent(...))
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
         const int tt = (type == TouchType::push) ? TOUCH_PUSH : ((type == TouchType::pop) ? TOUCH_POP : TOUCH_MOVE);
@@ -1272,7 +1260,6 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
         if (tt != TOUCH_MOVE)
                 HND_LOG("[HND] touch type=%d x=%.0f y=%.0f dlg=%d", tt, pos.x, pos.y, (int)g_bShowHandlingDlg);
 
-        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (hec bir mod menyu aciq deyilse)
         const bool anyModOpen = g_bShowHandlingDlg || g_bShowTpDlg || g_bShowSettingsDlg || g_bShowVehDlg || g_bShowNpcDlg;
         if (g_bHideAllUI && !anyModOpen && tt == TOUCH_PUSH) {
                 g_bHideAllUI = false;
@@ -1281,14 +1268,12 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
                 return;
         }
 
-        // Mod menyu ucun her toxunusu queue-ya at
         PushTouch(tt, pos.x, pos.y);
 
         if (tt == TOUCH_PUSH) s_dlgCapture = UI_IsPointInAnyModDlg(pos);
         s_dlgCapturedEvent = s_dlgCapture;
         if (tt == TOUCH_POP) s_dlgCapture = false;
 
-        // Mod menyunun uzerine basanda alt widget-ler (chat, buttonpanel ...) toxunusu almasin
         if (s_dlgCapturedEvent || UI_IsPointInAnyModDlg(pos))
                 return;
 
@@ -1307,8 +1292,6 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
         Widget::touchEvent(pos, type);
 }
 
-// DIQQET: hooks.cpp-de bu funksiyanin cagirisi serhe alinib, real giris UI::touchEvent-dir.
-// Eger bir gun hook-da OnTouchEvent aktiv edilse, UI::touchEvent ile cift toxunus gelmesin.
 bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 {
         (void)multi;

@@ -962,11 +962,11 @@ void RenderSettingsDialog()
 
         if (pLocalPlayer && pLocalPlayer->m_pPed)
         {
-                s_godmode = pLocalPlayer->m_pPed->bInvulnerable;
-
                 const Rc rGod{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(66.0f) };
                 if (ToggleRow(0, rGod, "Godmode", s_godmode ? "Aktiv" : "Deaktiv", s_godmode, dt, canInput))
-                        pLocalPlayer->m_pPed->bInvulnerable = !s_godmode;
+                {
+                        s_godmode = !s_godmode;
+                }
 
                 const Rc rHp{ P.x + S(20.0f), P.y + S(138.0f), P.w - S(40.0f), S(50.0f) };
                 if (Tap(ID_SET_FULLHP, rHp, canInput)) {
@@ -1020,9 +1020,9 @@ static const VehSpot kVehList[] = {
 };
 static const int kVehCount = (int)(sizeof(kVehList) / sizeof(kVehList[0]));
 
-static CVehicleGTA* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
+static CVehicle* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
 {
-        if (!CPools::ms_pVehiclePool) return nullptr;
+        if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
 
         if (!CStreaming::IsModelLoaded(modelId)) {
                 CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
@@ -1033,14 +1033,11 @@ static CVehicleGTA* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
                 return nullptr;
         }
 
-        void* slot = CPools::ms_pVehiclePool->New();
-        if (!slot) return nullptr;
+        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+        VEHICLEID newId = pPool->New(modelId, pos.x, pos.y, pos.z, 0.0f, 0, 0, false);
+        if (newId == INVALID_VEHICLE_ID) return nullptr;
 
-        CVehicleGTA* pVeh = new (slot) CVehicleGTA((int32)modelId, (uint8_t)MISSION_VEHICLE);
-        if (!pVeh) return nullptr;
-
-        pVeh->m_placement.m_vPosn = pos;
-        pVeh->Add();
+        CVehicle* pVeh = pPool->GetAt(newId);
         return pVeh;
 }
 
@@ -1106,7 +1103,7 @@ void RenderVehicleMenuDialog()
                 {
                         CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
                         CVector spawnPos(base.x + 4.0f, base.y + 2.0f, base.z);
-                        CVehicleGTA* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
+                        CVehicle* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
                         g_bShowVehDlg = false;
                         if (pUI && pUI->chat())
                                 pUI->chat()->addDebugMessage(pVeh ? "{00FF00}[Client]: %s yaradıldı." : "{FF0000}[Client]: Maşın yaradıla bilmədi.", kVehList[i].name);

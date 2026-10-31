@@ -1,6 +1,7 @@
 #include "../main.h"
 #include "../game/game.h"
 #include "../net/netgame.h"
+#include "../net/vehiclepool.h"
 #include "../game/vehicle.h"
 #include "../game/VehTuner.h"
 #include "../game/VehControls.h"
@@ -28,6 +29,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -278,12 +280,15 @@ namespace mm
         static inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
         static inline float Smooth(float cur, float target, float dt, float speed) { return Lerp(cur, target, 1.0f - expf(-dt * speed)); }
         static inline float EaseOutCubic(float t) { const float p = 1.0f - t; return 1.0f - p * p * p; }
+        static inline float EaseOutBack(float t) { const float c1 = 1.70158f, c3 = c1 + 1.0f; const float p = t - 1.0f; return 1.0f + c3 * p * p * p + c1 * p * p; }
         static inline bool  In(const Rc& r, float px, float py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
         static inline Rc    Shrink(const Rc& r, float a) { return Rc{ r.x + a, r.y + a, r.w - 2.0f * a, r.h - 2.0f * a }; }
 
         static inline ImU32 Col(int r, int g, int b, int a = 255) { return IM_COL32(r, g, b, (int)((float)a * s_A)); }
         static inline ImU32 Accent(float /*istifade olunmur*/, int a = 255) { return Col(78, 142, 235, a); }
         static inline ImU32 Orange(int a = 255) { return Col(255, 153, 28, a); }
+        static inline ImU32 Green(int a = 255) { return Col(90, 205, 140, a); }
+        static inline ImU32 Red(int a = 255) { return Col(222, 90, 90, a); }
 
         static void Fill(const Rc& r, ImU32 c, float rad) { s_dl->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad); }
         static void Stroke(const Rc& r, ImU32 c, float rad, float th) { s_dl->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad, kAllCorners, th); }
@@ -475,6 +480,85 @@ namespace mm
                         }
                         TxtC(S(15.0f), Rc{ d.x, d.y + d.h * 0.62f, d.w, d.h * 0.34f }, on ? Col(255, 224, 180, 255) : Col(190, 196, 212, 255), kNames[k], true);
                 }
+        }
+
+        // ====================================================================
+        //  TOAST BILDIRIS SISTEMI — her emeliyyat uygur kicik bir animasiyali
+        //  bildirisle tesdiqlenir (slide-up + fade-in/out).
+        // ====================================================================
+        struct Toast
+        {
+                char  text[96];
+                ImU32 accent;
+                float life;     // qalan omur (san)
+                float maxLife;
+                float appear;   // 0..1 girish animasiyasi
+        };
+        static std::deque<Toast> s_toasts;
+
+        static void PushToast(const char* text, ImU32 accent, float duration = 2.6f)
+        {
+                if (s_toasts.size() > 4) s_toasts.pop_front();
+                Toast t{};
+                std::snprintf(t.text, sizeof(t.text), "%s", text);
+                t.accent  = accent;
+                t.life    = duration;
+                t.maxLife = duration;
+                t.appear  = 0.0f;
+                s_toasts.push_back(t);
+        }
+
+        static void UpdateAndRenderToasts(float dt, const ImVec2& disp)
+        {
+                if (s_toasts.empty()) return;
+
+                s_dl = ImGui::GetForegroundDrawList();
+                const float savedA = s_A;
+                s_A = 1.0f;
+
+                const float cardH  = 44.0f * (disp.y / 720.0f);
+                const float gap    = 10.0f * (disp.y / 720.0f);
+                const float bottom = disp.y - 36.0f * (disp.y / 720.0f);
+                const float ww     = std::min(360.0f * (disp.y / 720.0f), disp.x * 0.86f);
+
+                int visible = 0;
+                for (auto it = s_toasts.begin(); it != s_toasts.end();)
+                {
+                        it->life -= dt;
+                        it->appear = Clamp(it->appear + dt / 0.18f, 0.0f, 1.0f);
+
+                        if (it->life <= 0.0f) { it = s_toasts.erase(it); continue; }
+
+                        const float fadeOut = (it->life < 0.35f) ? Clamp(it->life / 0.35f, 0.0f, 1.0f) : 1.0f;
+                        const float eIn     = EaseOutBack(it->appear);
+                        const float slide   = (1.0f - eIn) * 26.0f * (disp.y / 720.0f);
+                        const float alpha   = Clamp(it->appear, 0.0f, 1.0f) * fadeOut;
+
+                        const float cy = bottom - visible * (cardH + gap) + slide;
+                        const Rc card{ disp.x * 0.5f - ww * 0.5f, cy - cardH, ww, cardH };
+
+                        const int a = (int)(alpha * 255.0f);
+                        Fill(Rc{ card.x - 2.0f, card.y + 2.0f, card.w, card.h }, IM_COL32(0, 0, 0, a / 3), 10.0f);
+                        Fill(card, IM_COL32(22, 24, 32, a), 10.0f);
+                        s_dl->AddRect(ImVec2(card.x, card.y), ImVec2(card.x + card.w, card.y + card.h),
+                                      IM_COL32(255, 255, 255, a / 10), 10.0f, kAllCorners, 1.0f);
+
+                        // vurgu zolagi
+                        const int ar = (it->accent >> IM_COL32_R_SHIFT) & 0xFF;
+                        const int ag = (it->accent >> IM_COL32_G_SHIFT) & 0xFF;
+                        const int ab = (it->accent >> IM_COL32_B_SHIFT) & 0xFF;
+                        Fill(Rc{ card.x, card.y, 4.0f, card.h }, IM_COL32(ar, ag, ab, a), 2.0f);
+
+                        const float fs = 14.0f * (disp.y / 720.0f);
+                        const float tx = card.x + 18.0f * (disp.y / 720.0f);
+                        const float ty = card.y + (card.h - fs) * 0.5f;
+                        s_dl->AddText(ImGui::GetFont(), fs, ImVec2(tx, ty), IM_COL32(230, 233, 240, a), it->text);
+
+                        ++visible;
+                        ++it;
+                }
+
+                s_A = savedA;
         }
 }
 
@@ -768,6 +852,7 @@ void RenderHandlingDialog()
                                 s_flash = 1.0f;
                                 for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
                                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Tuning]: Standart dəyərlər qaytarıldı.");
+                                PushToast("Tuning sıfırlandı", Green());
                         }
                         const float rp = Prs(ID_RESET, dt);
                         const Rc rd = Shrink(rb, S(1.5f) * rp);
@@ -903,6 +988,10 @@ void RenderTpDialog()
                         }
                         g_bShowTpDlg = false;
                         if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Teleport edildi: %s", sp.name);
+
+                        char msg[96];
+                        snprintf(msg, sizeof(msg), "Teleport edildi: %s", sp.name);
+                        PushToast(msg, Accent(0.0f));
                 }
         }
 }
@@ -966,12 +1055,14 @@ void RenderSettingsDialog()
                 if (ToggleRow(0, rGod, "Godmode", s_godmode ? "Aktiv" : "Deaktiv", s_godmode, dt, canInput))
                 {
                         s_godmode = !s_godmode;
+                        PushToast(s_godmode ? "Godmode aktiv edildi" : "Godmode söndürüldü", s_godmode ? Green() : Red());
                 }
 
                 const Rc rHp{ P.x + S(20.0f), P.y + S(138.0f), P.w - S(40.0f), S(50.0f) };
                 if (Tap(ID_SET_FULLHP, rHp, canInput)) {
                         pLocalPlayer->SetHealth(100.0f);
                         pLocalPlayer->SetArmour(100.0f);
+                        PushToast("Can və zireh dolduruldu", Green());
                 }
                 {
                         const float p = Prs(ID_SET_FULLHP, dt);
@@ -991,7 +1082,12 @@ void RenderSettingsDialog()
                 {
                         const Rc row{ P.x + S(20.0f), P.y + S(206.0f) + i * S(58.0f), P.w - S(40.0f), S(50.0f) };
                         const int id = ID_SET_W0 + i;
-                        if (Tap(id, row, canInput)) pLocalPlayer->GiveWeapon(kWeapons[i].id, kWeapons[i].ammo);
+                        if (Tap(id, row, canInput)) {
+                                pLocalPlayer->GiveWeapon(kWeapons[i].id, kWeapons[i].ammo);
+                                char msg[80];
+                                snprintf(msg, sizeof(msg), "Verildi: %s", kWeapons[i].name);
+                                PushToast(msg, Accent(0.0f));
+                        }
                         const float p = Prs(id, dt);
                         const Rc d = Shrink(row, S(1.2f) * p);
                         Fill(d, Col(27, 30, 40, 255), S(10.0f));
@@ -1020,6 +1116,22 @@ static const VehSpot kVehList[] = {
 };
 static const int kVehCount = (int)(sizeof(kVehList) / sizeof(kVehList[0]));
 
+// ----------------------------------------------------------------------------
+// Boş bir VEHICLEID tapir. CVehiclePool::New() ozu bos yer axtarmir — ona
+// verilen ID-ni birbasa istifade edir (dolu olsa, kohnesini silir). Buna gore
+// yaradilmazdan evvel pool-da bos slot tapmaq lazimdir (publik GetSlotState ile).
+// ----------------------------------------------------------------------------
+static VEHICLEID FindFreeVehicleSlot(CVehiclePool* pPool)
+{
+        if (!pPool) return INVALID_VEHICLE_ID;
+
+        for (VEHICLEID id = 0; id < MAX_VEHICLES; ++id) {
+                if (!pPool->GetSlotState(id))
+                        return id;
+        }
+        return INVALID_VEHICLE_ID;
+}
+
 static CVehicle* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
 {
         if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
@@ -1030,15 +1142,42 @@ static CVehicle* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
         }
         if (!CStreaming::IsModelLoaded(modelId)) {
                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Model yuklenmedi (%d).", modelId);
+                mm::PushToast("Model yüklənmədi", mm::Red());
                 return nullptr;
         }
 
         CVehiclePool* pPool = pNetGame->GetVehiclePool();
-        VEHICLEID newId = pPool->New(modelId, pos.x, pos.y, pos.z, 0.0f, 0, 0, false);
-        if (newId == INVALID_VEHICLE_ID) return nullptr;
 
-        CVehicle* pVeh = pPool->GetAt(newId);
-        return pVeh;
+        const VEHICLEID freeId = FindFreeVehicleSlot(pPool);
+        if (freeId == INVALID_VEHICLE_ID) {
+                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Boş maşın yeri yoxdur.");
+                mm::PushToast("Boş maşın yeri yoxdur", mm::Red());
+                return nullptr;
+        }
+
+        NEW_VEHICLE nv{};
+        nv.VehicleID            = freeId;
+        nv.iVehicleType         = modelId;
+        nv.vecPos               = pos;
+        nv.fRotation            = 0.0f;
+        nv.byteInteriorColor1   = 0xFF;   // 0xFF = rəng tətbiq edilmir (default)
+        nv.byteInreriorColor2   = 0xFF;
+        nv.fHealth              = 1000.0f;
+        nv.byteInterior         = 0;
+        nv.dwDoorDamageStatus   = 0;
+        nv.dwPanelDamageStatus  = 0;
+        nv.byteLightDamageStatus = 0;
+        nv.byteTireDamageStatus = 0;
+        nv.byteAddSiren         = 0;
+        std::memset(nv.byteModSlots, 0, sizeof(nv.byteModSlots));
+        nv.bytePaintJob         = 0xFF;
+        nv.iBodyColor1          = 0;
+        nv.iBodyColor2          = 0;
+
+        if (!pPool->New(&nv))
+                return nullptr;
+
+        return pPool->GetAt(freeId);
 }
 
 void RenderVehicleMenuDialog()
@@ -1105,8 +1244,17 @@ void RenderVehicleMenuDialog()
                         CVector spawnPos(base.x + 4.0f, base.y + 2.0f, base.z);
                         CVehicle* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
                         g_bShowVehDlg = false;
+
                         if (pUI && pUI->chat())
                                 pUI->chat()->addDebugMessage(pVeh ? "{00FF00}[Client]: %s yaradıldı." : "{FF0000}[Client]: Maşın yaradıla bilmədi.", kVehList[i].name);
+
+                        char msg[80];
+                        if (pVeh) {
+                                snprintf(msg, sizeof(msg), "Yaradıldı: %s", kVehList[i].name);
+                                PushToast(msg, Green());
+                        } else {
+                                PushToast("Maşın yaradıla bilmədi", Red());
+                        }
                 }
         }
 }
@@ -1202,7 +1350,8 @@ void RenderNpcDialog()
         {
                 CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
                 CVector spawnPos(base.x + 2.0f, base.y + 2.0f, base.z);
-                SpawnNpcNearPlayer(pLocalPlayer, spawnPos);
+                CPedGTA* pNpc = SpawnNpcNearPlayer(pLocalPlayer, spawnPos);
+                PushToast(pNpc ? "NPC yaradıldı" : "NPC yaradıla bilmədi", pNpc ? Green() : Red());
         }
         {
                 const float p = Prs(ID_NPC_SPAWN, dt);
@@ -1213,7 +1362,11 @@ void RenderNpcDialog()
         }
 
         const Rc rClear{ P.x + S(20.0f), P.y + S(134.0f), P.w - S(40.0f), S(50.0f) };
-        if (Tap(ID_NPC_CLEAR, rClear, canInput)) RemoveAllNpcs();
+        if (Tap(ID_NPC_CLEAR, rClear, canInput)) {
+                const int cleared = (int)s_npcList.size();
+                RemoveAllNpcs();
+                if (cleared > 0) PushToast("Bütün NPC-lər silindi", Orange());
+        }
         {
                 const float p = Prs(ID_NPC_CLEAR, dt);
                 const Rc d = Shrink(rClear, S(1.2f) * p);
@@ -1244,6 +1397,19 @@ void UI::drawList()
         RenderSettingsDialog();
         RenderVehicleMenuDialog();
         RenderNpcDialog();
+
+        // Toastlar her sey cizildikden sonra, en ustte gorunur
+        {
+                using namespace mm;
+                static std::chrono::steady_clock::time_point s_toastLast = std::chrono::steady_clock::now();
+                const auto now = std::chrono::steady_clock::now();
+                float dt = std::chrono::duration<float>(now - s_toastLast).count();
+                s_toastLast = now;
+                dt = Clamp(dt, 0.0f, 0.05f);
+
+                ImGuiIO& io = ImGui::GetIO();
+                UpdateAndRenderToasts(dt, io.DisplaySize);
+        }
 }
 
 static bool s_dlgCapture      = false;

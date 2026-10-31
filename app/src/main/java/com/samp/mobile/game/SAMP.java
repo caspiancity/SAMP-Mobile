@@ -12,12 +12,14 @@ import com.joom.paranoid.Obfuscate;
 import com.samp.mobile.game.ui.AttachEdit;
 import com.samp.mobile.game.ui.CustomKeyboard;
 import com.samp.mobile.game.ui.LoadingScreen;
+import com.samp.mobile.game.ui.PlateGen;
 import com.samp.mobile.game.ui.dialog.DialogManager;
 import com.samp.mobile.launcher.util.SharedPreferenceCore;
 import com.samp.mobile.launcher.util.SignatureChecker;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+
 @Obfuscate
 public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightProvider.HeightListener {
     private static final String TAG = "SAMP";
@@ -242,8 +244,6 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
     }
 
     private native void initializeSAMP();
-
-
 
     @Override
     public void onStart() {

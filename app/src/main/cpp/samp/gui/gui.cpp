@@ -1,4 +1,3 @@
-```cpp
 #include "../main.h"
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -1128,4 +1127,3 @@ void UI::ProcessPushedTextdraws()
                 m_BufferedCommandTextdraws.ReadUnlock();
         }
 }
-```

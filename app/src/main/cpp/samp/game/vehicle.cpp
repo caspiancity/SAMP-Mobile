@@ -230,10 +230,9 @@ CVehicle::~CVehicle()
         }
 
         // Ferdi handling kopyasini sil, orijinal pointeri geri qaytar
-        VehPlate::OnVehicleDestroy(m_pVehicle);
         ReleaseOwnHandling(m_pVehicle);
         VehControls::Forget(m_pVehicle);
-        
+
         int iModel = m_pVehicle->m_nModelIndex;
         if (iModel == 538 || iModel == 537)
         {
@@ -861,12 +860,4 @@ float CVehicle::GetSteeringAngle() {
 float CVehicle::GetMass() {
     uintptr_t pHandling = GetCurrentHandling(m_pVehicle);
     return pHandling ? *(float*)(pHandling + HND_MASS) : 0.0f;
-}
-
-void CVehicle::SetPlateText(const char* szPlateText)
-{
-    if (!szPlateText) return;
-    strncpy(m_szPlateText, szPlateText, sizeof(m_szPlateText) - 1);
-    m_szPlateText[sizeof(m_szPlateText) - 1] = '\0';
-    VehPlate::Apply(this, m_szPlateText);
 }

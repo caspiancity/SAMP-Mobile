@@ -861,3 +861,10 @@ float CVehicle::GetMass() {
     uintptr_t pHandling = GetCurrentHandling(m_pVehicle);
     return pHandling ? *(float*)(pHandling + HND_MASS) : 0.0f;
 }
+
+void CVehicle::SetPlateText(const char* szPlateText)
+{
+    if (!szPlateText) return;
+    strncpy(m_szPlateText, szPlateText, sizeof(m_szPlateText) - 1);
+    m_szPlateText[sizeof(m_szPlateText) - 1] = '\0';
+}

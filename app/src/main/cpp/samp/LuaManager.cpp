@@ -6,13 +6,14 @@
 #include "game/VehControls.h"
 #include "java/jniutil.h"
 #include "vendor/lua/lua.hpp"
-#include "LuaBridge.h"
 #include "imgui.h"
 #include <time.h>
 #include <cmath>
 #include <cfloat>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <algorithm>
 #include <unistd.h>
 #include <sys/uio.h>
 
@@ -237,16 +238,6 @@ static int l_setBrake(lua_State* S) {
     if (v) v->SetBrakePower((float)luaL_checknumber(S, 1));
     return 0;
 }
-// vehicle.h-de artiq GetEngineState()/GetLightState()/m_bDoorsLocked var,
-// ofset axtarmaga ehtiyac yoxdur
-static int l_vehicleState(lua_State* S) {
-    CVehicle* v = GetLocalVehicle();
-    if (!v || !v->m_pVehicle) return 0;
-    lua_pushboolean(S, v->GetEngineState() > 0);
-    lua_pushboolean(S, v->GetLightState() > 0);
-    lua_pushboolean(S, v->m_bDoorsLocked);
-    return 3;
-}
 static int l_setHideUI(lua_State* S) {
     g_bHideAllUI = lua_toboolean(S, 1) != 0;
     return 0;
@@ -274,6 +265,23 @@ static bool MemWrite(uintptr_t addr, const void* in, size_t n) {
     return process_vm_writev(getpid(), &l, 1, &r, 1, 0) == (ssize_t)n;
 }
 
+// NUL ile bitən stringi oxuyur (sehife serhedini kecmeden, hisse-hisse)
+static bool MemReadCStr(uintptr_t addr, std::string& out, size_t maxLen) {
+    out.clear();
+    while (out.size() < maxLen) {
+        size_t pageLeft = 4096 - (size_t)(addr & 4095);
+        size_t n = std::min(pageLeft, std::min((size_t)64, maxLen - out.size()));
+        char buf[64];
+        if (!MemRead(addr, buf, n)) return !out.empty();
+        for (size_t i = 0; i < n; i++) {
+            if (!buf[i]) return true;
+            out.push_back(buf[i]);
+        }
+        addr += n;
+    }
+    return true;
+}
+
 // baza adresleri ve obyekt gostericileri
 static int l_gtaBase(lua_State* S)  { lua_pushinteger(S, (lua_Integer)g_libGTASA); return 1; }
 static int l_sampBase(lua_State* S) { lua_pushinteger(S, (lua_Integer)g_libSAMP);  return 1; }
@@ -292,16 +300,29 @@ static int l_camPtr(lua_State* S) {
     return 1;
 }
 
-// readMem(addr, "u8"|"u16"|"u32"|"i32"|"u64"|"f32"|"ptr") -> deyer ve ya nil
+// readMem(addr, tip [, maxLen]) -> deyer ve ya nil
+// tipler: u8 i8 u16 i16 u32 i32 u64 i64 ptr f32 f64 str
 static int l_readMem(lua_State* S) {
     uintptr_t a = (uintptr_t)luaL_checkinteger(S, 1);
     const char* t = luaL_checkstring(S, 2);
     if (!strcmp(t, "u8"))       { uint8_t  v; if (!MemRead(a, &v, 1)) return 0; lua_pushinteger(S, v); }
+    else if (!strcmp(t, "i8"))  { int8_t   v; if (!MemRead(a, &v, 1)) return 0; lua_pushinteger(S, v); }
     else if (!strcmp(t, "u16")) { uint16_t v; if (!MemRead(a, &v, 2)) return 0; lua_pushinteger(S, v); }
+    else if (!strcmp(t, "i16")) { int16_t  v; if (!MemRead(a, &v, 2)) return 0; lua_pushinteger(S, v); }
     else if (!strcmp(t, "u32")) { uint32_t v; if (!MemRead(a, &v, 4)) return 0; lua_pushinteger(S, v); }
     else if (!strcmp(t, "i32")) { int32_t  v; if (!MemRead(a, &v, 4)) return 0; lua_pushinteger(S, v); }
     else if (!strcmp(t, "u64") || !strcmp(t, "ptr")) { uint64_t v; if (!MemRead(a, &v, 8)) return 0; lua_pushinteger(S, (lua_Integer)v); }
+    else if (!strcmp(t, "i64")) { int64_t  v; if (!MemRead(a, &v, 8)) return 0; lua_pushinteger(S, (lua_Integer)v); }
     else if (!strcmp(t, "f32")) { float    v; if (!MemRead(a, &v, 4)) return 0; lua_pushnumber(S, v); }
+    else if (!strcmp(t, "f64")) { double   v; if (!MemRead(a, &v, 8)) return 0; lua_pushnumber(S, v); }
+    else if (!strcmp(t, "str")) {
+        lua_Integer mx = luaL_optinteger(S, 3, 256);
+        if (mx < 1) mx = 1;
+        if (mx > 4096) mx = 4096;
+        std::string s;
+        if (!MemReadCStr(a, s, (size_t)mx)) return 0;
+        lua_pushlstring(S, s.data(), s.size());
+    }
     else return luaL_error(S, "readMem: bilinmeyen tip '%s'", t);
     return 1;
 }
@@ -311,11 +332,17 @@ static int l_writeMem(lua_State* S) {
     uintptr_t a = (uintptr_t)luaL_checkinteger(S, 1);
     const char* t = luaL_checkstring(S, 2);
     bool ok = false;
-    if (!strcmp(t, "u8"))       { uint8_t  v = (uint8_t)luaL_checkinteger(S, 3);  ok = MemWrite(a, &v, 1); }
-    else if (!strcmp(t, "u16")) { uint16_t v = (uint16_t)luaL_checkinteger(S, 3); ok = MemWrite(a, &v, 2); }
+    if (!strcmp(t, "u8") || !strcmp(t, "i8"))        { uint8_t  v = (uint8_t)luaL_checkinteger(S, 3);  ok = MemWrite(a, &v, 1); }
+    else if (!strcmp(t, "u16") || !strcmp(t, "i16")) { uint16_t v = (uint16_t)luaL_checkinteger(S, 3); ok = MemWrite(a, &v, 2); }
     else if (!strcmp(t, "u32") || !strcmp(t, "i32")) { uint32_t v = (uint32_t)luaL_checkinteger(S, 3); ok = MemWrite(a, &v, 4); }
-    else if (!strcmp(t, "u64") || !strcmp(t, "ptr")) { uint64_t v = (uint64_t)luaL_checkinteger(S, 3); ok = MemWrite(a, &v, 8); }
+    else if (!strcmp(t, "u64") || !strcmp(t, "i64") || !strcmp(t, "ptr")) { uint64_t v = (uint64_t)luaL_checkinteger(S, 3); ok = MemWrite(a, &v, 8); }
     else if (!strcmp(t, "f32")) { float    v = (float)luaL_checknumber(S, 3);     ok = MemWrite(a, &v, 4); }
+    else if (!strcmp(t, "f64")) { double   v = (double)luaL_checknumber(S, 3);    ok = MemWrite(a, &v, 8); }
+    else if (!strcmp(t, "str")) {
+        size_t len = 0;
+        const char* s = luaL_checklstring(S, 3, &len);
+        ok = MemWrite(a, s, len + 1);        // sondaki NUL daxil
+    }
     else return luaL_error(S, "writeMem: bilinmeyen tip '%s'", t);
     lua_pushboolean(S, ok);
     return 1;
@@ -343,13 +370,22 @@ static void Report(const char* what) {
     lua_pop(L, 1);
 }
 
+// simvol axtarisi, hook, java, modul yukleyici, saveData/loadData (ayri fayl, eyni TU)
+#include "LuaBridge.inl"
+
 namespace LuaManager {
 
 void Shutdown() {
-    if (L) { LuaBridge::Shutdown(L); lua_close(L); L = nullptr; }
+    LuaBridge::Guard lk;
+    if (L) {
+        LuaBridge::Shutdown(L);     // hooklari sondur, java handle-lari azad et, modullari bagla
+        lua_close(L);
+        L = nullptr;
+    }
 }
 
 bool Init() {
+    LuaBridge::Guard lk;
     Shutdown();
     g_renderDisabled = false;
     L = luaL_newstate();
@@ -383,7 +419,6 @@ bool Init() {
     lua_register(L, "setMaxSpeed", l_setMaxSpeed);
     lua_register(L, "setSteering", l_setSteering);
     lua_register(L, "setBrake", l_setBrake);
-    lua_register(L, "vehicleState", l_vehicleState);
     lua_register(L, "setHideUI", l_setHideUI);
     lua_register(L, "toggleHandlingDlg", l_toggleHandlingDlg);
 
@@ -396,43 +431,59 @@ bool Init() {
     lua_register(L, "writeMem", l_writeMem);
     lua_register(L, "callFunc", l_callFunc);
 
-    LuaBridge::Register(L);     // findSymbol, hookSig, javaCallStatic, saveData, loadData
+    // findSymbol, hook, java*, saveData/loadData, patchCode, ...
+    LuaBridge::Register(L);
 
     char path[512];
     snprintf(path, sizeof(path), "%s/core.lua", g_pszStorage);
     FLog("[Lua] yuklenir: %s", path);
 
-    if (luaL_dofile(L, path) != LUA_OK) { Report("core.lua"); return false; }
-    FLog("[Lua] core.lua yuklendi");
+    bool coreOk = true;
+    if (luaL_dofile(L, path) != LUA_OK) { Report("core.lua"); coreOk = false; }
+    else FLog("[Lua] core.lua yuklendi");
 
-    LuaBridge::LoadModules(L);  // files/lua/*.lua (varsa)
-    return true;
+    // <storage>/lua/*.lua  (core.lua-dan sonra, elifba sirasi ile)
+    LuaBridge::LoadModules(L);
+    return coreOk;
 }
 
 bool OnCommand(const std::string& cmd, const std::string& args) {
     if (!L) return false;
+    LuaBridge::Guard lk;
+    if (!L) return false;
+
+    bool handled = false;
     lua_getglobal(L, "onCommand");
-    if (!lua_isfunction(L, -1)) { lua_pop(L, 1); return false; }
-    lua_pushstring(L, cmd.c_str());
-    lua_pushstring(L, args.c_str());
-    if (lua_pcall(L, 2, 1, 0) != LUA_OK) { Report("onCommand"); return false; }
-    bool handled = lua_toboolean(L, -1);
-    lua_pop(L, 1);
+    if (lua_isfunction(L, -1)) {
+        lua_pushstring(L, cmd.c_str());
+        lua_pushstring(L, args.c_str());
+        if (lua_pcall(L, 2, 1, 0) != LUA_OK) { Report("onCommand"); }
+        else { handled = lua_toboolean(L, -1) != 0; lua_pop(L, 1); }
+    } else {
+        lua_pop(L, 1);
+    }
+    if (!handled) handled = LuaBridge::DispatchCommand(L, cmd, args);
     return handled;
 }
 
 void OnRender() {
-    if (!L || g_renderDisabled) return;
+    if (!L) return;
     if (!ImGui::GetCurrentContext()) return;
+    LuaBridge::Guard lk;
+    if (!L) return;
 
     UpdateSpeed();
 
-    lua_getglobal(L, "onRender");
-    if (!lua_isfunction(L, -1)) { lua_pop(L, 1); return; }
-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-        Report("onRender");
-        g_renderDisabled = true;   // xeta chati doldurmasin; /luareload ile yeniden acilir
+    if (!g_renderDisabled) {
+        lua_getglobal(L, "onRender");
+        if (!lua_isfunction(L, -1)) {
+            lua_pop(L, 1);
+        } else if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+            Report("onRender");
+            g_renderDisabled = true;   // xeta chati doldurmasin; /luareload ile yeniden acilir
+        }
     }
+    LuaBridge::DispatchRender(L);      // files/lua/*.lua modullarinin onRender-i + hook xeta novbesi
 }
 
 }

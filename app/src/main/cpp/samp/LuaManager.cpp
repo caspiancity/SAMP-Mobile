@@ -6,6 +6,7 @@
 #include "game/VehControls.h"
 #include "java/jniutil.h"
 #include "vendor/lua/lua.hpp"
+#include "LuaBridge.h"
 #include "imgui.h"
 #include <time.h>
 #include <cmath>
@@ -335,7 +336,7 @@ static void Report(const char* what) {
 namespace LuaManager {
 
 void Shutdown() {
-    if (L) { lua_close(L); L = nullptr; }
+    if (L) { LuaBridge::Shutdown(L); lua_close(L); L = nullptr; }
 }
 
 bool Init() {
@@ -384,12 +385,16 @@ bool Init() {
     lua_register(L, "writeMem", l_writeMem);
     lua_register(L, "callFunc", l_callFunc);
 
+    LuaBridge::Register(L);     // findSymbol, hookSig, javaCallStatic, saveData, loadData
+
     char path[512];
     snprintf(path, sizeof(path), "%s/core.lua", g_pszStorage);
     FLog("[Lua] yuklenir: %s", path);
 
     if (luaL_dofile(L, path) != LUA_OK) { Report("core.lua"); return false; }
     FLog("[Lua] core.lua yuklendi");
+
+    LuaBridge::LoadModules(L);  // files/lua/*.lua (varsa)
     return true;
 }
 

@@ -237,6 +237,16 @@ static int l_setBrake(lua_State* S) {
     if (v) v->SetBrakePower((float)luaL_checknumber(S, 1));
     return 0;
 }
+// vehicle.h-de artiq GetEngineState()/GetLightState()/m_bDoorsLocked var,
+// ofset axtarmaga ehtiyac yoxdur
+static int l_vehicleState(lua_State* S) {
+    CVehicle* v = GetLocalVehicle();
+    if (!v || !v->m_pVehicle) return 0;
+    lua_pushboolean(S, v->GetEngineState() > 0);
+    lua_pushboolean(S, v->GetLightState() > 0);
+    lua_pushboolean(S, v->m_bDoorsLocked);
+    return 3;
+}
 static int l_setHideUI(lua_State* S) {
     g_bHideAllUI = lua_toboolean(S, 1) != 0;
     return 0;
@@ -373,6 +383,7 @@ bool Init() {
     lua_register(L, "setMaxSpeed", l_setMaxSpeed);
     lua_register(L, "setSteering", l_setSteering);
     lua_register(L, "setBrake", l_setBrake);
+    lua_register(L, "vehicleState", l_vehicleState);
     lua_register(L, "setHideUI", l_setHideUI);
     lua_register(L, "toggleHandlingDlg", l_toggleHandlingDlg);
 

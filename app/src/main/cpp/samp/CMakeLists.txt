@@ -32,7 +32,8 @@ include_directories(
 )
 
 # Compilation flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w -s -g -fvisibility=hidden -pthread -Wall -O3 -fexceptions")
+# (-s silindi: simvol cedveli qalir ki, Lua funksiyalari ada gore tapa bilsin)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w -g -fvisibility=hidden -pthread -Wall -O3 -fexceptions")
 
 add_library(samp SHARED ${SOURCES})
 

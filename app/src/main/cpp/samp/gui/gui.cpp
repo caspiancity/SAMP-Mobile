@@ -1,7 +1,6 @@
 #include "../main.h"
 #include "../game/game.h"
 #include "../net/netgame.h"
-#include "../net/vehiclepool.h"
 #include "../game/vehicle.h"
 #include "../game/VehTuner.h"
 #include "../game/VehControls.h"
@@ -19,20 +18,14 @@
 #include "game/Textures/TextureDatabaseRuntime.h"
 #include "game/Streaming.h"
 #include "game/Pools.h"
-#include "game/Entity/CPedGTA.h"
-#include "game/Enums/ePedType.h"
-#include "game/World.h"
-#include "game/playerped.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <deque>
 #include <mutex>
-#include <vector>
 
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -40,11 +33,7 @@ extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
 
 extern bool g_bHideAllUI;
-extern bool g_bShowHandlingDlg;
-extern bool g_bShowTpDlg;
-extern bool g_bShowSettingsDlg;
-extern bool g_bShowVehDlg;
-extern bool g_bShowNpcDlg;
+extern bool g_bShowHandlingDlg;   // /mm (kohne addi: /tuning) ile acilir/baglanir
 
 // Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
 #define HND_DEBUG 0
@@ -213,7 +202,7 @@ void UI::shutdown()
 }
 
 // ============================================================================
-//  TUNING MENYUSU  (oz cizgisi, oz toxunusu, animasiyali)
+//  /mm MENYUSU  (kohne adi /tuning) — oz cizgisi, oz toxunusu, animasiyali
 // ============================================================================
 static bool   s_hndRectValid = false;
 static ImVec2 s_hndPos(0.0f, 0.0f);    // toxunus bloklamasi ucun panelin real sahesi
@@ -224,33 +213,6 @@ bool UI_IsPointInHandlingDlg(const ImVec2& p)
         if (!g_bShowHandlingDlg || !s_hndRectValid) return false;
         return p.x >= s_hndPos.x && p.x <= s_hndPos.x + s_hndSize.x &&
                p.y >= s_hndPos.y && p.y <= s_hndPos.y + s_hndSize.y;
-}
-
-// ============================================================================
-//  Butun yeni mod-menyularin (/tp, /ayarlar, /m, /npc) toxunus bloklamasi
-// ============================================================================
-static bool   s_tpRectValid = false;
-static ImVec2 s_tpPos(0.0f, 0.0f), s_tpSize(0.0f, 0.0f);
-static bool   s_setRectValid = false;
-static ImVec2 s_setPos(0.0f, 0.0f), s_setSize(0.0f, 0.0f);
-static bool   s_vehRectValid = false;
-static ImVec2 s_vehPos(0.0f, 0.0f), s_vehSize(0.0f, 0.0f);
-static bool   s_npcRectValid = false;
-static ImVec2 s_npcPos(0.0f, 0.0f), s_npcSize(0.0f, 0.0f);
-
-static bool PtInRect(const ImVec2& p, bool valid, const ImVec2& pos, const ImVec2& size)
-{
-        if (!valid) return false;
-        return p.x >= pos.x && p.x <= pos.x + size.x && p.y >= pos.y && p.y <= pos.y + size.y;
-}
-
-bool UI_IsPointInAnyModDlg(const ImVec2& p)
-{
-        return UI_IsPointInHandlingDlg(p)
-            || (g_bShowTpDlg       && PtInRect(p, s_tpRectValid,  s_tpPos,  s_tpSize))
-            || (g_bShowSettingsDlg && PtInRect(p, s_setRectValid, s_setPos, s_setSize))
-            || (g_bShowVehDlg      && PtInRect(p, s_vehRectValid, s_vehPos, s_vehSize))
-            || (g_bShowNpcDlg      && PtInRect(p, s_npcRectValid, s_npcPos, s_npcSize));
 }
 
 namespace mm
@@ -280,15 +242,12 @@ namespace mm
         static inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
         static inline float Smooth(float cur, float target, float dt, float speed) { return Lerp(cur, target, 1.0f - expf(-dt * speed)); }
         static inline float EaseOutCubic(float t) { const float p = 1.0f - t; return 1.0f - p * p * p; }
-        static inline float EaseOutBack(float t) { const float c1 = 1.70158f, c3 = c1 + 1.0f; const float p = t - 1.0f; return 1.0f + c3 * p * p * p + c1 * p * p; }
         static inline bool  In(const Rc& r, float px, float py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
         static inline Rc    Shrink(const Rc& r, float a) { return Rc{ r.x + a, r.y + a, r.w - 2.0f * a, r.h - 2.0f * a }; }
 
         static inline ImU32 Col(int r, int g, int b, int a = 255) { return IM_COL32(r, g, b, (int)((float)a * s_A)); }
         static inline ImU32 Accent(float /*istifade olunmur*/, int a = 255) { return Col(78, 142, 235, a); }
         static inline ImU32 Orange(int a = 255) { return Col(255, 153, 28, a); }
-        static inline ImU32 Green(int a = 255) { return Col(90, 205, 140, a); }
-        static inline ImU32 Red(int a = 255) { return Col(222, 90, 90, a); }
 
         static void Fill(const Rc& r, ImU32 c, float rad) { s_dl->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad); }
         static void Stroke(const Rc& r, ImU32 c, float rad, float th) { s_dl->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad, kAllCorners, th); }
@@ -481,85 +440,6 @@ namespace mm
                         TxtC(S(15.0f), Rc{ d.x, d.y + d.h * 0.62f, d.w, d.h * 0.34f }, on ? Col(255, 224, 180, 255) : Col(190, 196, 212, 255), kNames[k], true);
                 }
         }
-
-        // ====================================================================
-        //  TOAST BILDIRIS SISTEMI — her emeliyyat uygur kicik bir animasiyali
-        //  bildirisle tesdiqlenir (slide-up + fade-in/out).
-        // ====================================================================
-        struct Toast
-        {
-                char  text[96];
-                ImU32 accent;
-                float life;     // qalan omur (san)
-                float maxLife;
-                float appear;   // 0..1 girish animasiyasi
-        };
-        static std::deque<Toast> s_toasts;
-
-        static void PushToast(const char* text, ImU32 accent, float duration = 2.6f)
-        {
-                if (s_toasts.size() > 4) s_toasts.pop_front();
-                Toast t{};
-                std::snprintf(t.text, sizeof(t.text), "%s", text);
-                t.accent  = accent;
-                t.life    = duration;
-                t.maxLife = duration;
-                t.appear  = 0.0f;
-                s_toasts.push_back(t);
-        }
-
-        static void UpdateAndRenderToasts(float dt, const ImVec2& disp)
-        {
-                if (s_toasts.empty()) return;
-
-                s_dl = ImGui::GetForegroundDrawList();
-                const float savedA = s_A;
-                s_A = 1.0f;
-
-                const float cardH  = 44.0f * (disp.y / 720.0f);
-                const float gap    = 10.0f * (disp.y / 720.0f);
-                const float bottom = disp.y - 36.0f * (disp.y / 720.0f);
-                const float ww     = std::min(360.0f * (disp.y / 720.0f), disp.x * 0.86f);
-
-                int visible = 0;
-                for (auto it = s_toasts.begin(); it != s_toasts.end();)
-                {
-                        it->life -= dt;
-                        it->appear = Clamp(it->appear + dt / 0.18f, 0.0f, 1.0f);
-
-                        if (it->life <= 0.0f) { it = s_toasts.erase(it); continue; }
-
-                        const float fadeOut = (it->life < 0.35f) ? Clamp(it->life / 0.35f, 0.0f, 1.0f) : 1.0f;
-                        const float eIn     = EaseOutBack(it->appear);
-                        const float slide   = (1.0f - eIn) * 26.0f * (disp.y / 720.0f);
-                        const float alpha   = Clamp(it->appear, 0.0f, 1.0f) * fadeOut;
-
-                        const float cy = bottom - visible * (cardH + gap) + slide;
-                        const Rc card{ disp.x * 0.5f - ww * 0.5f, cy - cardH, ww, cardH };
-
-                        const int a = (int)(alpha * 255.0f);
-                        Fill(Rc{ card.x - 2.0f, card.y + 2.0f, card.w, card.h }, IM_COL32(0, 0, 0, a / 3), 10.0f);
-                        Fill(card, IM_COL32(22, 24, 32, a), 10.0f);
-                        s_dl->AddRect(ImVec2(card.x, card.y), ImVec2(card.x + card.w, card.y + card.h),
-                                      IM_COL32(255, 255, 255, a / 10), 10.0f, kAllCorners, 1.0f);
-
-                        // vurgu zolagi
-                        const int ar = (it->accent >> IM_COL32_R_SHIFT) & 0xFF;
-                        const int ag = (it->accent >> IM_COL32_G_SHIFT) & 0xFF;
-                        const int ab = (it->accent >> IM_COL32_B_SHIFT) & 0xFF;
-                        Fill(Rc{ card.x, card.y, 4.0f, card.h }, IM_COL32(ar, ag, ab, a), 2.0f);
-
-                        const float fs = 14.0f * (disp.y / 720.0f);
-                        const float tx = card.x + 18.0f * (disp.y / 720.0f);
-                        const float ty = card.y + (card.h - fs) * 0.5f;
-                        s_dl->AddText(ImGui::GetFont(), fs, ImVec2(tx, ty), IM_COL32(230, 233, 240, a), it->text);
-
-                        ++visible;
-                        ++it;
-                }
-
-                s_A = savedA;
-        }
 }
 
 void RenderHandlingDialog()
@@ -601,9 +481,10 @@ void RenderHandlingDialog()
         CVehicleGTA* gtaVeh = s_lastVeh;
         CVehicle*    pVehW  = nullptr;
 
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
         if (want)
         {
-                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
                         g_bShowHandlingDlg = false;
                         s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
@@ -714,8 +595,8 @@ void RenderHandlingDialog()
         // --- basliq ---
         {
                 Fill(Rc{ P.x + S(20.0f), P.y + S(15.0f), S(4.0f), S(26.0f) }, Accent(0.0f), S(2.0f));
-                TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "TUNING");
-                Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Maşın tənzimləmələri");
+                TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "/MM");
+                Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Maşın menyusu");
 
                 const Rc bClose{ P.x + P.w - S(54.0f),  P.y + S(10.0f), S(36.0f), S(36.0f) };
                 const Rc bZoomP{ P.x + P.w - S(100.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
@@ -733,15 +614,15 @@ void RenderHandlingDialog()
         }
 
         // --- sidebar ---
-        static const char* kPages[5] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far" };
-        static const char* kSubs[5]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi" };
+        static const char* kPages[6] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" };
+        static const char* kSubs[6]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" };
         {
                 s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
                 const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
                 Fill(ind, Col(255, 255, 255, 12), S(10.0f));
                 Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
 
-                for (int i = 0; i < 5; ++i)
+                for (int i = 0; i < 6; ++i)
                 {
                         const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
                         if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
@@ -794,6 +675,7 @@ void RenderHandlingDialog()
                         if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far rəngi: Standart");
                         else                       snprintf(hb, sizeof(hb), "Far rəngi: #%d", (int)s_tune.headlight);
                         Txt(S(17.0f), cx0, P.y + S(128.0f), Col(214, 220, 232), hb);
+                        Txt(S(13.0f), cx0, P.y + S(152.0f), Col(124, 132, 152), "Hazırda yalnız hazır palitra — sərbəst rəng seçimi üçün VehTuner/Coronas faylları lazımdır.");
 
                         for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
                         {
@@ -802,7 +684,7 @@ void RenderHandlingDialog()
 
                                 const int   col = i % 8, rowi = i / 8;
                                 const float cxs = cx0 + S(24.0f) + col * S(58.0f);
-                                const float cys = P.y + S(190.0f) + rowi * S(58.0f);
+                                const float cys = P.y + S(200.0f) + rowi * S(58.0f);
                                 const Rc    sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
 
                                 const int sid = ID_SWATCH + std::min(i, 23);
@@ -811,6 +693,28 @@ void RenderHandlingDialog()
                                 const float p = Prs(sid, dt);
                                 Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
                                 if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+                        }
+                }
+                else if (s_page == 5)    // KOMANDALAR
+                {
+                        struct CmdInfo { const char* cmd; const char* desc; };
+                        static const CmdInfo kCmds[] = {
+                                { "/mm",      "Maşın menyusunu aç/bağla" },
+                                { "/sinyal",  "sol | sag | avariya | off" },
+                                { "/far N",   "Far rəngi (0-15)" },
+                                { "/suret N", "Maksimum sürət" },
+                                { "/manevr N","Manevr bucağı" },
+                                { "/tormoz N","Tormoz gücü" },
+                                { "/gizle",   "Bütün UI-ı gizlət/geri qaytar" },
+                                { "/yt",      "YouTube paneli" },
+                        };
+                        const int n = (int)(sizeof(kCmds) / sizeof(kCmds[0]));
+                        for (int i = 0; i < n; ++i)
+                        {
+                                const Rc row{ cx0, P.y + S(124.0f + 52.0f * i), cw, S(44.0f) };
+                                Fill(row, Col(27, 30, 40, 255), S(9.0f));
+                                Txt(S(15.0f), row.x + S(16.0f), row.y + (row.h - S(15.0f)) * 0.5f, Accent(0.0f), kCmds[i].cmd);
+                                Txt(S(14.0f), row.x + S(160.0f), row.y + (row.h - S(14.0f)) * 0.5f, Col(200, 204, 216), kCmds[i].desc);
                         }
                 }
                 else                      // HANDLING SEHIFELERI
@@ -842,7 +746,7 @@ void RenderHandlingDialog()
                 }
 
                 // --- alt sira: Sifirla (yalniz handling sehifelerinde) + status ---
-                if (s_page >= 1)
+                if (s_page >= 1 && s_page <= 3)
                 {
                         const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
                         if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
@@ -851,8 +755,7 @@ void RenderHandlingDialog()
                                 changed = false;
                                 s_flash = 1.0f;
                                 for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
-                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Tuning]: Standart dəyərlər qaytarıldı.");
-                                PushToast("Tuning sıfırlandı", Green());
+                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Standart dəyərlər qaytarıldı.");
                         }
                         const float rp = Prs(ID_RESET, dt);
                         const Rc rd = Shrink(rb, S(1.5f) * rp);
@@ -893,488 +796,104 @@ void RenderHandlingDialog()
 }
 
 // ============================================================================
-//  /tp  — teleport menyusu
+//  DAİMİ HUD: avtomobildə olarkən hər zaman görünən 3 dairəvi göstərici
+//  (Mühərrik / Fara / Qapı) + kiçik sinyal düymələri. Ekranın alt-sağ
+//  bölgəsində, mərkəzdən bir az sağda — heç nəyə mane olmayacaq şəkildə.
+//  Rəngi dəyişmək üçün göstərici qrupuna basılı tutmaq kifayətdir (uzun basma).
 // ============================================================================
-struct TpSpot { const char* name; float x, y, z; };
-static const TpSpot kTpSpots[] = {
-        { "Grove Street",      2495.4f, -1687.6f,  13.5f },
-        { "Los Santos Mərkəz",  1542.7f, -1675.0f,  13.6f },
-        { "LS Hava Limanı",     1688.7f, -2316.3f,  13.6f },
-        { "San Fierro Mərkəz",  -1816.2f,  787.8f,  34.9f },
-        { "Las Venturas Strip", 2001.5f, 1023.8f,   10.8f },
-        { "Area 69",            195.8f, 1860.0f,   17.6f },
-};
-static const int kTpSpotCount = (int)(sizeof(kTpSpots) / sizeof(kTpSpots[0]));
+static int   s_hudColorIdx = 0;
+static const ImU32 kHudPalette[5] = { IM_COL32(78,142,235,255), IM_COL32(78,235,142,255),
+                                       IM_COL32(235,120,78,255), IM_COL32(235,78,201,255), IM_COL32(230,230,230,255) };
+static float s_hudHoldT = 0.0f;
+static bool  s_hudHolding = false;
 
-void RenderTpDialog()
+static void DrawGauge(ImDrawList* dl, float cx, float cy, float r, bool on, const char* label, ImU32 accent, float u)
 {
-        using namespace mm;
+        const ImU32 bg = IM_COL32(20, 22, 30, 190);
+        dl->AddCircleFilled(ImVec2(cx, cy), r, bg, 36);
+        dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(255, 255, 255, 30), 36, 1.4f * u);
 
-        static float s_t = 0.0f;
-        static ImVec2 panelCenter(-1.0f, -1.0f);
-        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
-        enum { ID_TP_CLOSE = 200, ID_TP_SPOT0 = 210 };
+        // doldurma qovsu: on = 3/4 hiss, off = qisa
+        const float startA = -3.14159f * 0.5f - 1.0f;
+        const float endA   = startA + (on ? 5.0f : 0.9f);
+        dl->PathArcTo(ImVec2(cx, cy), r - 3.0f * u, startA, endA, 28);
+        dl->PathStroke(on ? accent : IM_COL32(110, 114, 126, 220), 0, 3.0f * u);
 
-        const auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - s_last).count();
-        s_last = now;
-        dt = Clamp(dt, 0.0f, 0.05f);
+        ImFont* f = ImGui::GetFont();
+        const float ts = 10.5f * u;
+        const float tw = f->CalcTextSizeA(ts, FLT_MAX, 0.0f, label).x;
+        dl->AddText(f, ts, ImVec2(cx - tw * 0.5f, cy - ts * 0.5f), on ? IM_COL32(240,243,250,255) : IM_COL32(150,154,166,255), label);
+}
 
-        const bool want = g_bShowTpDlg;
-        if (!want && s_t <= 0.0f) { s_tpRectValid = false; return; }
+void RenderVehicleHud()
+{
+        if (g_bHideAllUI || g_bShowHandlingDlg) return; // /mm aciqkan HUD-u gizlet, qarismasin
 
         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+        if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) return;
 
-        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
-        const float eAnim = EaseOutCubic(s_t);
-        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+        CVehicle* pVeh = nullptr;
+        if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+        }
+        if (!pVeh || !pVeh->m_pVehicle) return;
+        CVehicleGTA* gtaVeh = pVeh->m_pVehicle;
 
         ImGuiIO& io = ImGui::GetIO();
         const ImVec2 disp = io.DisplaySize;
-        const float W0 = 560.0f, H0 = 440.0f;
-        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
-        s_U = U;
+        const float u = disp.y / 720.0f;
 
-        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
-        const float pw = W0 * U, ph = H0 * U;
-        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
+        const float gr = 30.0f * u;
+        const float gap = 14.0f * u;
+        const float groupW = gr * 6.0f + gap * 2.0f;
+        // alt-sag, merkezden biraz sag terefde
+        const float baseX = disp.x * 0.62f;
+        const float baseY = disp.y - gr * 1.6f;
 
-        s_tpRectValid = (s_t > 0.05f);
-        s_tpPos  = ImVec2(P.x, P.y);
-        s_tpSize = ImVec2(P.w, P.h);
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-        s_dl = ImGui::GetForegroundDrawList();
-
-        const bool canInput = want && s_t > 0.75f;
-        const MMTouch& tch = g_mmTouch;
-
-        Fill(P, Col(17, 19, 26, 246), S(14.0f));
-        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
-        Fill(Rc{ P.x + S(20.0f), P.y + S(15.0f), S(4.0f), S(26.0f) }, Accent(0.0f), S(2.0f));
-        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "TELEPORT");
-        Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Bir nöqtə seç");
-
-        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
-        if (Tap(ID_TP_CLOSE, bClose, canInput)) g_bShowTpDlg = false;
-        HeaderBtn(ID_TP_CLOSE, bClose, dt, "", true);
-
-        for (int i = 0; i < kTpSpotCount; ++i)
-        {
-                const Rc row{ P.x + S(20.0f), P.y + S(66.0f) + i * S(58.0f), P.w - S(40.0f), S(50.0f) };
-                const int id = ID_TP_SPOT0 + i;
-                const bool tapped = Tap(id, row, canInput);
-                const float p = Prs(id, dt);
-                const Rc d = Shrink(row, S(1.2f) * p);
-                Fill(d, Col(27, 30, 40, 255), S(10.0f));
-                if (p > 0.01f) Stroke(d, Accent(0.0f, 140), S(10.0f), S(1.2f));
-                Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kTpSpots[i].name);
-
-                if (tapped && pLocalPlayer && pLocalPlayer->m_pPed)
-                {
-                        const TpSpot& sp = kTpSpots[i];
-                        float gz = CWorld::FindGroundZForCoord(sp.x, sp.y);
-                        if (gz < -90.0f) gz = sp.z; // fallback, yer tapilmadi
-
-                        CWorld::Remove(pLocalPlayer->m_pPed);
-                        pLocalPlayer->m_pPed->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
-                        CWorld::Add(pLocalPlayer->m_pPed);
-
-                        if (pLocalPlayer->IsInVehicle() && pLocalPlayer->m_pPed->pVehicle)
-                        {
-                                CVehicleGTA* veh = pLocalPlayer->m_pPed->pVehicle;
-                                CWorld::Remove(veh);
-                                veh->m_placement.m_vPosn = CVector(sp.x, sp.y, gz + 1.0f);
-                                CWorld::Add(veh);
-                        }
-                        g_bShowTpDlg = false;
-                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Teleport edildi: %s", sp.name);
-
-                        char msg[96];
-                        snprintf(msg, sizeof(msg), "Teleport edildi: %s", sp.name);
-                        PushToast(msg, Accent(0.0f));
-                }
+        // uzun basma ile reng deyisimi
+        const ImVec2 hitTl(baseX - gr, baseY - gr), hitBr(baseX + groupW, baseY + gr);
+        const bool inRect = g_mmTouch.x >= hitTl.x && g_mmTouch.x <= hitBr.x && g_mmTouch.y >= hitTl.y && g_mmTouch.y <= hitBr.y;
+        if (g_mmTouch.down && inRect) {
+                s_hudHolding = true;
+                s_hudHoldT += 1.0f / 60.0f;
+                if (s_hudHoldT > 0.55f) { s_hudColorIdx = (s_hudColorIdx + 1) % 5; s_hudHoldT = 0.0f; }
+        } else {
+                s_hudHolding = false;
+                s_hudHoldT = 0.0f;
         }
-}
+        const ImU32 accent = kHudPalette[s_hudColorIdx];
 
-// ============================================================================
-//  /ayarlar — oyunçu ayarları (can, zireh, godmode, silah)
-// ============================================================================
-void RenderSettingsDialog()
-{
-        using namespace mm;
+        const bool eng = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+        const bool lig = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+        const int  lk  = (int)gtaVeh->m_nDoorLock;
+        const bool locked = (lk == 2 || lk == 3);
 
-        static float s_t = 0.0f;
-        static ImVec2 panelCenter(-1.0f, -1.0f);
-        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
-        static bool s_godmode = false;
-        enum { ID_SET_CLOSE = 300, ID_SET_FULLHP = 301, ID_SET_W0 = 310 };
+        DrawGauge(dl, baseX,                      baseY, gr, eng, "MÜHƏRRİK", accent, u);
+        DrawGauge(dl, baseX + gr * 2.0f + gap,     baseY, gr, lig, "FARA",     accent, u);
+        DrawGauge(dl, baseX + gr * 4.0f + gap * 2, baseY, gr, !locked, "QAPI", accent, u);
 
-        const auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - s_last).count();
-        s_last = now;
-        dt = Clamp(dt, 0.0f, 0.05f);
-
-        const bool want = g_bShowSettingsDlg;
-        if (!want && s_t <= 0.0f) { s_setRectValid = false; return; }
-
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-
-        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
-        const float eAnim = EaseOutCubic(s_t);
-        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
-
-        ImGuiIO& io = ImGui::GetIO();
-        const ImVec2 disp = io.DisplaySize;
-        const float W0 = 600.0f, H0 = 520.0f;
-        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
-        s_U = U;
-
-        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
-        const float pw = W0 * U, ph = H0 * U;
-        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
-
-        s_setRectValid = (s_t > 0.05f);
-        s_setPos  = ImVec2(P.x, P.y);
-        s_setSize = ImVec2(P.w, P.h);
-
-        s_dl = ImGui::GetForegroundDrawList();
-        const bool canInput = want && s_t > 0.75f;
-
-        Fill(P, Col(17, 19, 26, 246), S(14.0f));
-        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
-        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "AYARLAR");
-        Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Oyunçu");
-
-        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
-        if (Tap(ID_SET_CLOSE, bClose, canInput)) g_bShowSettingsDlg = false;
-        HeaderBtn(ID_SET_CLOSE, bClose, dt, "", true);
-
-        if (pLocalPlayer && pLocalPlayer->m_pPed)
-        {
-                const Rc rGod{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(66.0f) };
-                if (ToggleRow(0, rGod, "Godmode", s_godmode ? "Aktiv" : "Deaktiv", s_godmode, dt, canInput))
-                {
-                        s_godmode = !s_godmode;
-                        PushToast(s_godmode ? "Godmode aktiv edildi" : "Godmode söndürüldü", s_godmode ? Green() : Red());
-                }
-
-                const Rc rHp{ P.x + S(20.0f), P.y + S(138.0f), P.w - S(40.0f), S(50.0f) };
-                if (Tap(ID_SET_FULLHP, rHp, canInput)) {
-                        pLocalPlayer->SetHealth(100.0f);
-                        pLocalPlayer->SetArmour(100.0f);
-                        PushToast("Can və zireh dolduruldu", Green());
-                }
-                {
-                        const float p = Prs(ID_SET_FULLHP, dt);
-                        const Rc d = Shrink(rHp, S(1.2f) * p);
-                        Fill(d, Col(27, 30, 40, 255), S(10.0f));
-                        TxtC(S(16.0f), d, Col(226, 230, 240), "Can + Zireh Dolsun", true);
-                }
-
-                static const struct { const char* name; int id; int ammo; } kWeapons[] = {
-                        { "Desert Eagle", 24, 1000 },
-                        { "AK-47",        30, 999  },
-                        { "M4",           31, 999  },
-                        { "Qumbaraatan",  35, 10   },
-                };
-                const int n = (int)(sizeof(kWeapons) / sizeof(kWeapons[0]));
-                for (int i = 0; i < n; ++i)
-                {
-                        const Rc row{ P.x + S(20.0f), P.y + S(206.0f) + i * S(58.0f), P.w - S(40.0f), S(50.0f) };
-                        const int id = ID_SET_W0 + i;
-                        if (Tap(id, row, canInput)) {
-                                pLocalPlayer->GiveWeapon(kWeapons[i].id, kWeapons[i].ammo);
-                                char msg[80];
-                                snprintf(msg, sizeof(msg), "Verildi: %s", kWeapons[i].name);
-                                PushToast(msg, Accent(0.0f));
-                        }
-                        const float p = Prs(id, dt);
-                        const Rc d = Shrink(row, S(1.2f) * p);
-                        Fill(d, Col(27, 30, 40, 255), S(10.0f));
-                        Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kWeapons[i].name);
-                }
+        // sinyal duymeleri (gaugelerin ustunde, kicik)
+        const uint8_t sig = VehControls::GetSignal(gtaVeh);
+        const float sbW = 34.0f * u, sbH = 26.0f * u, sbGap = 6.0f * u;
+        const float sbY = baseY - gr - sbH - 8.0f * u;
+        const float sbX0 = baseX + groupW * 0.5f - (sbW * 3.0f + sbGap * 2.0f) * 0.5f;
+        static const char* kSigLbl[3] = { "◀", "!", "▶" };
+        static const uint8_t kSigMode[3] = { VEH_SIGNAL_LEFT, VEH_SIGNAL_HAZARD, VEH_SIGNAL_RIGHT };
+        for (int i = 0; i < 3; ++i) {
+                const float bx = sbX0 + i * (sbW + sbGap);
+                const bool on = (sig == kSigMode[i]);
+                dl->AddRectFilled(ImVec2(bx, sbY), ImVec2(bx + sbW, sbY + sbH), on ? IM_COL32(255,153,28,220) : IM_COL32(30,33,43,200), 6.0f * u);
+                if (g_mmTouch.pressed && g_mmTouch.x >= bx && g_mmTouch.x <= bx + sbW && g_mmTouch.y >= sbY && g_mmTouch.y <= sbY + sbH)
+                        VehControls::ToggleSignal(gtaVeh, kSigMode[i]);
+                ImFont* f = ImGui::GetFont();
+                const float ts = 13.0f * u;
+                const float tw = f->CalcTextSizeA(ts, FLT_MAX, 0.0f, kSigLbl[i]).x;
+                dl->AddText(f, ts, ImVec2(bx + (sbW - tw) * 0.5f, sbY + (sbH - ts) * 0.5f), IM_COL32(240,243,250,255), kSigLbl[i]);
         }
-        else
-        {
-                Txt(S(15.0f), P.x + S(24.0f), P.y + S(80.0f), Col(190, 190, 190), "Oyunçu tapılmadı.");
-        }
-}
-
-// ============================================================================
-//  /m  — maşın seçmə menyusu
-// ============================================================================
-struct VehSpot { const char* name; int32_t model; };
-static const VehSpot kVehList[] = {
-        { "Infernus",   411 },
-        { "Bullet",     541 },
-        { "Banshee",    429 },
-        { "Elegy",      562 },
-        { "Sultan",     560 },
-        { "NRG-500",    522 },
-        { "Police LS",  596 },
-        { "Hydra",      520 },
-};
-static const int kVehCount = (int)(sizeof(kVehList) / sizeof(kVehList[0]));
-
-// ----------------------------------------------------------------------------
-// Boş bir VEHICLEID tapir. CVehiclePool::New() ozu bos yer axtarmir — ona
-// verilen ID-ni birbasa istifade edir (dolu olsa, kohnesini silir). Buna gore
-// yaradilmazdan evvel pool-da bos slot tapmaq lazimdir (publik GetSlotState ile).
-// ----------------------------------------------------------------------------
-static VEHICLEID FindFreeVehicleSlot(CVehiclePool* pPool)
-{
-        if (!pPool) return INVALID_VEHICLE_ID;
-
-        for (VEHICLEID id = 0; id < MAX_VEHICLES; ++id) {
-                if (!pPool->GetSlotState(id))
-                        return id;
-        }
-        return INVALID_VEHICLE_ID;
-}
-
-static CVehicle* SpawnVehicleNearPlayer(int32_t modelId, const CVector& pos)
-{
-        if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
-
-        if (!CStreaming::IsModelLoaded(modelId)) {
-                CStreaming::RequestModel(modelId, STREAMING_GAME_REQUIRED);
-                CStreaming::LoadAllRequestedModels(false);
-        }
-        if (!CStreaming::IsModelLoaded(modelId)) {
-                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Model yuklenmedi (%d).", modelId);
-                mm::PushToast("Model yüklənmədi", mm::Red());
-                return nullptr;
-        }
-
-        CVehiclePool* pPool = pNetGame->GetVehiclePool();
-
-        const VEHICLEID freeId = FindFreeVehicleSlot(pPool);
-        if (freeId == INVALID_VEHICLE_ID) {
-                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{FF0000}[Client]: Boş maşın yeri yoxdur.");
-                mm::PushToast("Boş maşın yeri yoxdur", mm::Red());
-                return nullptr;
-        }
-
-        NEW_VEHICLE nv{};
-        nv.VehicleID            = freeId;
-        nv.iVehicleType         = modelId;
-        nv.vecPos               = pos;
-        nv.fRotation            = 0.0f;
-        nv.byteInteriorColor1   = 0xFF;   // 0xFF = rəng tətbiq edilmir (default)
-        nv.byteInreriorColor2   = 0xFF;
-        nv.fHealth              = 1000.0f;
-        nv.byteInterior         = 0;
-        nv.dwDoorDamageStatus   = 0;
-        nv.dwPanelDamageStatus  = 0;
-        nv.byteLightDamageStatus = 0;
-        nv.byteTireDamageStatus = 0;
-        nv.byteAddSiren         = 0;
-        std::memset(nv.byteModSlots, 0, sizeof(nv.byteModSlots));
-        nv.bytePaintJob         = 0xFF;
-        nv.iBodyColor1          = 0;
-        nv.iBodyColor2          = 0;
-
-        if (!pPool->New(&nv))
-                return nullptr;
-
-        return pPool->GetAt(freeId);
-}
-
-void RenderVehicleMenuDialog()
-{
-        using namespace mm;
-
-        static float s_t = 0.0f;
-        static ImVec2 panelCenter(-1.0f, -1.0f);
-        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
-        enum { ID_VEH_CLOSE = 400, ID_VEH0 = 410 };
-
-        const auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - s_last).count();
-        s_last = now;
-        dt = Clamp(dt, 0.0f, 0.05f);
-
-        const bool want = g_bShowVehDlg;
-        if (!want && s_t <= 0.0f) { s_vehRectValid = false; return; }
-
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-
-        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
-        const float eAnim = EaseOutCubic(s_t);
-        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
-
-        ImGuiIO& io = ImGui::GetIO();
-        const ImVec2 disp = io.DisplaySize;
-        const float W0 = 560.0f, H0 = 560.0f;
-        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
-        s_U = U;
-
-        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
-        const float pw = W0 * U, ph = H0 * U;
-        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
-
-        s_vehRectValid = (s_t > 0.05f);
-        s_vehPos  = ImVec2(P.x, P.y);
-        s_vehSize = ImVec2(P.w, P.h);
-
-        const bool canInput = want && s_t > 0.75f;
-        s_dl = ImGui::GetForegroundDrawList();
-
-        Fill(P, Col(17, 19, 26, 246), S(14.0f));
-        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
-        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "MAŞIN SEÇ");
-
-        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
-        if (Tap(ID_VEH_CLOSE, bClose, canInput)) g_bShowVehDlg = false;
-        HeaderBtn(ID_VEH_CLOSE, bClose, dt, "", true);
-
-        for (int i = 0; i < kVehCount; ++i)
-        {
-                const Rc row{ P.x + S(20.0f), P.y + S(66.0f) + i * S(58.0f), P.w - S(40.0f), S(50.0f) };
-                const int id = ID_VEH0 + i;
-                const bool tapped = Tap(id, row, canInput);
-                const float p = Prs(id, dt);
-                const Rc d = Shrink(row, S(1.2f) * p);
-                Fill(d, Col(27, 30, 40, 255), S(10.0f));
-                Txt(S(16.0f), d.x + S(16.0f), d.y + (d.h - S(16.0f)) * 0.5f, Col(226, 230, 240), kVehList[i].name);
-
-                if (tapped && pLocalPlayer && pLocalPlayer->m_pPed)
-                {
-                        CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
-                        CVector spawnPos(base.x + 4.0f, base.y + 2.0f, base.z);
-                        CVehicle* pVeh = SpawnVehicleNearPlayer(kVehList[i].model, spawnPos);
-                        g_bShowVehDlg = false;
-
-                        if (pUI && pUI->chat())
-                                pUI->chat()->addDebugMessage(pVeh ? "{00FF00}[Client]: %s yaradıldı." : "{FF0000}[Client]: Maşın yaradıla bilmədi.", kVehList[i].name);
-
-                        char msg[80];
-                        if (pVeh) {
-                                snprintf(msg, sizeof(msg), "Yaradıldı: %s", kVehList[i].name);
-                                PushToast(msg, Green());
-                        } else {
-                                PushToast("Maşın yaradıla bilmədi", Red());
-                        }
-                }
-        }
-}
-
-// ============================================================================
-//  /npc  — oyunçunun öz modeli ilə statik NPC yaratma
-// ============================================================================
-static std::vector<CPedGTA*> s_npcList;
-
-static CPedGTA* SpawnNpcNearPlayer(CPlayerPed* pPlayerPed, const CVector& pos)
-{
-        if (!CPools::ms_pPedPool || !pPlayerPed || !pPlayerPed->m_pPed) return nullptr;
-
-        void* slot = CPools::ms_pPedPool->New();
-        if (!slot) return nullptr;
-
-        CPedGTA* pNpc = new (slot) CPedGTA(PEDTYPE_CIVMALE);
-        if (!pNpc) return nullptr;
-
-        pNpc->SetModelIndex(pPlayerPed->m_pPed->m_nModelIndex);
-
-        pNpc->m_placement.m_vPosn = pos;
-        pNpc->Add();
-
-        s_npcList.push_back(pNpc);
-        return pNpc;
-}
-
-static void RemoveAllNpcs()
-{
-        for (CPedGTA* p : s_npcList) {
-                if (!p) continue;
-                p->Remove();
-                if (CPools::ms_pPedPool) CPools::ms_pPedPool->Delete(p);
-        }
-        s_npcList.clear();
-}
-
-void RenderNpcDialog()
-{
-        using namespace mm;
-
-        static float s_t = 0.0f;
-        static ImVec2 panelCenter(-1.0f, -1.0f);
-        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
-        enum { ID_NPC_CLOSE = 500, ID_NPC_SPAWN = 501, ID_NPC_CLEAR = 502 };
-
-        const auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - s_last).count();
-        s_last = now;
-        dt = Clamp(dt, 0.0f, 0.05f);
-
-        const bool want = g_bShowNpcDlg;
-        if (!want && s_t <= 0.0f) { s_npcRectValid = false; return; }
-
-        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-
-        s_t = Clamp(s_t + (want ? dt / 0.2f : -dt / 0.16f), 0.0f, 1.0f);
-        const float eAnim = EaseOutCubic(s_t);
-        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
-
-        ImGuiIO& io = ImGui::GetIO();
-        const ImVec2 disp = io.DisplaySize;
-        const float W0 = 480.0f, H0 = 260.0f;
-        const float U = std::min(disp.y / 720.0f, std::min(disp.x * 0.9f / W0, disp.y * 0.9f / H0)) * (0.96f + 0.04f * eAnim);
-        s_U = U;
-
-        if (panelCenter.x < 0.0f) panelCenter = ImVec2(disp.x * 0.5f, disp.y * 0.5f);
-        const float pw = W0 * U, ph = H0 * U;
-        const Rc P{ panelCenter.x - pw * 0.5f, panelCenter.y - ph * 0.5f, pw, ph };
-
-        s_npcRectValid = (s_t > 0.05f);
-        s_npcPos  = ImVec2(P.x, P.y);
-        s_npcSize = ImVec2(P.w, P.h);
-
-        const bool canInput = want && s_t > 0.75f;
-        s_dl = ImGui::GetForegroundDrawList();
-
-        Fill(P, Col(17, 19, 26, 246), S(14.0f));
-        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
-        TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "NPC");
-
-        char cnt[32];
-        snprintf(cnt, sizeof(cnt), "Yaradılmış: %d", (int)s_npcList.size());
-        Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), cnt);
-
-        const Rc bClose{ P.x + P.w - S(54.0f), P.y + S(10.0f), S(36.0f), S(36.0f) };
-        if (Tap(ID_NPC_CLOSE, bClose, canInput)) g_bShowNpcDlg = false;
-        HeaderBtn(ID_NPC_CLOSE, bClose, dt, "", true);
-
-        const Rc rSpawn{ P.x + S(20.0f), P.y + S(66.0f), P.w - S(40.0f), S(56.0f) };
-        if (Tap(ID_NPC_SPAWN, rSpawn, canInput) && pLocalPlayer && pLocalPlayer->m_pPed)
-        {
-                CVector base = pLocalPlayer->m_pPed->m_placement.m_vPosn;
-                CVector spawnPos(base.x + 2.0f, base.y + 2.0f, base.z);
-                CPedGTA* pNpc = SpawnNpcNearPlayer(pLocalPlayer, spawnPos);
-                PushToast(pNpc ? "NPC yaradıldı" : "NPC yaradıla bilmədi", pNpc ? Green() : Red());
-        }
-        {
-                const float p = Prs(ID_NPC_SPAWN, dt);
-                const Rc d = Shrink(rSpawn, S(1.2f) * p);
-                Fill(d, Accent(0.0f, 24 + (int)(40.0f * p)), S(10.0f));
-                Stroke(d, Accent(0.0f, 160), S(10.0f), S(1.2f));
-                TxtC(S(16.0f), d, Col(232, 238, 250), "NPC Yarat (yanıma)", true);
-        }
-
-        const Rc rClear{ P.x + S(20.0f), P.y + S(134.0f), P.w - S(40.0f), S(50.0f) };
-        if (Tap(ID_NPC_CLEAR, rClear, canInput)) {
-                const int cleared = (int)s_npcList.size();
-                RemoveAllNpcs();
-                if (cleared > 0) PushToast("Bütün NPC-lər silindi", Orange());
-        }
-        {
-                const float p = Prs(ID_NPC_CLEAR, dt);
-                const Rc d = Shrink(rClear, S(1.2f) * p);
-                Fill(d, Col(27, 30, 40, 255), S(10.0f));
-                TxtC(S(15.0f), d, Col(226, 230, 240), "Hamısını sil", true);
-        }
-
-        Txt(S(12.0f), P.x + S(20.0f), P.y + P.h - S(28.0f), Col(124, 132, 152), "NPC-lər hərəkətsizdir (statik).");
 }
 
 void UI::drawList()
@@ -1392,34 +911,20 @@ void UI::drawList()
 
         draw(renderer());
 
-        RenderHandlingDialog();
-        RenderTpDialog();
-        RenderSettingsDialog();
-        RenderVehicleMenuDialog();
-        RenderNpcDialog();
-
-        // Toastlar her sey cizildikden sonra, en ustte gorunur
-        {
-                using namespace mm;
-                static std::chrono::steady_clock::time_point s_toastLast = std::chrono::steady_clock::now();
-                const auto now = std::chrono::steady_clock::now();
-                float dt = std::chrono::duration<float>(now - s_toastLast).count();
-                s_toastLast = now;
-                dt = Clamp(dt, 0.0f, 0.05f);
-
-                ImGuiIO& io = ImGui::GetIO();
-                UpdateAndRenderToasts(dt, io.DisplaySize);
-        }
+        RenderVehicleHud();
+        RenderHandlingDialog();   // mod menyu hamisinin ustunde
 }
 
-static bool s_dlgCapture      = false;
-static bool s_dlgCapturedEvent = false;
+// Toxunus mod menyuya "tutulubmu" (basma panelin icinde baslayibsa, barmaq disari cixsa da eyni toxunus bitene qeder tutulur)
+static bool s_dlgCapture      = false;   // cari toxunus paneldedir
+static bool s_dlgCapturedEvent = false;  // SON hadise menyuya aiddir (hooks.cpp bunu oxuyur)
 
 bool UI_HandlingDlgCapturedEvent()
 {
         return s_dlgCapturedEvent;
 }
 
+// hooks.cpp -> AND_TouchEvent_hook bu funksiyani cagirir (pUI->touchEvent(...))
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
         const int tt = (type == TouchType::push) ? TOUCH_PUSH : ((type == TouchType::pop) ? TOUCH_POP : TOUCH_MOVE);
@@ -1427,21 +932,23 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
         if (tt != TOUCH_MOVE)
                 HND_LOG("[HND] touch type=%d x=%.0f y=%.0f dlg=%d", tt, pos.x, pos.y, (int)g_bShowHandlingDlg);
 
-        const bool anyModOpen = g_bShowHandlingDlg || g_bShowTpDlg || g_bShowSettingsDlg || g_bShowVehDlg || g_bShowNpcDlg;
-        if (g_bHideAllUI && !anyModOpen && tt == TOUCH_PUSH) {
+        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
+        if (g_bHideAllUI && !g_bShowHandlingDlg && tt == TOUCH_PUSH) {
                 g_bHideAllUI = false;
                 if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
                 s_dlgCapturedEvent = false;
                 return;
         }
 
+        // Mod menyu ucun her toxunusu queue-ya at
         PushTouch(tt, pos.x, pos.y);
 
-        if (tt == TOUCH_PUSH) s_dlgCapture = UI_IsPointInAnyModDlg(pos);
+        if (tt == TOUCH_PUSH) s_dlgCapture = UI_IsPointInHandlingDlg(pos);
         s_dlgCapturedEvent = s_dlgCapture;
         if (tt == TOUCH_POP) s_dlgCapture = false;
 
-        if (s_dlgCapturedEvent || UI_IsPointInAnyModDlg(pos))
+        // Mod menyunun uzerine basanda alt widget-ler (chat, buttonpanel ...) toxunusu almasin
+        if (s_dlgCapturedEvent || UI_IsPointInHandlingDlg(pos))
                 return;
 
         if (m_keyboard->visible() && m_keyboard->contains(pos))
@@ -1459,6 +966,8 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
         Widget::touchEvent(pos, type);
 }
 
+// DIQQET: hooks.cpp-de bu funksiyanin cagirisi serhe alinib, real giris UI::touchEvent-dir.
+// Eger bir gun hook-da OnTouchEvent aktiv edilse, UI::touchEvent ile cift toxunus gelmesin.
 bool UI::OnTouchEvent(int type, bool multi, int x, int y)
 {
         (void)multi;
@@ -1466,8 +975,8 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
         if (type != TOUCH_MOVE)
                 HND_LOG("[HND] touch type=%d x=%d y=%d dlg=%d", type, x, y, (int)g_bShowHandlingDlg);
 
-        const bool anyModOpen = g_bShowHandlingDlg || g_bShowTpDlg || g_bShowSettingsDlg || g_bShowVehDlg || g_bShowNpcDlg;
-        if (g_bHideAllUI && !anyModOpen && type == TOUCH_PUSH) {
+        // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
+        if (g_bHideAllUI && !g_bShowHandlingDlg && type == TOUCH_PUSH) {
                 g_bHideAllUI = false;
                 if (pUI && pUI->chat()) {
                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");

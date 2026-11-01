@@ -212,8 +212,10 @@ static int Hooked_i32_ptr_i32(void* a1, int a2) {
 static bool InstallHook(const char* sig, uintptr_t target, HookSlot& slot, void* hookedFn) {
     if (slot.active) { FLog("[Bridge] '%s' artiq hook olunub (bir slotda 1 hook)", sig); return false; }
     void* orig = nullptr;
-    if (!CHook::Hook((void*)target, hookedFn, &orig)) {   // layihenin armhook sarmalayicisi
-        FLog("[Bridge] hook ugursuz: %s @ 0x%lx", sig, (unsigned long)target);
+    // CHook::InlineHook neticeni qaytarmir, ona gore shadowhook-u birbasa cagiririq
+    int rc = shadowhook_hook_func_addr((void*)target, hookedFn, &orig);
+    if (rc != 0) {
+        FLog("[Bridge] hook ugursuz (rc=%d): %s @ 0x%lx", rc, sig, (unsigned long)target);
         return false;
     }
     slot.orig = orig;

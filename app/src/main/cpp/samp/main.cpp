@@ -29,6 +29,9 @@
 #include "settings.h"
 #include "crashlytics.h"
 
+// Lua
+#include "LuaManager.h"
+
 /*
 Peerapol Unarak
 */
@@ -263,6 +266,9 @@ void DoInitStuff()
 
             DoDebugStuff();
         }
+
+        // Lua: core.lua yuklenir (UI hazir olandan sonra)
+        LuaManager::Init();
 
         bGameInited = true;
     }

@@ -7,6 +7,7 @@
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/VehControls.h"
+#include "../../LuaManager.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -114,6 +115,29 @@ bool ProcessClientCommands(const std::string& input)
         ss >> cmd;
 
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+
+        // ===== Lua =====
+        if (cmd == "/luareload") {
+                bool ok = LuaManager::Init();
+                pUI->chat()->addDebugMessage(ok ? "{00FF00}[Lua]: yuklendi" : "{FF0000}[Lua]: xeta");
+                return true;
+        }
+
+        {
+                std::string luaArgs;
+                std::getline(ss, luaArgs);
+                size_t lp = luaArgs.find_first_not_of(" \t");
+                luaArgs = (lp == std::string::npos) ? "" : luaArgs.substr(lp);
+
+                if (LuaManager::OnCommand(cmd, luaArgs)) return true;
+
+                // stream-i basa qaytar ki, asagidaki C++ komandalari duzgun isleye
+                ss.clear();
+                ss.str(input);
+                ss >> cmd;
+                std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+        }
+        // ===============
 
         if (cmd == "/yt") {
                 std::string rest;

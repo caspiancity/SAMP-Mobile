@@ -17,7 +17,8 @@ extern JavaVM* javaVM;
 extern char* g_pszStorage;
 void FLog(const char* fmt, ...);
 
-std::recursive_mutex g_luaMutex;
+// Düzəldilmiş variant:
+std::recursive_timed_mutex g_luaMutex;
 static lua_State* g_L = nullptr;   // hook geri-cagirislari ucun saxlanir
 
 // =====================================================================

@@ -23,6 +23,30 @@ jobs:
         with:
           submodules: recursive
 
+      # ---------------------------------------------------------------
+      # Vendor daxilindəki bütün .c və .h fayllarını sil
+      # ---------------------------------------------------------------
+      - name: Remove all C and H files from vendor
+        shell: bash
+        run: |
+          VENDOR_DIR="app/src/main/cpp/samp/vendor"
+
+          if [ ! -d "$VENDOR_DIR" ]; then
+            echo "::error::Vendor qovluğu tapılmadı: $VENDOR_DIR"
+            exit 1
+          fi
+
+          echo "Vendor daxilində .c və .h faylları axtarılır..."
+
+          find "$VENDOR_DIR" -type f \( -iname "*.c" -o -iname "*.h" \) -print -delete
+
+          echo "Vendor təmizləndi."
+          echo "Qalan .c faylları:"
+          find "$VENDOR_DIR" -type f -iname "*.c"
+
+          echo "Qalan .h faylları:"
+          find "$VENDOR_DIR" -type f -iname "*.h"
+
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:

@@ -15,11 +15,7 @@ extern CSettings* pSettings;
 extern CJavaWrapper *pJavaWrapper;
 
 bool g_bHideAllUI = false;
-bool g_bShowHandlingDlg = false;
-bool g_bShowTpDlg = false;
-bool g_bShowSettingsDlg = false;
-bool g_bShowVehDlg = false;
-bool g_bShowNpcDlg = false;
+bool g_bShowHandlingDlg = false;   // /mm (kohne addi: /tuning)
 
 Chat::Chat()
         : ListBox()
@@ -136,33 +132,13 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
-        if (cmd == "/tuning") {
+        if (cmd == "/mm") {
                 CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
                         return true;
                 }
                 g_bShowHandlingDlg = !g_bShowHandlingDlg;
-                return true;
-        }
-
-        if (cmd == "/tp") {
-                g_bShowTpDlg = !g_bShowTpDlg;
-                return true;
-        }
-
-        if (cmd == "/ayarlar") {
-                g_bShowSettingsDlg = !g_bShowSettingsDlg;
-                return true;
-        }
-
-        if (cmd == "/m") {
-                g_bShowVehDlg = !g_bShowVehDlg;
-                return true;
-        }
-
-        if (cmd == "/npc") {
-                g_bShowNpcDlg = !g_bShowNpcDlg;
                 return true;
         }
 

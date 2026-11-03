@@ -38,7 +38,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-std::recursive_timed_mutex g_luaMutex;
+std::recursive_mutex g_luaMutex;
 
 namespace LuaBridge {
 
@@ -52,7 +52,13 @@ struct Guard {
     // timeoutMs < 0  -> limitsiz gozle
     explicit Guard(int timeoutMs = -1) : ok(false) {
         if (timeoutMs < 0) { g_luaMutex.lock(); ok = true; }
-        else ok = g_luaMutex.try_lock_for(std::chrono::milliseconds(timeoutMs));
+        else {
+            for (int waited = 0;; waited++) {        // try_lock + 1ms yuxu (recursive_mutex-de timed yoxdur)
+                if (g_luaMutex.try_lock()) { ok = true; break; }
+                if (waited >= timeoutMs) break;
+                usleep(1000);
+            }
+        }
         if (ok) t_lockDepth++;
     }
     ~Guard() { if (ok) { t_lockDepth--; g_luaMutex.unlock(); } }
@@ -218,7 +224,9 @@ static void LoadSyms(const char* lib, LibSyms& ls) {
     }
     int si = -1;
     for (int i = 0; i < (int)eh.e_shnum; i++) if (sh[i].sh_type == SHT_SYMTAB) { si = i; break; }
-    if (si < 0) { close(fd); ls.err = ".symtab yoxdur (lib strip olunub)"; return; }
+    if (si < 0)    // strip olunmus lib (meselen libGTASA.so): yalniz export olunan simvollar
+        for (int i = 0; i < (int)eh.e_shnum; i++) if (sh[i].sh_type == SHT_DYNSYM) { si = i; break; }
+    if (si < 0) { close(fd); ls.err = "simvol cedveli yoxdur (.symtab ve .dynsym)"; return; }
     if (sh[si].sh_link >= eh.e_shnum) { close(fd); ls.err = "strtab yanlisdir"; return; }
     const ElfW(Shdr)& symSh = sh[si];
     const ElfW(Shdr)& strSh = sh[symSh.sh_link];
@@ -266,15 +274,25 @@ static LibSyms& GetSyms(const char* lib) {
 }
 
 // findSymbol(ad [, lib="libsamp.so"]) -> adres  |  nil, sebeb
+// findSymbol("libGTASA.so", ad) kimi tərs sira da qebul olunur.
 static int l_findSymbol(lua_State* S) {
     const char* name = luaL_checkstring(S, 1);
     const char* lib = luaL_optstring(S, 2, "libsamp.so");
+    if (strstr(name, ".so") && !strstr(lib, ".so")) { const char* t = name; name = lib; lib = t; }
+
     LibSyms& ls = GetSyms(lib);
-    if (!ls.err.empty()) return Fail(S, ls.err.c_str());
-    std::unordered_map<std::string, SymEnt>::iterator it = ls.map.find(name);
-    if (it == ls.map.end()) return Fail(S, "simvol tapilmadi");
-    lua_pushinteger(S, (lua_Integer)it->second.addr);
-    return 1;
+    if (ls.err.empty()) {
+        std::unordered_map<std::string, SymEnt>::iterator it = ls.map.find(name);
+        if (it != ls.map.end()) { lua_pushinteger(S, (lua_Integer)it->second.addr); return 1; }
+    }
+    // ehtiyat: dinamik cedvel (section-lari silinmis libler ucun)
+    void* h = dlopen(lib, RTLD_NOW | RTLD_NOLOAD);
+    if (h) {
+        void* p = dlsym(h, name);
+        dlclose(h);
+        if (p) { lua_pushinteger(S, (lua_Integer)(uintptr_t)p); return 1; }
+    }
+    return Fail(S, ls.err.empty() ? "simvol tapilmadi" : ls.err.c_str());
 }
 
 // findSymbols(hisse [, lib [, max=50]]) -> { {name=, addr=}, ... }, umumi_say
@@ -1361,6 +1379,45 @@ void DispatchRender(lua_State* L) {
 }
 
 // =====================================================================
+//  6) require("ad")  ->  <storage>/lua/lib/ad.lua  (bir defe yuklenir, kesh olunur)
+//  Fayl netice kimi cedvel qaytara biler:  local ui = require("ui")
+//  Qaytarmasa qlobal funksiyalari elan edib  require("ui")  demek kifayetdir.
+// =====================================================================
+static int l_require(lua_State* S) {
+    const char* name = luaL_checkstring(S, 1);
+    if (!ValidKey(name)) return luaL_error(S, "require: yanlis ad '%s'", name);
+
+    lua_getfield(S, LUA_REGISTRYINDEX, "LB_LOADED");
+    if (lua_type(S, -1) != LUA_TTABLE) {
+        lua_pop(S, 1);
+        lua_newtable(S);
+        lua_pushvalue(S, -1);
+        lua_setfield(S, LUA_REGISTRYINDEX, "LB_LOADED");
+    }
+    int li = lua_absindex(S, -1);
+    lua_getfield(S, li, name);
+    if (!lua_isnil(S, -1)) return 1;                 // artiq yuklenib (ve ya yuklenir)
+    lua_pop(S, 1);
+
+    std::string path = std::string(g_pszStorage) + "/lua/lib/" + name + ".lua";
+    if (luaL_loadfile(S, path.c_str()) != LUA_OK)
+        return luaL_error(S, "require('%s'): %s", name, lua_tostring(S, -1) ? lua_tostring(S, -1) : "?");
+
+    lua_pushboolean(S, 0);                           // dovri require-dan qorunmaq
+    lua_setfield(S, li, name);
+    lua_pushstring(S, name);
+    if (lua_pcall(S, 1, 1, 0) != LUA_OK) {
+        lua_pushnil(S);
+        lua_setfield(S, li, name);                   // xeta -> novbeti cehdde yeniden yuklensin
+        return lua_error(S);
+    }
+    if (lua_isnil(S, -1)) { lua_pop(S, 1); lua_pushboolean(S, 1); }
+    lua_pushvalue(S, -1);
+    lua_setfield(S, li, name);
+    return 1;
+}
+
+// =====================================================================
 //  Qeydiyyat / Shutdown
 // =====================================================================
 void Register(lua_State* L) {
@@ -1392,6 +1449,8 @@ void Register(lua_State* L) {
     lua_register(L, "saveData", l_saveData);
     lua_register(L, "loadData", l_loadData);
     lua_register(L, "deleteData", l_deleteData);
+
+    lua_register(L, "require", l_require);
 
     lua_register(L, "readHex", l_readHex);
     lua_register(L, "patchCode", l_patchCode);

@@ -12,13 +12,14 @@
 #include <unordered_map>
 #include <fstream>
 #include <elf.h>
+#include <mutex>
 
 extern JavaVM* javaVM;
 extern char* g_pszStorage;
 void FLog(const char* fmt, ...);
 
-// Düzəldilmiş variant:
-std::recursive_timed_mutex g_luaMutex;
+// Düzəldilmiş mutex tipi (və ya std::recursive_timed_mutex istifadə edirsinizsə, lock_guard da buna uyğun olmalıdır)
+std::recursive_mutex g_luaMutex;
 static lua_State* g_L = nullptr;   // hook geri-cagirislari ucun saxlanir
 
 // =====================================================================
@@ -155,8 +156,6 @@ static int l_findSymbol(lua_State* S) {
 // =====================================================================
 //  2) UMUMI HOOK: oncedan tikilmis bir nece imza wrapper-i
 //     Lua: hookSig("void_ptr", addr_or_symbolname, function(args...) ... end)
-//     Geri cagirisdan "true" qaytarsa original funksiya da cagirilir (davam),
-//     "false" qaytarsa original funksiya ATLANIR (deyisdirilir).
 // =====================================================================
 struct HookSlot {
     void* orig = nullptr;
@@ -164,7 +163,6 @@ struct HookSlot {
     bool active = false;
 };
 
-// imza basina 1 statik slot (eyni imzadan birden cox hook lazimdirsa bu boyude)
 static HookSlot g_slot_void_ptr;
 static HookSlot g_slot_void_ptr_f32;
 static HookSlot g_slot_void_ptr_i32;
@@ -211,11 +209,8 @@ static int Hooked_i32_ptr_i32(void* a1, int a2) {
 }
 
 static bool InstallHook(const char* sig, uintptr_t target, HookSlot& slot, void* hookedFn) {
-    if (slot.active) { FLog("[Bridge] '%s' artiq hook olunub (bir slotda 1 hook)", sig); return false; }
+    if (slot.active) { FLog("[Bridge] '%s' artiq hook olunub", sig); return false; }
     void* orig = nullptr;
-    // CHook::InlineHook neticeni qaytarmir, ona gore shadowhook-u birbasa cagiririq.
-    // Bu versiyada shadowhook_hook_func_addr "stub" handle (void*) qaytarir;
-    // uğur = nullptr olmamasi.
     void* stub = shadowhook_hook_func_addr((void*)target, hookedFn, &orig);
     if (!stub) {
         FLog("[Bridge] hook ugursuz: %s @ 0x%lx", sig, (unsigned long)target);
@@ -226,8 +221,6 @@ static bool InstallHook(const char* sig, uintptr_t target, HookSlot& slot, void*
     return true;
 }
 
-// hookSig(sig, addrOrSoAndName..., luaFunction)
-// istifade: hookSig("void_ptr", addr, function(self) ... end)
 static int l_hookSig(lua_State* S) {
     const char* sig = luaL_checkstring(S, 1);
     uintptr_t target = (uintptr_t)luaL_checkinteger(S, 2);
@@ -247,8 +240,7 @@ static int l_hookSig(lua_State* S) {
 }
 
 // =====================================================================
-//  3) JAVA KORPUSU: statik metodu ad/imza ile cagirir (String arqument/qayidis)
-//     javaCallStatic("com/samp/mobile/game/SAMP", "someMethod", "(Ljava/lang/String;)V", "arg")
+//  3) JAVA KORPUSU
 // =====================================================================
 static int l_javaCallStatic(lua_State* S) {
     const char* cls = luaL_checkstring(S, 1);
@@ -280,7 +272,6 @@ static int l_javaCallStatic(lua_State* S) {
         }
         return 0;
     } else {
-        // yalniz String qayidis desteklenir (umumi hal kifayet edir)
         jmethodID m = env->GetStaticMethodID(c, method, sig);
         if (!m) { env->ExceptionClear(); return luaL_error(S, "javaCallStatic: metod tapilmadi: %s", method); }
         jobject r;
@@ -301,7 +292,7 @@ static int l_javaCallStatic(lua_State* S) {
 }
 
 // =====================================================================
-//  4) SAXLAMA: files/lua_data.txt icinde sade acar=deyer (her setirde biri)
+//  4) SAXLAMA (KV)
 // =====================================================================
 static std::string DataPath() {
     return std::string(g_pszStorage) + "/lua_data.txt";
@@ -334,7 +325,7 @@ static int l_saveData(lua_State* S) {
     const char* k = luaL_checkstring(S, 1);
     const char* v = luaL_checkstring(S, 2);
     std::string val(v);
-    for (auto& ch : val) if (ch == '\n') ch = ' ';   // setir qirilmasin
+    for (auto& ch : val) if (ch == '\n') ch = ' ';
     g_kv[k] = val;
     SaveKV();
     return 0;
@@ -349,7 +340,7 @@ static int l_loadData(lua_State* S) {
 }
 
 // =====================================================================
-//  5) MODUL YUKLEYICI: files/lua/*.lua elifba sirasi ile yuklenir
+//  5) MODUL YUKLEYICI
 // =====================================================================
 void LuaBridge::LoadModules(lua_State* L) {
     std::string dir = std::string(g_pszStorage) + "/lua";
@@ -359,7 +350,7 @@ void LuaBridge::LoadModules(lua_State* L) {
     std::vector<std::string> files;
     dirent* e;
     while ((e = readdir(d)) != nullptr) {
-        std::string name = e->d_name;
+        std::string name = e$->d_name; // Note: standard name
         if (name.size() > 4 && name.substr(name.size() - 4) == ".lua") files.push_back(name);
     }
     closedir(d);
@@ -387,9 +378,5 @@ void LuaBridge::Register(lua_State* L) {
 }
 
 void LuaBridge::Shutdown(lua_State* L) {
-    // Qeyd: hook-lar unhook olunmur (shadowhook sarmalayicisinda unhook yoxdursa).
-    // /luareload zamani kohne luaRef-ler etibarsizlasir; hook cagiranda state
-    // g_L yenilenir, amma kohne funksiya gostericileri qaliq qala biler.
-    // Bu, bilinen mehdudiyyetdir: hook qoyulan funksiyalari tez-tez reload etme.
     g_L = nullptr;
 }

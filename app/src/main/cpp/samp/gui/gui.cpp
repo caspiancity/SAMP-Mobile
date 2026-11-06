@@ -825,9 +825,17 @@ static void DrawGauge(ImDrawList* dl, float cx, float cy, float r, bool on, cons
         dl->AddText(f, ts, ImVec2(cx - tw * 0.5f, cy - ts * 0.5f), on ? IM_COL32(240,243,250,255) : IM_COL32(150,154,166,255), label);
 }
 
+#include <cmath>
+#include <cstdio>
+
+// ============================================================================
+//  MTA stilli dairevi speedometr. Sinyal UI legv edilib (hele ki).
+//  Uzun basma = reng deyisimi (kHudPalette). Benzin dairesi YOXDUR:
+//  client-de yanacaq melumati yoxdur (serverin textdrawidir).
+// ============================================================================
 void RenderVehicleHud()
 {
-        if (g_bHideAllUI || g_bShowHandlingDlg) return; // /mm aciqkan HUD-u gizlet, qarismasin
+        if (g_bHideAllUI || g_bShowHandlingDlg) return;
 
         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
         if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) return;
@@ -844,19 +852,15 @@ void RenderVehicleHud()
         ImGuiIO& io = ImGui::GetIO();
         const ImVec2 disp = io.DisplaySize;
         const float u = disp.y / 720.0f;
-
-        const float gr = 30.0f * u;
-        const float gap = 14.0f * u;
-        const float groupW = gr * 6.0f + gap * 2.0f;
-        // alt-sag, merkezden biraz sag terefde
-        const float baseX = disp.x * 0.62f;
-        const float baseY = disp.y - gr * 1.6f;
-
         ImDrawList* dl = ImGui::GetForegroundDrawList();
+        ImFont* font = ImGui::GetFont();
+
+        const float r = 92.0f * u;
+        const ImVec2 c(disp.x * 0.66f, disp.y - r - 14.0f * u);
 
         // uzun basma ile reng deyisimi
-        const ImVec2 hitTl(baseX - gr, baseY - gr), hitBr(baseX + groupW, baseY + gr);
-        const bool inRect = g_mmTouch.x >= hitTl.x && g_mmTouch.x <= hitBr.x && g_mmTouch.y >= hitTl.y && g_mmTouch.y <= hitBr.y;
+        const bool inRect = g_mmTouch.x >= c.x - r && g_mmTouch.x <= c.x + r &&
+                            g_mmTouch.y >= c.y - r && g_mmTouch.y <= c.y + r;
         if (g_mmTouch.down && inRect) {
                 s_hudHolding = true;
                 s_hudHoldT += 1.0f / 60.0f;
@@ -867,33 +871,111 @@ void RenderVehicleHud()
         }
         const ImU32 accent = kHudPalette[s_hudColorIdx];
 
+        // ---- melumat ----
+        const float mvx = gtaVeh->m_vecMoveSpeed.x, mvy = gtaVeh->m_vecMoveSpeed.y, mvz = gtaVeh->m_vecMoveSpeed.z;
+        const float kmh = sqrtf(mvx * mvx + mvy * mvy + mvz * mvz) * 180.0f;
+        const float curSpd = gtaVeh->m_pHandlingData ? gtaVeh->m_pHandlingData->m_transmissionData.m_fCurrentSpeed : 0.0f;
+
+        char gear[4];
+        if (kmh < 1.5f)         snprintf(gear, sizeof(gear), "N");
+        else if (curSpd < -0.01f) snprintf(gear, sizeof(gear), "R");
+        else                    snprintf(gear, sizeof(gear), "%d", gtaVeh->m_nCurrentGear < 1 ? 1 : (int)gtaVeh->m_nCurrentGear);
+
         const bool eng = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
         const bool lig = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
         const int  lk  = (int)gtaVeh->m_nDoorLock;
         const bool locked = (lk == 2 || lk == 3);
 
-        DrawGauge(dl, baseX,                      baseY, gr, eng, "MÜHƏRRİK", accent, u);
-        DrawGauge(dl, baseX + gr * 2.0f + gap,     baseY, gr, lig, "FARA",     accent, u);
-        DrawGauge(dl, baseX + gr * 4.0f + gap * 2, baseY, gr, !locked, "QAPI", accent, u);
+        static float s_dialShown = 0.0f;
+        float f = kmh / 270.0f;
+        if (f > 1.0f) f = 1.0f;
+        s_dialShown += (f - s_dialShown) * 0.2f;
 
-        // sinyal duymeleri (gaugelerin ustunde, kicik)
-        const uint8_t sig = VehControls::GetSignal(gtaVeh);
-        const float sbW = 34.0f * u, sbH = 26.0f * u, sbGap = 6.0f * u;
-        const float sbY = baseY - gr - sbH - 8.0f * u;
-        const float sbX0 = baseX + groupW * 0.5f - (sbW * 3.0f + sbGap * 2.0f) * 0.5f;
-        static const char* kSigLbl[3] = { "◀", "!", "▶" };
-        static const uint8_t kSigMode[3] = { VEH_SIGNAL_LEFT, VEH_SIGNAL_HAZARD, VEH_SIGNAL_RIGHT };
-        for (int i = 0; i < 3; ++i) {
-                const float bx = sbX0 + i * (sbW + sbGap);
-                const bool on = (sig == kSigMode[i]);
-                dl->AddRectFilled(ImVec2(bx, sbY), ImVec2(bx + sbW, sbY + sbH), on ? IM_COL32(255,153,28,220) : IM_COL32(30,33,43,200), 6.0f * u);
-                if (g_mmTouch.pressed && g_mmTouch.x >= bx && g_mmTouch.x <= bx + sbW && g_mmTouch.y >= sbY && g_mmTouch.y <= sbY + sbH)
-                        VehControls::ToggleSignal(gtaVeh, kSigMode[i]);
-                ImFont* f = ImGui::GetFont();
-                const float ts = 13.0f * u;
-                const float tw = f->CalcTextSizeA(ts, FLT_MAX, 0.0f, kSigLbl[i]).x;
-                dl->AddText(f, ts, ImVec2(bx + (sbW - tw) * 0.5f, sbY + (sbH - ts) * 0.5f), IM_COL32(240,243,250,255), kSigLbl[i]);
+        // yol sayaci (sessiya, metr)
+        static CVehicleGTA* s_odoVeh = nullptr;
+        static double s_odo = 0.0;
+        if (s_odoVeh != gtaVeh) { s_odoVeh = gtaVeh; s_odo = 0.0; }
+        s_odo += (double)(kmh / 3.6f) * (double)io.DeltaTime;
+        char odo[16];
+        snprintf(odo, sizeof(odo), "%07d", (int)(s_odo > 9999999.0 ? 9999999.0 : s_odo));
+
+        auto ctext = [&](float x, float y, float size, ImU32 col, const char* s) {
+                const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, s);
+                dl->AddText(font, size, ImVec2(x - sz.x * 0.5f, y), col, s);
+        };
+
+        // ---- cizim ----
+        const float a0 = 3.14159265f * 0.75f;
+        const float sweep = 3.14159265f * 1.5f;
+
+        dl->AddCircleFilled(c, r * 1.04f, IM_COL32(8, 10, 16, 170), 48);
+        dl->AddCircle(c, r * 1.04f, IM_COL32(255, 255, 255, 28), 48, 1.4f * u);
+
+        // esas qovs
+        dl->PathArcTo(c, r * 0.92f, a0, a0 + sweep, 48);
+        dl->PathStroke(IM_COL32(70, 76, 92, 200), 0, 5.0f * u);
+        // qirmizi zona
+        dl->PathArcTo(c, r * 0.92f, a0 + sweep * 0.78f, a0 + sweep, 16);
+        dl->PathStroke(IM_COL32(235, 60, 80, 235), 0, 5.0f * u);
+        // dolu hisse
+        if (s_dialShown > 0.003f) {
+                dl->PathArcTo(c, r * 0.92f, a0, a0 + sweep * s_dialShown, 48);
+                dl->PathStroke(accent, 0, 5.0f * u);
         }
+
+        // kicik cizgiler
+        for (int k = 0; k <= 27; ++k) {
+                if (k % 3 == 0) continue;
+                const float a = a0 + sweep * (k / 27.0f);
+                dl->AddLine(ImVec2(c.x + cosf(a) * r * 0.84f, c.y + sinf(a) * r * 0.84f),
+                            ImVec2(c.x + cosf(a) * r * 0.88f, c.y + sinf(a) * r * 0.88f),
+                            IM_COL32(150, 154, 168, 180), 1.0f * u);
+        }
+        // boyuk cizgiler + reqemler (hər biri 30 km/h)
+        for (int i = 0; i <= 9; ++i) {
+                const float a = a0 + sweep * (i / 9.0f);
+                const float ca = cosf(a), sa = sinf(a);
+                dl->AddLine(ImVec2(c.x + ca * r * 0.80f, c.y + sa * r * 0.80f),
+                            ImVec2(c.x + ca * r * 0.88f, c.y + sa * r * 0.88f),
+                            IM_COL32(215, 219, 232, 230), 1.8f * u);
+                char lb[8];
+                snprintf(lb, sizeof(lb), "%d", i * 30);
+                const float ts = 9.5f * u;
+                const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.0f, lb);
+                dl->AddText(font, ts, ImVec2(c.x + ca * r * 0.67f - tsz.x * 0.5f, c.y + sa * r * 0.67f - tsz.y * 0.5f),
+                            IM_COL32(200, 204, 218, 230), lb);
+        }
+
+        // ibre
+        const float na = a0 + sweep * s_dialShown;
+        dl->AddLine(ImVec2(c.x + cosf(na) * r * 0.20f, c.y + sinf(na) * r * 0.20f),
+                    ImVec2(c.x + cosf(na) * r * 0.80f, c.y + sinf(na) * r * 0.80f),
+                    IM_COL32(255, 255, 255, 240), 2.4f * u);
+
+        // merkez: pillə (viteS)
+        dl->AddCircleFilled(c, r * 0.22f, IM_COL32(14, 16, 24, 240), 28);
+        dl->AddCircle(c, r * 0.22f, accent, 28, 1.8f * u);
+        ctext(c.x, c.y - r * 0.13f, r * 0.26f, IM_COL32(255, 255, 255, 255), gear);
+
+        // gostericiler (M = motor, F = fara, Q = qapi)
+        auto chip = [&](float x, float y, bool on, const char* t) {
+                const float cr = 9.0f * u;
+                dl->AddCircleFilled(ImVec2(x, y), cr, on ? accent : IM_COL32(60, 64, 76, 210), 20);
+                const float ts = 9.0f * u;
+                const ImVec2 s = font->CalcTextSizeA(ts, FLT_MAX, 0.0f, t);
+                dl->AddText(font, ts, ImVec2(x - s.x * 0.5f, y - s.y * 0.5f),
+                            on ? IM_COL32(10, 12, 18, 255) : IM_COL32(170, 174, 186, 255), t);
+        };
+        chip(c.x - r * 0.36f, c.y - r * 0.50f, eng, "M");
+        chip(c.x,             c.y - r * 0.58f, lig, "F");
+        chip(c.x + r * 0.36f, c.y - r * 0.50f, !locked, "Q");
+
+        // sur'et
+        char sp[8];
+        snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+        ctext(c.x, c.y + r * 0.22f, r * 0.42f, IM_COL32(255, 255, 255, 255), sp);
+        ctext(c.x, c.y + r * 0.66f, r * 0.14f, accent, "KM/H");
+        ctext(c.x, c.y + r * 0.80f, r * 0.12f, IM_COL32(190, 194, 208, 220), odo);
 }
 
 void UI::drawList()
@@ -933,9 +1015,15 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
                 HND_LOG("[HND] touch type=%d x=%.0f y=%.0f dlg=%d", tt, pos.x, pos.y, (int)g_bShowHandlingDlg);
 
         // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
-        if (g_bHideAllUI && !g_bShowHandlingDlg && tt == TOUCH_PUSH) {
-                g_bHideAllUI = false;
-                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+        if (g_bHideAllUI && !g_bShowHandlingDlg) {
+                // gizli rejim: yalniz CHAT sahesine basanda UI qayidir, qalan toxunuslar alt widget-lere getmir
+                const ImVec2 dsz = ImGui::GetIO().DisplaySize;
+                const bool hitChat = (pUI && pUI->chat() && pUI->chat()->contains(pos)) ||
+                                     (pos.x >= dsz.x * 0.15f && pos.x <= dsz.x * 0.72f && pos.y <= dsz.y * 0.34f);
+                if (tt == TOUCH_PUSH && hitChat) {
+                        g_bHideAllUI = false;
+                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+                }
                 s_dlgCapturedEvent = false;
                 return;
         }
@@ -976,10 +1064,15 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
                 HND_LOG("[HND] touch type=%d x=%d y=%d dlg=%d", type, x, y, (int)g_bShowHandlingDlg);
 
         // "Hamisini gizlet" rejimi: ekrana toxunanda UI qayidir (mod menyu aciq deyilse)
-        if (g_bHideAllUI && !g_bShowHandlingDlg && type == TOUCH_PUSH) {
-                g_bHideAllUI = false;
-                if (pUI && pUI->chat()) {
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+        if (g_bHideAllUI && !g_bShowHandlingDlg) {
+                // gizli rejim: yalniz CHAT sahesine basanda UI qayidir
+                const ImVec2 tp((float)x, (float)y);
+                const ImVec2 dsz = ImGui::GetIO().DisplaySize;
+                const bool hitChat = (pUI && pUI->chat() && pUI->chat()->contains(tp)) ||
+                                     (tp.x >= dsz.x * 0.15f && tp.x <= dsz.x * 0.72f && tp.y <= dsz.y * 0.34f);
+                if (type == TOUCH_PUSH && hitChat) {
+                        g_bHideAllUI = false;
+                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
                 }
                 return true;
         }

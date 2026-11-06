@@ -317,15 +317,17 @@ namespace VehControls
                 if (fabsf(v.x) < 0.05f) continue;     // dummy yoxdur (motosiklet, qayiq ve s.)
 
                 if (!side) v.x = -v.x;                // oyunun oz mentiqi ile eyni
-                v.x += (v.x >= 0.0f ? 0.05f : -0.05f);
-                v.z += (end == 0 ? -0.06f : 0.05f);
+
+                // lampanin ozunun yerinde qal, yalniz korpusun icinde itmesin deye azca xaricə / on-arxaya cək
+                v.x += (v.x >= 0.0f ? 0.03f : -0.03f);
+                v.y += (end == 0 ? 0.06f : -0.06f);
 
                 CCoronas::RegisterCorona(
                         (uint32)((uintptr)&veh->m_placement.m_vPosn.y + 40 + end * 2 + side),
                         veh,
-                        255, 150, 20, 230,
+                        255, 150, 20, 255,
                         &v,
-                        end == 0 ? 0.50f : 0.55f,
+                        end == 0 ? 0.55f : 0.60f,
                         60.f,
                         eCoronaType::CORONATYPE_HEADLIGHT,
                         eCoronaFlareType::FLARETYPE_NONE,
@@ -334,7 +336,7 @@ namespace VehControls
                         0,
                         0.0f,
                         false,
-                        0,
+                        0.6f,                         // nearClip: koronani kameraya dogru cekir -> korpusun icinde gizlenmir
                         0,
                         15.0f,
                         false,

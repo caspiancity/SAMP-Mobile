@@ -8,10 +8,12 @@
 #include "Scene.h"
 #include "VisibilityPlugins.h"
 #include "Entity/CVehicleGTA.h"
+#include "game/Models/ModelInfo.h"
 #include "../vendor/armhook/patch.h"
 #include "AzPlate.h"
 
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -249,5 +251,69 @@ namespace AzPlate
     {
         CHook::Redirect("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo", &Before_hook);
         CHook::Redirect("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo", &After_hook);
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+//  /dump : masinin atomic/material siyahisi + isiq dummy-leri
+// ----------------------------------------------------------------------------
+extern char* g_pszStorage;
+
+namespace
+{
+    FILE* g_dumpF    = nullptr;
+    int   g_dumpAtom = 0;
+    int   g_dumpMat  = 0;
+
+    RpMaterial* DumpMatCB(RpMaterial* mat, void*)
+    {
+        if (g_dumpF && mat) {
+            const char* tn = mat->texture ? mat->texture->name : "(texture yox)";
+            const char* mn = mat->texture ? mat->texture->mask : "";
+            fprintf(g_dumpF, "  mat#%d tex=\"%s\" mask=\"%s\" rgba=%d,%d,%d,%d\n",
+                    g_dumpMat++, tn, mn,
+                    (int)mat->color.red, (int)mat->color.green, (int)mat->color.blue, (int)mat->color.alpha);
+        }
+        return mat;
+    }
+
+    RpAtomic* DumpAtomCB(RpAtomic* atomic, void*)
+    {
+        if (g_dumpF) fprintf(g_dumpF, "atomic#%d\n", g_dumpAtom++);
+        auto geo = RpAtomicGetGeometry(atomic);
+        if (geo) RpGeometryForAllMaterials(geo, DumpMatCB, nullptr);
+        return atomic;
+    }
+}
+
+namespace AzPlate
+{
+    bool Dump(CVehicleGTA* veh, std::string& outPath)
+    {
+        if (!veh || !veh->m_pRwClump || !g_pszStorage) return false;
+
+        outPath = std::string(g_pszStorage) + "/vehdump.txt";
+        FILE* f = fopen(outPath.c_str(), "a");
+        if (!f) return false;
+
+        g_dumpF = f;
+        g_dumpAtom = 0;
+        g_dumpMat = 0;
+
+        fprintf(f, "\n===== model %d =====\n", (int)veh->m_nModelIndex);
+        auto* mi = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+        if (mi && mi->m_pVehicleStruct) {
+            for (int i = 0; i < 4; ++i) {
+                const CVector& d = mi->m_pVehicleStruct->m_avDummyPos[i];
+                fprintf(f, "dummy[%d] = %.3f %.3f %.3f\n", i, d.x, d.y, d.z);
+            }
+        }
+        RpClumpForAllAtomics(veh->m_pRwClump, DumpAtomCB, nullptr);
+        fprintf(f, "(atomic=%d, material=%d)\n", g_dumpAtom, g_dumpMat);
+
+        fclose(f);
+        g_dumpF = nullptr;
+        return true;
     }
 }

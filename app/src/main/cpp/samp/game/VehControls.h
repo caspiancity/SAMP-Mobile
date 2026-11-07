@@ -26,7 +26,8 @@ namespace VehControls
 	void    RenderSignals(CVehicleGTA* veh);                // DoVehicleLights hook-undan cagirilir
 	// /sinyalayar ters|korona ile deyisdirilir
 	inline bool g_sigSwapSides = false;   // sol/sag ters olarsa
-	inline bool g_sigCorona    = false;   // kohne ayri narinci corona
+	inline bool g_sigCorona    = true;    // ayri narinci corona (defolt ACIQ)
+	inline bool g_sigLamp      = false;   // lampa materiali parildasin (fara yanir! defolt SONULU)
 	void    ApplyRenderLightBits(CVehicleGTA* veh);
 	void    ApplyLampArray(CVehicleGTA* veh);
 }

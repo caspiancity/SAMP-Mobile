@@ -309,6 +309,8 @@ namespace VehControls
         auto it = s_signals.find(veh);
         if (it == s_signals.end()) return;
 
+        if (!g_sigLamp) return;
+
         bool l, r;
         ComputeSides(it->second, l, r);
         const uint8_t on = BlinkOn() ? 1 : 0;
@@ -323,6 +325,8 @@ namespace VehControls
         if (s_signals.empty() || !veh) return;
         auto it = s_signals.find(veh);
         if (it == s_signals.end()) return;
+
+        if (!g_sigLamp) return;
 
         bool l, r;
         ComputeSides(it->second, l, r);

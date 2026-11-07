@@ -1,0 +1,3918 @@
+
+
+===== 0) git =====
+f7e0144 sinyal lampa, AZ nomre
+c9d74cd speedo, sinyal, ui gizle
+10416e8 Update LuaBridge.h
+c628b31 Delete LuaBridge.cpp
+52fbe75 Update LuaBridge.cpp
+?? col.sh
+?? collect4.txt
+
+
+===== A1) fontlar =====
+-rw-------. 1 u0_a1224 u0_a1224 143436 Nov  6 18:09 app/src/main/assets/Fonts/BRADLEYHANDITCTTBOLD.TTF
+-rw-------. 1 u0_a1224 u0_a1224 77628 Nov  6 18:09 app/src/main/assets/Fonts/ChaletComprime-CologneSixty.otf
+-rw-------. 1 u0_a1224 u0_a1224 39512 Nov  6 18:09 app/src/main/assets/Fonts/GTALICENSE-REGULAR.TTF
+-rw-------. 1 u0_a1224 u0_a1224 78488 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELT-LIGHTCOND.TTF
+-rw-------. 1 u0_a1224 u0_a1224 68252 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELT-MEDIUMCOND.TTF
+-rw-------. 1 u0_a1224 u0_a1224 142416 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELTCOM-MD.TTF
+-rw-------. 1 u0_a1224 u0_a1224 155696 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELTCOM-MDCN.TTF
+-rw-------. 1 u0_a1224 u0_a1224 84596 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELTCYR-LIGHTCN.TTF
+-rw-------. 1 u0_a1224 u0_a1224 73876 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELTCYR-MDCOND.TTF
+-rw-------. 1 u0_a1224 u0_a1224 103592 Nov  6 18:09 app/src/main/assets/Fonts/HELVETICANEUELTW1G-ROMAN.OTF
+-rw-------. 1 u0_a1224 u0_a1224 52888 Nov  6 18:09 app/src/main/assets/Fonts/PRICEDOWNGTAVINT.TTF
+-rw-------. 1 u0_a1224 u0_a1224 257552 Nov  6 18:09 app/src/main/res/font/montserrat_black.ttf
+-rw-------. 1 u0_a1224 u0_a1224 244468 Nov  6 18:09 app/src/main/res/font/montserrat_bold.ttf
+-rw-------. 1 u0_a1224 u0_a1224 249556 Nov  6 18:09 app/src/main/res/font/montserrat_bolditalic.ttf
+-rw-------. 1 u0_a1224 u0_a1224 243180 Nov  6 18:09 app/src/main/res/font/montserrat_medium.ttf
+-rw-------. 1 u0_a1224 u0_a1224 245708 Nov  6 18:09 app/src/main/res/font/montserrat_regular.ttf
+-rw-------. 1 u0_a1224 u0_a1224 243816 Nov  6 18:09 app/src/main/res/font/montsserat_semibold.ttf
+-rw-------. 1 u0_a1224 u0_a1224 85756 Nov  6 18:09 app/src/main/res/font/muller_bold.ttf
+-rw-------. 1 u0_a1224 u0_a1224 86528 Nov  6 18:09 app/src/main/res/font/muller_medium.ttf
+-rw-------. 1 u0_a1224 u0_a1224 87080 Nov  6 18:09 app/src/main/res/font/muller_regular.ttf
+-rw-------. 1 u0_a1224 u0_a1224 171072 Nov  6 18:09 app/src/main/res/font/roboto_black.ttf
+-rw-------. 1 u0_a1224 u0_a1224 170348 Nov  6 18:09 app/src/main/res/font/roboto_bold.ttf
+-rw-------. 1 u0_a1224 u0_a1224 171656 Nov  6 18:09 app/src/main/res/font/roboto_medium.ttf
+-rw-------. 1 u0_a1224 u0_a1224 171272 Nov  6 18:09 app/src/main/res/font/roboto_regular.ttf
+
+
+===== A2) font yukleme kodu (grep) =====
+app/src/main/cpp/samp/gui/imguiwrapper.cpp:46:	ImFontConfig fontCfg;
+app/src/main/cpp/samp/gui/imguiwrapper.cpp:62:	ImFont* font = io.Fonts->AddFontFromFileTTF(m_fontPath.c_str(),
+
+
+===== app/src/main/cpp/samp/gui/imguiwrapper.cpp =====
+#include "../main.h"
+#include "imguiwrapper.h"
+#include "uisettings.h"
+
+#include "../game/game.h"
+#include "../net/netgame.h"
+
+// voice
+#include "../voice_new/MicroIcon.h"
+#include "../voice_new/SpeakerList.h"
+#include "../voice_new/include/util/Render.h"
+
+
+extern UI* pUI;
+extern CNetGame* pNetGame;
+
+
+ImGuiWrapper::ImGuiWrapper(const ImVec2& display_size, const std::string& font_path)
+{
+	m_displaySize = display_size;
+	m_renderer = 0;
+	m_fontRaster = nullptr;
+	m_fontPath = font_path;
+
+	m_vertexBuffer = nullptr;
+	m_vertexBufferSize = 10000;
+}
+
+ImGuiWrapper::~ImGuiWrapper()
+{
+	shutdown();
+}
+
+bool ImGuiWrapper::initialize()
+{
+	Log::traceLastFunc("ImGuiWrapper::initialize");
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = m_displaySize;
+	io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+
+	Log::addParameter("Loading font: %s", m_fontPath.c_str());
+	ImFontConfig fontCfg;
+	fontCfg.GlyphExtraSpacing.x = UISettings::outlineSize();
+
+	static const ImWchar ranges[] =
+    {
+        0x0020, 0x00FF, // Basic Latin + Latin Supplement
+        0x0100, 0x017F, // Latin Extended-A (AzЙ™rbaycan hЙ™rflЙ™ri: Г§, Дџ, Д±, Г¶, Еџ, Гј)
+        0x0250, 0x02AF, // IPA Extensions (KiГ§ik 'Й™' hЙ™rfi ГјГ§Гјn)
+        0x0400, 0x04FF, // Cyrillic + Cyrillic Supplement
+		0x0E00, 0x0E7F, // Thai
+        0x2DE0, 0x2DFF, // Cyrillic Extended-A
+        0xA640, 0xA69F, // Cyrillic Extended-B
+        0xF020, 0xF0FF,
+		0
+    };
+	
+	ImFont* font = io.Fonts->AddFontFromFileTTF(m_fontPath.c_str(),
+		UISettings::fontSize(), &fontCfg, ranges);
+
+	if (font == nullptr)
+	{
+		Log::addParameter("font", font);
+		return false;
+	}
+
+	createFontTexture();
+
+	m_renderer = new ImGuiRenderer(ImGui::GetBackgroundDrawList(), font);
+
+	// voice 
+	/*for (const auto& deviceInitCallback : Render::deviceInitCallbacks) {
+		if (deviceInitCallback != nullptr) {
+			deviceInitCallback();
+		}
+	}*/
+
+	return true;
+}
+
+void ImGuiWrapper::render()
+{
+	ImGui::NewFrame();
+
+
+	// voice
+	/*if (pNetGame) {
+
+		if (pUI->dialog()->visible() || pUI->playertablist()->visible() || pNetGame->GetTextDrawPool()->GetState()) {
+			SpeakerList::Hide();
+			MicroIcon::Hide();
+		}
+		else if (MicroIcon::hasShowed) {
+			SpeakerList::Show();
+			MicroIcon::Show();
+		}
+
+		for (const auto& renderCallback : Render::renderCallbacks) {
+			if (renderCallback != nullptr) {
+				renderCallback();
+			}
+		}
+	}*/
+
+	drawList();
+	ImGui::EndFrame();
+	ImGui::Render();
+	renderDrawData(ImGui::GetDrawData());
+}
+
+void ImGuiWrapper::shutdown()
+{
+	Log::traceLastFunc("ImGuiWrapper::shutdown");
+
+	// voice
+	/*for (const auto& deviceFreeCallback : Render::deviceFreeCallbacks) {
+		if (deviceFreeCallback != nullptr) {
+			deviceFreeCallback();
+		}
+	}*/
+
+	destroyFontTexture();
+}
+
+void ImGuiWrapper::setupRenderState(ImDrawData* draw_data)
+{
+	RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)0);
+	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)0);
+	RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void*)1);
+	RwRenderStateSet(rwRENDERSTATESRCBLEND, (void*)rwBLENDSRCALPHA);
+	RwRenderStateSet(rwRENDERSTATEDESTBLEND, (void*)rwBLENDINVSRCALPHA);
+	RwRenderStateSet(rwRENDERSTATEFOGENABLE, (void*)0);
+	RwRenderStateSet(rwRENDERSTATECULLMODE, (void*)rwCULLMODECULLNONE);
+	RwRenderStateSet(rwRENDERSTATEBORDERCOLOR, (void*)0);
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)rwALPHATESTFUNCTIONGREATER);
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTIONREF, (void*)2);
+	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
+	RwRenderStateSet(rwRENDERSTATETEXTUREADDRESS, (void*)rwTEXTUREADDRESSCLAMP);
+
+}
+
+void ImGuiWrapper::checkVertexBuffer(ImDrawData* draw_data)
+{
+	if (m_vertexBuffer == nullptr || m_vertexBufferSize < draw_data->TotalVtxCount)
+	{
+		Log::traceLastFunc("ImGuiWrapper::checkVertexBuffer");
+
+		if (m_vertexBuffer)
+		{
+			delete m_vertexBuffer;
+			m_vertexBuffer = nullptr;
+		}
+
+		m_vertexBufferSize = draw_data->TotalVtxCount + 10000;
+		m_vertexBuffer = new RwIm2DVertex[m_vertexBufferSize];
+		if (!m_vertexBuffer)
+		{
+			Log::addParameter("Buffer allocation error. Size", m_vertexBufferSize);
+			return;
+		}
+
+		Log::addParameter("Vertex buffer reallocated. Size", m_vertexBufferSize);
+	}
+
+}
+
+#include "../game/sprite2d.h"
+void ImGuiWrapper::renderDrawData(ImDrawData* draw_data)
+{
+	const RwReal nearScreenZ = CSprite2d::NearScreenZ;
+	const RwReal recipNearClip = CSprite2d::RecipNearClip;
+
+	checkVertexBuffer(draw_data);
+	setupRenderState(draw_data);
+
+	RwIm2DVertex* vtx_dst = m_vertexBuffer;
+	int vtx_offset = 0;
+
+	for (int n = 0; n < draw_data->CmdListsCount; n++)
+	{
+		const ImDrawList* cmd_list = draw_data->CmdLists[n];
+		const ImDrawVert* vtx_src = cmd_list->VtxBuffer.Data;
+		const ImDrawIdx* idx_src = cmd_list->IdxBuffer.Data;
+
+		for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+		{
+			RwIm2DVertexSetScreenX(vtx_dst, vtx_src->pos.x);
+			RwIm2DVertexSetScreenY(vtx_dst, vtx_src->pos.y);
+			RwIm2DVertexSetScreenZ(vtx_dst, nearScreenZ);
+			RwIm2DVertexSetRecipCameraZ(vtx_dst, recipNearClip);
+			vtx_dst->emissiveColor = vtx_src->col;
+			RwIm2DVertexSetU(vtx_dst, vtx_src->uv.x, recipCameraZ);
+			RwIm2DVertexSetV(vtx_dst, vtx_src->uv.y, recipCameraZ);
+
+			vtx_dst++;
+			vtx_src++;
+		}
+
+		const ImDrawIdx* idx_buffer = cmd_list->IdxBuffer.Data;
+		for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+		{
+			const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+			if (pcmd->UserCallback)
+			{
+				pcmd->UserCallback(cmd_list, pcmd);
+			}
+			else
+			{
+				ImVec4 clip_rect;
+				clip_rect.x = pcmd->ClipRect.x;
+				clip_rect.y = pcmd->ClipRect.w;
+				clip_rect.z = pcmd->ClipRect.z;
+				clip_rect.w = pcmd->ClipRect.y;
+				SetScissorRect((void*)&clip_rect);
+
+				RwRenderStateSet(rwRENDERSTATETEXTURERASTER, (void*)pcmd->TextureId);
+				RwIm2DRenderIndexedPrimitive(rwPRIMTYPETRILIST,
+					&m_vertexBuffer[vtx_offset], (RwInt32)cmd_list->VtxBuffer.Size,
+					(RwImVertexIndex*)idx_buffer, pcmd->ElemCount);
+				RwRenderStateSet(rwRENDERSTATETEXTURERASTER, (void*)0);
+
+				clip_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
+				SetScissorRect((void*)&clip_rect);
+			}
+
+			idx_buffer += pcmd->ElemCount;
+		}
+		vtx_offset += cmd_list->VtxBuffer.Size;
+	}
+
+}
+
+bool ImGuiWrapper::createFontTexture()
+{
+	Log::traceLastFunc("ImGuiWrapper::createFontTexture");
+
+	ImGuiIO& io = ImGui::GetIO();
+	unsigned char* pxs;
+	int width, height, bytes_per_pixel;
+	io.Fonts->GetTexDataAsRGBA32(&pxs, &width, &height, &bytes_per_pixel);
+
+	RwImage* font_img = RwImageCreate(width, height, bytes_per_pixel * 8);
+	RwImageAllocatePixels(font_img);
+
+	if (font_img == nullptr)
+	{
+		Log::addParameter("Font image pointer", font_img);
+		return false;
+	}
+
+	RwUInt8* pixels = font_img->cpPixels;
+	for (int y = 0; y < font_img->height; y++)
+	{
+		memcpy((void*)pixels, pxs + font_img->stride * y, font_img->stride);
+		pixels += font_img->stride;
+	}
+
+	RwInt32 w, h, d, flags;
+	RwImageFindRasterFormat(font_img, rwRASTERTYPETEXTURE, &w, &h, &d, &flags);
+	m_fontRaster = RwRasterCreate(w, h, d, flags);
+	if (m_fontRaster == nullptr)
+	{
+		Log::addParameter("font raster pointer", m_fontRaster);
+		return false;
+	}
+
+	m_fontRaster = RwRasterSetFromImage(m_fontRaster, font_img);
+	io.Fonts->TexID = (ImTextureID*)m_fontRaster;
+
+	RwImageDestroy(font_img);
+
+	Log::addParameter("Atlas width", width);
+	Log::addParameter("Atlas height", height);
+	return true;
+
+}
+
+void ImGuiWrapper::destroyFontTexture()
+{
+	if (m_fontRaster)
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		RwRasterDestroy(m_fontRaster);
+		m_fontRaster = nullptr;
+		io.Fonts->TexID = (ImTextureID)0;
+	}
+
+}
+
+
+===== app/src/main/cpp/samp/gui/imguiwrapper.h =====
+#pragma once
+
+#include "imguirenderer.h"
+#include "../game/RW/RenderWare.h"
+
+/*
+	класс-прослойка между imgui и рендер-движком
+*/
+
+class ImGuiWrapper
+{
+public:
+	ImGuiWrapper(const ImVec2& display_size, const std::string& font_path);
+
+	/*
+		инициализирует imgui
+		- создание контекста imgui
+		- установка размера экрана
+		- загрузка файла шрифта
+	*/
+	virtual bool initialize();
+
+	/*
+		рендерит построенные в drawList примитивы
+	*/
+	virtual void render();
+
+	/*
+		освобождает все созданные объекты в классе
+	*/
+	virtual void shutdown();
+
+	ImGuiRenderer* renderer() const { return m_renderer; }
+	/*
+		Выводит массив вертексов средствами API движка рендера
+	*/
+	void renderDrawData(ImDrawData* draw_data);
+
+protected:
+	virtual ~ImGuiWrapper();
+
+	/*
+		Метод должен быть перегружен. Здесь строятся все примитивы
+	*/
+	virtual void drawList() = 0;
+
+	const ImVec2& displaySize() { return m_displaySize; }
+
+private:
+	/*
+		Устанавливает renderstate для вывода 2D графики
+	*/
+	void setupRenderState(ImDrawData* draw_data);
+	/*
+		Следит за размером буффера и перевыделяет память при необходимости
+	*/
+	void checkVertexBuffer(ImDrawData* draw_data);
+	/*
+		Создает текстуру шрифта
+	*/
+	bool createFontTexture();
+	/*
+		Удаляет текстуру шрифта
+	*/
+	void destroyFontTexture();
+
+private:
+	ImVec2 m_displaySize;
+	std::string m_fontPath;
+
+	ImGuiRenderer* m_renderer;
+	RwRaster* m_fontRaster;
+
+	RwIm2DVertex* m_vertexBuffer;
+	int m_vertexBufferSize;
+};
+
+===== app/src/main/cpp/samp/gui/uisettings.h =====
+#pragma once
+
+class UISettings
+{
+public:
+	static void Initialize(const ImVec2& display_size);
+
+	/* font */
+	static float fontSize() { return m_fontSize; }
+	static float outlineSize() { return m_outlineSize; }
+
+	/* ////////////////// sizes ////////////////// */
+
+	/* widgets */
+	static float padding() { return m_padding; }
+
+	/* keyboard */
+	static ImVec2 keyboardPos() { return m_keyboardPos; }
+	static ImVec2 keyboardSize() { return m_keyboardSize; }
+	static float keyboardRowHeight() { return m_keyboardRowHeight; }
+
+	/* splashscreen */
+	static ImVec2 splashscreenLogoPos() { return m_splashscreenLogoPos; }
+	static ImVec2 splashscreenLogoSize() { return m_splashscreenLogoSize; }
+	static ImVec2 splashscreenPBarPos() { return m_splashScreenPBarPos; }
+	static ImVec2 splashscreenPBarSize() { return m_splashScreenPBarSize; }
+
+	/* chat */
+	static ImVec2 chatPos() { return m_chatPos; }
+	static ImVec2 chatSize() { return m_chatSize; }
+	static ImVec2 chatItemSize() { return m_chatItemSize; }
+	static int chatMaxMessages() { return m_chatMaxMessages; }
+
+	/* spawn */
+	static ImVec2 spawnPos() { return m_spawnPos; }
+	static ImVec2 spawnSize() { return m_spawnSize; }
+
+	/* nametag */
+	static ImVec2 nametagBarSize() { return m_nametagBarSize; }
+
+	/* dialog */
+	static ImVec2 dialogButtonPanelSize() { return m_dialogButtonPanelSize; }
+	static ImVec2 dialogMinSize() { return m_dialogMinSize; }
+	static ImVec2 dialogMaxSize() { return m_dialogMaxSize; }
+	static float dialogTitleHeight() { return m_dialogTitleHeight; }
+	static float dialogListItemHeight() { return m_dialogListItemHeight; }
+
+	/* buttonpanel */
+	static ImVec2 buttonPanelPos() { return m_buttonPanelPos; }
+	static ImVec2 buttonPanelSize() { return m_buttonPanelSize; }
+
+	/* voice button */
+	static ImVec2 buttonVoicePos() { return m_buttonVoicePos; }
+	static ImVec2 buttonVoiceSize() { return m_buttonVoiceSize; }
+
+	/* ////////////////// colors ////////////////// */
+
+	/* button */
+	static ImColor buttonColor() { return m_buttonColor; }
+	static ImColor buttonFocusedColor() { return m_buttonFocusedColor; }
+
+	/* keyboard */
+	static ImColor keyboardBackgroundColor() { return m_keyboardBackgroundColor; }
+
+	/* dialog */
+	static ImColor dialogBackgroundColor() { return m_dialogBackgroundColor; }
+	static ImColor dialogTitleBackgroundColor() { return m_dialogTitleBackgroundColor; }
+
+private:
+	/* scaling */
+	static ImVec2 m_baseSize;
+	static ImVec2 m_scaleFactor;
+
+	/* font */
+	static float m_fontSize;
+	static float m_outlineSize;
+
+	/* ////////////////// pos & size ////////////////// */
+
+	/* Widgets */
+	static float m_padding;
+
+	/* keyboard */
+	static ImVec2 m_keyboardPos;
+	static ImVec2 m_keyboardSize;
+	static float m_keyboardRowHeight;
+
+	/* splashscreen */
+	static ImVec2	m_splashscreenLogoPos;
+	static ImVec2	m_splashscreenLogoSize;
+	static ImVec2	m_splashScreenPBarPos;
+	static ImVec2	m_splashScreenPBarSize;
+
+	/* chat */
+	static ImVec2 m_chatPos;
+	static ImVec2 m_chatSize;
+	static ImVec2 m_chatItemSize;
+	static int m_chatDispMesssages;
+	static int m_chatMaxMessages;
+
+	/* spawn */
+	static ImVec2 m_spawnPos;
+	static ImVec2 m_spawnSize;
+
+	/* nametag */
+	static ImVec2 m_nametagBarSize;
+
+	/* dialog */
+	static ImVec2 m_dialogButtonPanelSize;
+	static ImVec2 m_dialogMinSize;
+	static ImVec2 m_dialogMaxSize;
+	static float m_dialogTitleHeight;
+	static float m_dialogListItemHeight;
+
+	/* buttonpanel */
+	static ImVec2 m_buttonPanelPos;
+	static ImVec2 m_buttonPanelSize;
+
+	/* voice button */
+	static ImVec2 m_buttonVoicePos;
+	static ImVec2 m_buttonVoiceSize;
+
+	/* ////////////////// colors ////////////////// */
+
+	/* button */
+	static ImColor m_buttonColor;
+	static ImColor m_buttonFocusedColor;
+
+	/* splashscreen */
+
+
+	/* keyboard */
+	static ImColor m_keyboardBackgroundColor;
+
+	/* dialog */
+	static ImColor m_dialogBackgroundColor;
+	static ImColor m_dialogTitleBackgroundColor;
+};
+
+===== app/src/main/cpp/samp/gui/uisettings.cpp =====
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "../vendor/imgui/imgui.h"
+#include "../vendor/imgui/imgui_internal.h"
+
+#include <string>
+#include "uisettings.h"
+#include "../main.h"
+#include "../settings.h"
+
+extern CSettings* pSettings;
+
+/* scaling */
+ImVec2 UISettings::m_baseSize = ImVec2(640.0f, 480.0f);
+ImVec2 UISettings::m_scaleFactor = ImVec2(1.0f, 1.0f);
+
+/* font */
+float UISettings::m_fontSize = 30.0f;//26.0f;//24.0f;
+float UISettings::m_outlineSize = 2.0f;
+
+/* ////////////////// pos & size ////////////////// */
+
+/* widgets */
+float UISettings::m_padding = 15.0f;
+
+/* keyboard */
+ImVec2 UISettings::m_keyboardPos = ImVec2(0.0f, 180.0f/*180.0f*/);
+ImVec2 UISettings::m_keyboardSize = ImVec2(640.0f, 300.0f);//ImVec2(640.0f, 300.0f);
+float UISettings::m_keyboardRowHeight = 52.0f;//52.0f;
+
+/* splashscreen */
+ImVec2 UISettings::m_splashscreenLogoPos;
+ImVec2 UISettings::m_splashscreenLogoSize = ImVec2(640.0f, 480.0f);
+ImVec2 UISettings::m_splashScreenPBarPos = ImVec2(100.0f, 460.0f);//ImVec2(100.0f, 380.0f);
+ImVec2 UISettings::m_splashScreenPBarSize = ImVec2(440.0f, 10.0f);
+
+/* chat */
+int UISettings::m_chatDispMesssages = 9;
+int UISettings::m_chatMaxMessages = 30;
+ImVec2 UISettings::m_chatPos = ImVec2(100.0f, 10.0f);
+ImVec2 UISettings::m_chatSize = ImVec2(400.0f, 0.0f);
+ImVec2 UISettings::m_chatItemSize = ImVec2(400.0f, 13.0f);
+
+/* spawn */
+ImVec2 UISettings::m_spawnPos = ImVec2(200.0f, 420.0f);
+ImVec2 UISettings::m_spawnSize = ImVec2(240.0f, 50.0f);
+
+/* nametag */
+ImVec2 UISettings::m_nametagBarSize = ImVec2(25.0f, 6.0f);
+
+/* dialog */
+ImVec2 UISettings::m_dialogButtonPanelSize = ImVec2(150.0f, 45.0f);
+ImVec2 UISettings::m_dialogMinSize = ImVec2(150.0f, 120.0f);
+ImVec2 UISettings::m_dialogMaxSize = ImVec2(620.0f, 400.0f);
+float UISettings::m_dialogTitleHeight = 20.0f;
+float UISettings::m_dialogListItemHeight = 30.0f;
+
+/* buttonpanel */
+ImVec2 UISettings::m_buttonPanelPos = ImVec2(5.0f, 140.0f/*150.0f*/);
+ImVec2 UISettings::m_buttonPanelSize = ImVec2(380.0f/*250.0f*//*180.0f*//*250.0f*/, 50.0f); //ImVec2(120.0f, 45.0f);
+
+/* voice button */
+ImVec2 UISettings::m_buttonVoicePos = ImVec2(500.0f, 180.0f/*170.0f*/);
+ImVec2 UISettings::m_buttonVoiceSize = ImVec2(55.0f, 80.0f);
+
+/* ////////////////// colors ////////////////// */
+
+/* button */
+ImColor UISettings::m_buttonColor = ImColor(0.11f, 0.11f, 0.11f, 0.80f);
+ImColor UISettings::m_buttonFocusedColor = ImColor(0x64, 0x95, 0xED);/*ImColor(119, 4, 4, 255);*/ //ImColor(80, 80, 80);
+
+/* keyboard */
+ImColor UISettings::m_keyboardBackgroundColor = ImColor(0, 0, 0, 150);
+
+/* dialog */
+ImColor UISettings::m_dialogBackgroundColor = ImColor(0, 0, 0, 200);
+ImColor UISettings::m_dialogTitleBackgroundColor = ImColor(0, 0, 0, 200);/*ImColor(0xF5, 0x91, 0x32);*/// ImColor(50, 50, 50, 255);
+
+void UISettings::Initialize(const ImVec2& display_size)
+{
+	if(!pSettings) return;
+	
+	m_scaleFactor = display_size / m_baseSize;
+
+	/* chat line count */
+	m_chatDispMesssages = pSettings->Get().iChatMaxMessages;
+
+	/* font */
+	m_fontSize *= m_scaleFactor.y;
+
+	/* keyboard */
+	m_keyboardSize = m_keyboardSize * m_scaleFactor;
+	m_keyboardPos = m_keyboardPos * m_scaleFactor;
+	m_keyboardRowHeight *= m_scaleFactor.y;
+
+	/* splashscreen */
+	m_splashscreenLogoSize = m_splashscreenLogoSize * m_scaleFactor;
+	m_splashscreenLogoPos = ImVec2(0.0f, 0.0f);
+	m_splashScreenPBarPos = m_splashScreenPBarPos * m_scaleFactor;
+	m_splashScreenPBarSize = m_splashScreenPBarSize * m_scaleFactor;
+
+	/* chat */
+	m_chatPos = m_chatPos * m_scaleFactor;
+	m_chatSize.y = m_chatItemSize.y * m_chatDispMesssages;
+	m_chatSize = m_chatSize * m_scaleFactor;
+	m_chatItemSize = m_chatItemSize * m_scaleFactor;
+
+	/* spawn */
+	m_spawnPos = m_spawnPos * m_scaleFactor;
+	m_spawnSize = m_spawnSize * m_scaleFactor;
+
+	/* nametag */
+	m_nametagBarSize = m_nametagBarSize * m_scaleFactor;
+
+	/* dialog */
+	m_dialogButtonPanelSize = m_dialogButtonPanelSize * m_scaleFactor;
+	m_dialogMinSize = m_dialogMinSize * m_scaleFactor;
+	m_dialogMaxSize = m_dialogMaxSize * m_scaleFactor;
+	m_dialogTitleHeight *= m_scaleFactor.y;
+	m_dialogListItemHeight *= m_scaleFactor.y;
+
+	/* buttonpanel */
+	m_buttonPanelPos = m_buttonPanelPos * m_scaleFactor;
+	m_buttonPanelSize = m_buttonPanelSize * m_scaleFactor;
+
+	/* button voice */
+	m_buttonVoicePos = m_buttonVoicePos * m_scaleFactor;
+	m_buttonVoiceSize = m_buttonVoiceSize * m_scaleFactor;
+}
+
+===== A3) encoding (cp1251 -> utf8 cevirmesi) =====
+
+
+===== app/src/main/cpp/samp/vendor/encoding/encoding.cpp =====
+#include "encoding.h"
+
+constexpr Encoding::Letter Encoding::m_letters[];
+
+std::string Encoding::cp2utf(const std::string& s)
+{
+	int c, i;
+	int len = s.size();
+	std::string ns;
+	for (i = 0; i < len; i++) 
+	{
+		c = s[i];
+		char buf[4];
+		char in[2] = { 0, 0 };
+		*in = c;
+		convert_windows1251_to_utf8(buf, in, strlen(in));
+		ns += std::string(buf);
+	}
+	return ns;
+}
+
+std::string Encoding::utf2cp(const std::string& s)
+{
+	size_t len = s.size();
+	const char* buff = s.c_str();
+	char* output = new char[len];
+	convert_utf8_to_windows1251(buff, output, len);
+	std::string ns(output);
+	return ns;
+}
+
+bool Encoding::convert_utf8_to_windows1251(const char* utf8, char* windows1251, size_t n)
+{
+	int i = 0;
+	int j = 0;
+	for (; i < (int)n && utf8[i] != 0; ++i) {
+		char prefix = utf8[i];
+		char suffix = utf8[i + 1];
+		if ((prefix & 0x80) == 0) {
+			windows1251[j] = (char)prefix;
+			++j;
+		}
+		else if ((~prefix) & 0x20) {
+			int first5bit = prefix & 0x1F;
+			first5bit <<= 6;
+			int sec6bit = suffix & 0x3F;
+			int unicode_char = first5bit + sec6bit;
+
+			if (unicode_char >= 0x410 && unicode_char <= 0x44F) {
+				windows1251[j] = (char)(unicode_char - 0x350);
+			}
+			else if (unicode_char >= 0x80 && unicode_char <= 0xFF) {
+				windows1251[j] = (char)(unicode_char);
+			}
+			else if (unicode_char >= 0x402 && unicode_char <= 0x403) {
+				windows1251[j] = (char)(unicode_char - 0x382);
+			}
+			else {
+				int count = sizeof(m_letters) / sizeof(Letter);
+				for (int k = 0; k < count; ++k) {
+					if (unicode_char == m_letters[k].unicode) {
+						windows1251[j] = m_letters[k].win1251;
+						goto NEXT_LETTER;
+					}
+				}
+				// can't convert this char
+				return false;
+			}
+		NEXT_LETTER:
+			++i;
+			++j;
+		}
+		else {
+			// can't convert this chars
+			return false;
+		}
+	}
+	windows1251[j] = 0;
+	return true;
+}
+
+void Encoding::convert_windows1251_to_utf8(char* windows1251, const char* utf8, unsigned int len)
+{
+	static const int table[128] = 
+    {                    
+        // 80
+        0x82D0,     0x83D0,     0x9A80E2,   0x93D1,     0x9E80E2,   0xA680E2,   0xA080E2,   0xA180E2,
+        0xAC82E2,   0xB080E2,   0x89D0,     0xB980E2,   0x8AD0,     0x8CD0,     0x8BD0,     0x8FD0,
+        // 90
+        0x92D1,     0x9880E2,   0x9980E2,   0x9C80E2,   0x9D80E2,   0xA280E2,   0x9380E2,   0x9480E2,
+        0,          0xA284E2,   0x99D1,     0xBA80E2,   0x9AD1,     0x9CD1,     0x9BD1,     0x9FD1,
+        // A0
+        0xA0C2,     0x8ED0,     0x9ED1,     0x88D0,     0xA4C2,     0x90D2,     0xA6C2,     0xA7C2,              
+        0x81D0,     0xA9C2,     0x84D0,     0xABC2,     0xACC2,     0xADC2,     0xAEC2,     0x87D0,
+        // B0
+        0xB0C2,     0xB1C2,     0x86D0,     0x96D1,     0x91D2,     0xB5C2,     0xB6C2,     0xB7C2,              
+        0x91D1,     0x9684E2,   0x94D1,     0xBBC2,     0x98D1,     0x85D0,     0x95D1,     0x97D1,
+        // C0
+        0x90D0,     0x91D0,     0x92D0,     0x93D0,     0x94D0,     0x95D0,     0x96D0,     0x97D0,
+        0x98D0,     0x99D0,     0x9AD0,     0x9BD0,     0x9CD0,     0x9DD0,     0x9ED0,     0x9FD0,
+        // D0
+        0xA0D0,     0xA1D0,     0xA2D0,     0xA3D0,     0xA4D0,     0xA5D0,     0xA6D0,     0xA7D0,
+        0xA8D0,     0xA9D0,     0xAAD0,     0xABD0,     0xACD0,     0xADD0,     0xAED0,     0xAFD0,
+        // E0
+        0xB0D0,     0xB1D0,     0xB2D0,     0xB3D0,     0xB4D0,     0xB5D0,     0xB6D0,     0xB7D0,
+        0xB8D0,     0xB9D0,     0xBAD0,     0xBBD0,     0xBCD0,     0xBDD0,     0xBED0,     0xBFD0,
+        // F0
+        0x80D1,     0x81D1,     0x82D1,     0x83D1,     0x84D1,     0x85D1,     0x86D1,     0x87D1,
+        0x88D1,     0x89D1,     0x8AD1,     0x8BD1,     0x8CD1,     0x8DD1,     0x8ED1,     0x8FD1
+    };
+
+	int count = 0;
+
+	while (*utf8)
+	{
+		if(len && (count >= len)) break;
+
+		if (*utf8 & 0x80)
+		{
+			int v = table[(int)(0x7f & *utf8++)];
+			if (!v) continue;
+			*windows1251++ = (char)v;
+			*windows1251++ = (char)(v >> 8);
+			if (v >>= 16) {
+				*windows1251++ = (char)v;
+			}
+		}
+		else
+		{
+			*windows1251++ = *utf8++;
+		}
+
+		count++;
+	}
+
+	*windows1251 = 0;
+}
+
+===== app/src/main/cpp/samp/vendor/encoding/encoding.h =====
+#pragma once
+
+#include <string>
+
+class Encoding
+{
+public:
+	static std::string cp2utf(const std::string& s);
+	static std::string utf2cp(const std::string& s);
+
+	static void convert_windows1251_to_utf8(char* windows1251, const char* utf8, unsigned int len);
+
+private:
+	struct Letter
+	{
+		char win1251;
+		int unicode;
+	};
+
+	constexpr static struct Letter m_letters[] = 
+	{
+		{0x82, 0x201A}, // SINGLE LOW-9 QUOTATION MARK
+		{0x83, 0x0453}, // CYRILLIC SMALL LETTER GJE
+		{0x84, 0x201E}, // DOUBLE LOW-9 QUOTATION MARK
+		{0x85, 0x2026}, // HORIZONTAL ELLIPSIS
+		{0x86, 0x2020}, // DAGGER
+		{0x87, 0x2021}, // DOUBLE DAGGER
+		{0x88, 0x20AC}, // EURO SIGN
+		{0x89, 0x2030}, // PER MILLE SIGN
+		{0x8A, 0x0409}, // CYRILLIC CAPITAL LETTER LJE
+		{0x8B, 0x2039}, // SINGLE LEFT-POINTING ANGLE QUOTATION MARK
+		{0x8C, 0x040A}, // CYRILLIC CAPITAL LETTER NJE
+		{0x8D, 0x040C}, // CYRILLIC CAPITAL LETTER KJE
+		{0x8E, 0x040B}, // CYRILLIC CAPITAL LETTER TSHE
+		{0x8F, 0x040F}, // CYRILLIC CAPITAL LETTER DZHE
+		{0x90, 0x0452}, // CYRILLIC SMALL LETTER DJE
+		{0x91, 0x2018}, // LEFT SINGLE QUOTATION MARK
+		{0x92, 0x2019}, // RIGHT SINGLE QUOTATION MARK
+		{0x93, 0x201C}, // LEFT DOUBLE QUOTATION MARK
+		{0x94, 0x201D}, // RIGHT DOUBLE QUOTATION MARK
+		{0x95, 0x2022}, // BULLET
+		{0x96, 0x2013}, // EN DASH
+		{0x97, 0x2014}, // EM DASH
+		{0x99, 0x2122}, // TRADE MARK SIGN
+		{0x9A, 0x0459}, // CYRILLIC SMALL LETTER LJE
+		{0x9B, 0x203A}, // SINGLE RIGHT-POINTING ANGLE QUOTATION MARK
+		{0x9C, 0x045A}, // CYRILLIC SMALL LETTER NJE
+		{0x9D, 0x045C}, // CYRILLIC SMALL LETTER KJE
+		{0x9E, 0x045B}, // CYRILLIC SMALL LETTER TSHE
+		{0x9F, 0x045F}, // CYRILLIC SMALL LETTER DZHE
+		{0xA0, 0x00A0}, // NO-BREAK SPACE
+		{0xA1, 0x040E}, // CYRILLIC CAPITAL LETTER SHORT U
+		{0xA2, 0x045E}, // CYRILLIC SMALL LETTER SHORT U
+		{0xA3, 0x0408}, // CYRILLIC CAPITAL LETTER JE
+		{0xA4, 0x00A4}, // CURRENCY SIGN
+		{0xA5, 0x0490}, // CYRILLIC CAPITAL LETTER GHE WITH UPTURN
+		{0xA6, 0x00A6}, // BROKEN BAR
+		{0xA7, 0x00A7}, // SECTION SIGN
+		{0xA8, 0x0401}, // CYRILLIC CAPITAL LETTER IO
+		{0xA9, 0x00A9}, // COPYRIGHT SIGN
+		{0xAA, 0x0404}, // CYRILLIC CAPITAL LETTER UKRAINIAN IE
+		{0xAB, 0x00AB}, // LEFT-POINTING DOUBLE ANGLE QUOTATION MARK
+		{0xAC, 0x00AC}, // NOT SIGN
+		{0xAD, 0x00AD}, // SOFT HYPHEN
+		{0xAE, 0x00AE}, // REGISTERED SIGN
+		{0xAF, 0x0407}, // CYRILLIC CAPITAL LETTER YI
+		{0xB0, 0x00B0}, // DEGREE SIGN
+		{0xB1, 0x00B1}, // PLUS-MINUS SIGN
+		{0xB2, 0x0406}, // CYRILLIC CAPITAL LETTER BYELORUSSIAN-UKRAINIAN I
+		{0xB3, 0x0456}, // CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I
+		{0xB4, 0x0491}, // CYRILLIC SMALL LETTER GHE WITH UPTURN
+		{0xB5, 0x00B5}, // MICRO SIGN
+		{0xB6, 0x00B6}, // PILCROW SIGN
+		{0xB7, 0x00B7}, // MIDDLE DOT
+		{0xB8, 0x0451}, // CYRILLIC SMALL LETTER IO
+		{0xB9, 0x2116}, // NUMERO SIGN
+		{0xBA, 0x0454}, // CYRILLIC SMALL LETTER UKRAINIAN IE
+		{0xBB, 0x00BB}, // RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK
+		{0xBC, 0x0458}, // CYRILLIC SMALL LETTER JE
+		{0xBD, 0x0405}, // CYRILLIC CAPITAL LETTER DZE
+		{0xBE, 0x0455}, // CYRILLIC SMALL LETTER DZE
+		{0xBF, 0x0457} // CYRILLIC SMALL LETTER YI
+	};
+
+	static bool convert_utf8_to_windows1251(const char* utf8, char* windows1251, size_t n);
+};
+
+===== app/src/main/cpp/samp/vendor/raknet/DS_HuffmanEncodingTree.cpp =====
+/// \file
+///
+/// This file is part of RakNet Copyright 2003 Kevin Jenkins.
+///
+/// Usage of RakNet is subject to the appropriate license agreement.
+/// Creative Commons Licensees are subject to the
+/// license found at
+/// http://creativecommons.org/licenses/by-nc/2.5/
+/// Single application licensees are subject to the license found at
+/// http://www.rakkarsoft.com/SingleApplicationLicense.html
+/// Custom license users are subject to the terms therein.
+/// GPL license users are subject to the GNU General Public
+/// License as published by the Free
+/// Software Foundation; either version 2 of the License, or (at your
+/// option) any later version.
+
+#include "DS_HuffmanEncodingTree.h"
+#include "DS_Queue.h"
+#include "BitStream.h"
+#include <assert.h> 
+
+#ifdef _MSC_VER
+#pragma warning( push )
+#endif
+
+HuffmanEncodingTree::HuffmanEncodingTree()
+{
+	root = 0;
+}
+
+HuffmanEncodingTree::~HuffmanEncodingTree()
+{
+	FreeMemory();
+}
+
+void HuffmanEncodingTree::FreeMemory( void )
+{
+	if ( root == 0 )
+		return ;
+		
+	// Use an in-order traversal to delete the tree
+	DataStructures::Queue<HuffmanEncodingTreeNode *> nodeQueue;
+	
+	HuffmanEncodingTreeNode *node;
+	
+	nodeQueue.Push( root );
+	
+	while ( nodeQueue.Size() > 0 )
+	{
+		node = nodeQueue.Pop();
+		
+		if ( node->left )
+			nodeQueue.Push( node->left );
+			
+		if ( node->right )
+			nodeQueue.Push( node->right );
+			
+		delete node;
+	}
+	
+	// Delete the encoding table
+	for ( int i = 0; i < 256; i++ )
+		delete [] encodingTable[ i ].encoding;
+		
+	root = 0;
+}
+
+
+////#include <stdio.h>
+
+// Given a frequency table of 256 elements, all with a frequency of 1 or more, generate the tree
+void HuffmanEncodingTree::GenerateFromFrequencyTable( unsigned int frequencyTable[ 256 ] )
+{
+	int counter;
+	HuffmanEncodingTreeNode * node;
+	HuffmanEncodingTreeNode *leafList[ 256 ]; // Keep a copy of the pointers to all the leaves so we can generate the encryption table bottom-up, which is easier
+	// 1.  Make 256 trees each with a weight equal to the frequency of the corresponding character
+	DataStructures::LinkedList<HuffmanEncodingTreeNode *> huffmanEncodingTreeNodeList;
+	
+	FreeMemory();
+	
+	for ( counter = 0; counter < 256; counter++ )
+	{
+		node = new HuffmanEncodingTreeNode;
+		node->left = 0;
+		node->right = 0;
+		node->value = (unsigned char) counter;
+		node->weight = frequencyTable[ counter ];
+		
+		if ( node->weight == 0 )
+			node->weight = 1; // 0 weights are illegal
+			
+		leafList[ counter ] = node; // Used later to generate the encryption table
+		
+		InsertNodeIntoSortedList( node, &huffmanEncodingTreeNodeList ); // Insert and maintain sort order.
+	}
+	
+	
+	// 2.  While there is more than one tree, take the two smallest trees and merge them so that the two trees are the left and right
+	// children of a new node, where the new node has the weight the sum of the weight of the left and right child nodes.
+#ifdef _MSC_VER
+#pragma warning( disable : 4127 ) // warning C4127: conditional expression is constant
+#endif
+	while ( 1 )
+	{
+		huffmanEncodingTreeNodeList.Beginning();
+		HuffmanEncodingTreeNode *lesser, *greater;
+		lesser = huffmanEncodingTreeNodeList.Pop();
+		greater = huffmanEncodingTreeNodeList.Pop();
+		node = new HuffmanEncodingTreeNode;
+		node->left = lesser;
+		node->right = greater;
+		node->weight = lesser->weight + greater->weight;
+		lesser->parent = node;  // This is done to make generating the encryption table easier
+		greater->parent = node;  // This is done to make generating the encryption table easier
+		
+		if ( huffmanEncodingTreeNodeList.Size() == 0 )
+		{
+			// 3. Assign the one remaining node in the list to the root node.
+			root = node;
+			root->parent = 0;
+			break;
+		}
+		
+		// Put the new node back into the list at the correct spot to maintain the sort.  Linear search time
+		InsertNodeIntoSortedList( node, &huffmanEncodingTreeNodeList );
+	}
+	
+	bool tempPath[ 256 ]; // Maximum path length is 256
+	unsigned short tempPathLength;
+	HuffmanEncodingTreeNode *currentNode;
+	RakNet::BitStream bitStream;
+	
+	// Generate the encryption table. From before, we have an array of pointers to all the leaves which contain pointers to their parents.
+	// This can be done more efficiently but this isn't bad and it's way easier to program and debug
+	
+	for ( counter = 0; counter < 256; counter++ )
+	{
+		// Already done at the end of the loop and before it!
+		tempPathLength = 0;
+		
+		// Set the current node at the leaf
+		currentNode = leafList[ counter ];
+		
+		do
+		{
+			if ( currentNode->parent->left == currentNode )   // We're storing the paths in reverse order.since we are going from the leaf to the root
+				tempPath[ tempPathLength++ ] = false;
+			else
+				tempPath[ tempPathLength++ ] = true;
+				
+			currentNode = currentNode->parent;
+		}
+		
+		while ( currentNode != root );
+		
+		// Write to the bitstream in the reverse order that we stored the path, which gives us the correct order from the root to the leaf
+		while ( tempPathLength-- > 0 )
+		{
+			if ( tempPath[ tempPathLength ] )   // Write 1's and 0's because writing a bool will write the BitStream TYPE_CHECKING validation bits if that is defined along with the actual data bit, which is not what we want
+				bitStream.Write1();
+			else
+				bitStream.Write0();
+		}
+		
+		// Read data from the bitstream, which is written to the encoding table in bits and bitlength. Note this function allocates the encodingTable[counter].encoding pointer
+		encodingTable[ counter ].bitLength = ( unsigned char ) bitStream.CopyData( &encodingTable[ counter ].encoding );
+		
+		// Reset the bitstream for the next iteration
+		bitStream.Reset();
+	}
+}
+
+// Pass an array of bytes to array and a preallocated BitStream to receive the output
+void HuffmanEncodingTree::EncodeArray( unsigned char *input, unsigned sizeInBytes, RakNet::BitStream * output )
+{		
+	unsigned counter;
+	
+	// For each input byte, Write out the corresponding series of 1's and 0's that give the encoded representation
+	for ( counter = 0; counter < sizeInBytes; counter++ )
+	{
+		output->WriteBits( encodingTable[ input[ counter ] ].encoding, encodingTable[ input[ counter ] ].bitLength, false ); // Data is left aligned
+	}
+	
+	// Byte align the output so the unassigned remaining bits don't equate to some actual value
+	if ( output->GetNumberOfBitsUsed() % 8 != 0 )
+	{
+		// Find an input that is longer than the remaining bits.  Write out part of it to pad the output to be byte aligned.
+		unsigned char remainingBits = (unsigned char) ( 8 - ( output->GetNumberOfBitsUsed() % 8 ) );
+		
+		for ( counter = 0; counter < 256; counter++ )
+			if ( encodingTable[ counter ].bitLength > remainingBits )
+			{
+				output->WriteBits( encodingTable[ counter ].encoding, remainingBits, false ); // Data is left aligned
+				break;
+			}
+			
+#ifdef _DEBUG
+		assert( counter != 256 );  // Given 256 elements, we should always be able to find an input that would be >= 7 bits
+		
+#endif
+		
+	}
+}
+
+unsigned HuffmanEncodingTree::DecodeArray( RakNet::BitStream * input, unsigned sizeInBits, unsigned maxCharsToWrite, unsigned char *output )
+{
+	HuffmanEncodingTreeNode * currentNode;
+	
+	unsigned outputWriteIndex;
+	outputWriteIndex = 0;
+	currentNode = root;
+	
+	// For each bit, go left if it is a 0 and right if it is a 1.  When we reach a leaf, that gives us the desired value and we restart from the root
+	
+	for ( unsigned counter = 0; counter < sizeInBits; counter++ )
+	{
+		if ( input->ReadBit() == false )   // left!
+			currentNode = currentNode->left;
+		else
+
+
+===== app/src/main/cpp/samp/vendor/raknet/DS_HuffmanEncodingTree.h =====
+/// \file
+/// \brief \b [Internal] Generates a huffman encoding tree, used for string and global compression.
+///
+/// This file is part of RakNet Copyright 2003 Kevin Jenkins.
+///
+/// Usage of RakNet is subject to the appropriate license agreement.
+/// Creative Commons Licensees are subject to the
+/// license found at
+/// http://creativecommons.org/licenses/by-nc/2.5/
+/// Single application licensees are subject to the license found at
+/// http://www.rakkarsoft.com/SingleApplicationLicense.html
+/// Custom license users are subject to the terms therein.
+/// GPL license users are subject to the GNU General Public
+/// License as published by the Free
+/// Software Foundation; either version 2 of the License, or (at your
+/// option) any later version.
+
+#ifndef __HUFFMAN_ENCODING_TREE
+#define __HUFFMAN_ENCODING_TREE
+
+#include "DS_HuffmanEncodingTreeNode.h"
+#include "BitStream.h"
+#include "Export.h"
+#include "DS_LinkedList.h" 
+
+/// This generates special cases of the huffman encoding tree using 8 bit keys with the additional condition that unused combinations of 8 bits are treated as a frequency of 1
+class RAK_DLL_EXPORT HuffmanEncodingTree
+{
+
+public:
+	HuffmanEncodingTree();
+	~HuffmanEncodingTree();
+	
+	/// Pass an array of bytes to array and a preallocated BitStream to receive the output
+	/// \param [in] input Array of bytes to encode
+	/// \param [in] sizeInBytes size of \a input
+	/// \param [out] output The bitstream to write to
+	void EncodeArray( unsigned char *input, unsigned sizeInBytes, RakNet::BitStream * output );
+	
+	// Decodes an array encoded by EncodeArray()
+	unsigned DecodeArray( RakNet::BitStream * input, unsigned sizeInBits, unsigned maxCharsToWrite, unsigned char *output );
+	void DecodeArray( unsigned char *input, unsigned sizeInBits, RakNet::BitStream * output );
+	
+	/// Given a frequency table of 256 elements, all with a frequency of 1 or more, generate the tree
+	void GenerateFromFrequencyTable( unsigned int frequencyTable[ 256 ] );
+	
+	/// Free the memory used by the tree
+	void FreeMemory( void );
+	
+private:
+	
+ /// The root node of the tree 
+	
+	HuffmanEncodingTreeNode *root;
+	
+ /// Used to hold bit encoding for one character
+	
+	
+	struct CharacterEncoding
+	{
+		unsigned char* encoding;
+		unsigned short bitLength;
+	};
+	
+	CharacterEncoding encodingTable[ 256 ];
+	
+	void InsertNodeIntoSortedList( HuffmanEncodingTreeNode * node, DataStructures::LinkedList<HuffmanEncodingTreeNode *> *huffmanEncodingTreeNodeList ) const;
+};
+
+#endif
+
+
+===== A4) cp2utf / utf2cp istifadesi =====
+app/src/main/cpp/samp/game/materialtextgenerator.cpp:41:		auto info = Encoding::cp2utf(text).c_str();
+app/src/main/cpp/samp/gui/samp_widgets/keyboard.cpp:248:	m_caption = Encoding::cp2utf(m_input);
+app/src/main/cpp/samp/gui/samp_widgets/keyboard.cpp:254:	m_caption = Encoding::cp2utf(m_input);
+app/src/main/cpp/samp/gui/samp_widgets/keyboard.cpp:273:	m_caption = Encoding::cp2utf(m_input);
+app/src/main/cpp/samp/gui/samp_widgets/keyboard.h:19:	void setInputString(const std::string& string) { m_input = string; m_caption = Encoding::cp2utf(string); }
+app/src/main/cpp/samp/gui/samp_widgets/playertablist.cpp:81:	m_lServerName->setText(Encoding::cp2utf(pNetGame->m_szHostName));
+app/src/main/cpp/samp/gui/widgets/editbox.cpp:40:	m_label->setText(Encoding::cp2utf(input));
+app/src/main/cpp/samp/gui/widgets/label.cpp:119:	//Encoding::cp2utf(text);
+app/src/main/cpp/samp/net/netrpc.cpp:153:	if (pUI) pUI->chat()->addDebugMessage("Connected to {B9C9BF}%.64s", Encoding::cp2utf(pNetGame->m_szHostName).c_str());
+app/src/main/cpp/samp/net/netrpc.cpp:263:		//pUI->dialog()->show(wDialogID, style, Encoding::cp2utf(szTitle), Encoding::cp2utf(szMessage), Encoding::cp2utf(szButton1), Encoding::cp2utf(szButton2));
+app/src/main/cpp/samp/net/netrpc.cpp:264:		pJavaWrapper->ShowDialog(byteDialogStyle, wDialogID, (char*)Encoding::cp2utf(szTitle).c_str(), (char*) Encoding::cp2utf(szMessage).c_str(), (char*) Encoding::cp2utf(szButton1).c_str(), (char*) Encoding::cp2utf(szButton2).c_str());
+app/src/main/cpp/samp/net/netrpc.cpp:296:		if (pUI) pUI->chat()->addChatMessage(Encoding::cp2utf(szMessage),
+app/src/main/cpp/samp/net/netrpc.cpp:330:		if (pUI) pUI->chat()->addClientMessage(Encoding::cp2utf(szMsg), UI::fixcolor(dwColor));
+app/src/main/cpp/samp/net/playerbubblepool.cpp:93:    std::string GText = Encoding::cp2utf(text);
+app/src/main/cpp/samp/net/remoteplayer.cpp:506:	if (pUI) pUI->chat()->addChatMessage(Encoding::cp2utf(szMessage), szPlayerName, UI::fixcolor(dwColor));
+app/src/main/cpp/samp/net/textlabelpool.cpp:44:		pTextLabel->text = Encoding::cp2utf(pLabel->text);
+
+
+===== app/src/main/cpp/samp/gui/widgets/listbox.h =====
+#pragma once
+
+class ListBoxItem : public Widget
+{
+public:
+	ListBoxItem(bool selectable = true);
+
+	void setIndex(int index) { m_index = index; }
+	virtual void activateEvent(bool active);
+	bool selected();
+
+	bool selectable() { return m_selectable; }
+
+private:
+	int m_index;
+	bool m_selectable;
+};
+
+class ListBox : public ScrollPanel
+{
+public:
+	ListBox();
+
+	void setItemSize(const ImVec2& size);
+	const ImVec2& itemSize() { return m_panel->itemSize(); }
+
+	void addItem(ListBoxItem* item);
+	void removeItem(int index);
+
+	int itemsCount() { return m_panel->itemsCount(); }
+	int activeItemIndex() const { return m_panel->activeItemIndex(); }
+
+public:
+	class Panel : public Widget
+	{
+	public:
+		Panel();
+
+		void setItemSize(const ImVec2& size);
+		const ImVec2& itemSize() { return m_itemSize; }
+
+		void addItem(ListBoxItem* item);
+		void removeItem(int index);
+
+		int itemsCount() { return children().size(); }
+
+		int activeItemIndex() const { return m_activeItemIndex; }
+		void setActiveItemIndex(int index) { m_activeItemIndex = index; }
+
+		virtual void performLayout() override;
+		virtual void draw(ImGuiRenderer* renderer) override;
+
+	private:
+		ImVec2 m_itemSize;
+		int m_activeItemIndex;
+		int m_itemsCount;
+	};
+
+private:
+	bool m_headed;
+	Panel* m_panel;
+};
+
+===== app/src/main/cpp/samp/gui/widgets/listbox.cpp =====
+#include "../gui.h"
+
+/* ListBox */
+
+ListBox::ListBox()
+{
+	m_panel = new Panel();
+	this->addChild(m_panel);
+}
+
+void ListBox::setItemSize(const ImVec2& size)
+{
+	m_panel->setItemSize(size);
+}
+
+void ListBox::addItem(ListBoxItem* item)
+{
+	m_panel->addItem(item);
+}
+
+void ListBox::removeItem(int index)
+{
+	m_panel->removeItem(index);
+}
+
+/* ListBox::Panel */
+
+ListBox::Panel::Panel()
+{
+	m_itemSize = ImVec2(0.0f, 0.0f);
+	m_activeItemIndex = -1;
+	m_itemsCount = 0;
+}
+
+void ListBox::Panel::performLayout()
+{
+	/* формируем все элементы */
+	for (auto c : children())
+	{
+		c->setFixedSize(m_itemSize);
+		c->performLayout();
+	}
+
+	/* размещаем элементы */
+	ImVec2 item_pos = ImVec2(0.0f, 0.0f);
+
+	for (auto c : children())
+	{
+		c->setPosition(item_pos);
+		item_pos += ImVec2(0.0f, c->height());
+	}
+
+	this->setSize(ImVec2(m_itemSize.x, item_pos.y));
+}
+
+void ListBox::Panel::draw(ImGuiRenderer* renderer)
+{
+	float boxPosY1 = parent()->absolutePosition().y - m_itemSize.y;
+	float boxPosY2 = parent()->absolutePosition().y + parent()->height();
+
+	for (auto item : children())
+	{
+		float posY = item->absolutePosition().y;
+		if (posY >= boxPosY1 && posY <= boxPosY2)
+		{
+			item->draw(renderer);
+		}
+	}
+}
+
+void ListBox::Panel::setItemSize(const ImVec2& size)
+{
+	m_itemSize = size;
+}
+
+void ListBox::Panel::addItem(ListBoxItem* item)
+{
+	if(item->selectable()) 
+		item->setIndex(m_itemsCount++);
+
+	this->addChild(item);
+	this->performLayout();
+}
+
+void ListBox::Panel::removeItem(int index)
+{
+	this->removeChild(index);
+	this->performLayout();
+}
+
+/* ListBoxItem */
+
+ListBoxItem::ListBoxItem(bool selectable)
+{
+	m_index = -1;
+	m_selectable = selectable;
+}
+
+void ListBoxItem::activateEvent(bool active)
+{
+	if (!m_selectable) return;
+
+	if (active) {
+		dynamic_cast<ListBox::Panel*>(parent())->setActiveItemIndex(m_index);
+	}
+}
+
+bool ListBoxItem::selected()
+{
+	if (!m_selectable) return false;
+	return dynamic_cast<ListBox::Panel*>(parent())->activeItemIndex() == m_index;
+}
+
+===== app/src/main/cpp/samp/gui/widgets/scrollpanel.h =====
+#pragma once
+
+class ScrollPanel : public Widget
+{
+public:
+	ScrollPanel();
+
+	void setScrollableX(bool scrollableX) { m_scrollableX = scrollableX; }
+	void setScrollableY(bool scrollableY) { m_scrollableY = scrollableY; }
+	void setScrollable(bool scrollable) { m_scrollableX = m_scrollableY = scrollable; }
+	void setScrollX(float x);
+	void setScrollY(float y);
+
+	virtual void performLayout() override;
+
+	virtual void draw(ImGuiRenderer* renderer) override;
+
+	virtual void touchMoveEvent(const ImVec2& delta) override;
+
+
+private:
+	ImVec2 m_scroll;
+	bool m_scrollableX;
+	bool m_scrollableY;
+};
+
+===== app/src/main/cpp/samp/gui/widgets/scrollpanel.cpp =====
+#include "../gui.h"
+
+ScrollPanel::ScrollPanel()
+{
+	m_scroll = ImVec2(0.0f, 0.0f);
+	m_scrollableX = true;
+	m_scrollableY = true;
+}
+
+
+void ScrollPanel::setScrollX(float x)
+{
+	if (children().empty()) return;
+	Widget* child = children()[0];
+
+	m_scroll.x = x;
+	ImVec2 deltaPos = ImVec2(
+		-m_scroll.x * (child->width() - width()),
+		-m_scroll.y * (child->height() - height())
+	);
+
+	child->setPosition(deltaPos);
+}
+
+void ScrollPanel::setScrollY(float y)
+{
+	if (children().empty()) return;
+	Widget* child = children()[0];
+
+	m_scroll.y = y;
+	ImVec2 deltaPos = ImVec2(
+		-m_scroll.x * (child->width() - width()),
+		-m_scroll.y * (child->height() - height())
+	);
+
+	child->setPosition(deltaPos);
+}
+
+void ScrollPanel::performLayout()
+{
+	if (children().empty()) return;
+	if (children().size() > 1) return;
+
+	Widget* child = children()[0];
+
+	child->performLayout();
+	child->setPosition(ImVec2(0.0f, 0.0f));
+
+	this->setSize(child->size());
+}
+
+void ScrollPanel::draw(ImGuiRenderer* renderer)
+{
+	Widget::draw(renderer);
+}
+
+void ScrollPanel::touchMoveEvent(const ImVec2& delta)
+{
+	if (children().empty()) return;
+	Widget* child = children()[0];
+
+	/*if (m_scrollableX && child->width() > width())
+	{
+		float scrollX = width() * ImMin(1.0f, width() / child->width());
+		m_scroll.x = ImMax(0.0f, ImMin(1.0f, m_scroll.x - delta.x / (child->width() + scrollX)));
+	}
+
+	if (m_scrollableY && child->height() > height())
+	{
+		float scrollY = height() * ImMin(1.0f, height() / child->height());
+		m_scroll.y = ImMax(0.0f, ImMin(1.0f, m_scroll.y - delta.y / (child->height() + scrollY)));
+	}
+
+	ImVec2 deltaPos = ImVec2(
+		-m_scroll.x * (child->width() - width()),
+		-m_scroll.y * (child->height() - height())
+	);*/
+
+	ImVec2 deltaPos = child->position();
+	ImVec2 deltaMinPos = { width() - child->width(), height() - child->height() };
+
+	if (m_scrollableX)
+	{
+		deltaPos.x += delta.x;
+	}
+
+	if (m_scrollableY)
+	{
+		deltaPos.y += delta.y;
+	}
+
+	if (deltaPos.x < deltaMinPos.x) deltaPos.x = deltaMinPos.x;
+	if (deltaPos.y < deltaMinPos.y) deltaPos.y = deltaMinPos.y;
+	if (deltaPos.x > 0) deltaPos.x = 0.0f;
+	if (deltaPos.y > 0) deltaPos.y = 0.0f;
+	
+	child->setPosition(deltaPos);
+}
+
+===== app/src/main/cpp/samp/gui/widgets/label.h =====
+#pragma once
+
+class Label : public Widget
+{
+public:
+	Label(const std::string& text, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f), bool outlined = false, float font_size = 0.0f);
+
+	void setText(const std::string& text);
+	const std::string& text() const { return m_text; }
+
+	void setColor(const ImColor& color) { m_color = color; }
+	const ImColor& color() const { return m_color; }
+
+	virtual void performLayout() override;
+
+	virtual void draw(ImGuiRenderer* renderer) override;
+
+private:
+	ImVec2 calculateTextSize(const std::string& text) const;
+	ImVec2 calculateTextSize(const char* begin, const char* end) const;
+
+private:
+	std::string m_text;
+	ImColor m_color;
+	bool m_outlined;
+	float m_fontSize;
+};
+
+
+
+
+class LabelImage : public Widget
+{
+public:
+	LabelImage(const std::string& text, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f), bool outlined = false, float font_size = 0.0f);
+
+	void setText(const std::string& text);
+	const std::string& text() const { return m_text; }
+
+	void setColor(const ImColor& color) { m_color = color; }
+	const ImColor& color() const { return m_color; }
+
+	virtual void performLayout() override;
+
+	virtual void draw(ImGuiRenderer* renderer) override;
+
+private:
+	ImVec2 calculateTextSize(const std::string& text) const;
+	ImVec2 calculateTextSize(const char* begin, const char* end) const;
+
+private:
+	std::string m_text;
+	ImColor m_color;
+	bool m_outlined;
+	float m_fontSize;
+};
+
+===== app/src/main/cpp/samp/gui/widgets/label.cpp =====
+#include "..//imguirenderer.h"
+#include "..//widget.h"
+#include "label.h"
+
+
+Label::Label(const std::string& text, const ImColor& color, bool outlined, float font_size)
+	: Widget()
+{
+	m_text = text;
+	m_color = color;
+	m_outlined = outlined;
+	m_fontSize = font_size;
+}
+void Label::setText(const std::string& text)
+{
+	m_text = text;
+	this->performLayout();
+}
+
+void Label::performLayout()
+{
+	ImVec2 sz = calculateTextSize(m_text);
+	this->setSize(sz);
+}
+
+void Label::draw(ImGuiRenderer* renderer)
+{
+	renderer->drawText(absolutePosition(), m_color, m_text, m_outlined, m_fontSize);
+	Widget::draw(renderer);
+}
+
+ImVec2 Label::calculateTextSize(const std::string& text) const
+{
+	ImVec2 text_size = { 0.0f, 0.0f };
+	if (text.empty()) return text_size;
+
+	ImVec2 cur_size = { 0.0f, 0.0f };
+
+	float font_size = m_fontSize == 0.0f ? ImGui::GetIO().Fonts->Fonts[0]->FontSize : m_fontSize;
+	const char* text_start = text.c_str();
+	const char* text_cur = text.c_str();
+	const char* text_end = text.c_str() + text.length();
+
+	while (*text_cur)
+	{
+		if (*text_cur == '{' && ((&text_cur[7] < text_end) && text_cur[7] == '}'))
+		{
+			if (text_cur != text_start)
+			{
+				// текст до колор-кода
+				ImVec2 sz = calculateTextSize(text_start, text_cur);
+				cur_size.x += sz.x;
+				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+			}
+
+			text_cur += 7;
+			text_start = text_cur + 1;
+		}
+		else if (*text_cur == '\n')
+		{
+			if (text_cur != text_start)
+			{
+				// текст до \n
+				ImVec2 sz = calculateTextSize(text_start, text_cur);
+				cur_size.x += sz.x;
+				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+			}
+
+			// обновляем text_size
+			text_size.x = ImMax(text_size.x, cur_size.x);
+			cur_size.y += font_size;
+			cur_size.x = 0.0f;
+
+			text_start = text_cur + 1;
+		}
+		else if (*text_cur == '\t')
+		{
+			if (text_cur != text_start)
+			{
+				// текст до \t
+				ImVec2 sz = calculateTextSize(text_start, text_cur);
+				cur_size.x += sz.x;
+				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+			}
+
+			cur_size.x += font_size;
+			text_start = text_cur + 1;
+		}
+
+		++text_cur;
+	}
+
+	if (text_cur != text_start)
+	{
+		// текст без форматирования
+		ImVec2 sz = calculateTextSize(text_start, text_cur);
+		cur_size.x += sz.x;
+		if (cur_size.y == 0.0f) cur_size.y = sz.y;
+	}
+
+	text_size = ImMax(text_size, cur_size);
+	return text_size;
+}
+
+ImVec2 Label::calculateTextSize(const char* begin, const char* end) const
+{
+	ImFont* font = ImGui::GetIO().Fonts->Fonts[0];
+	return font->CalcTextSizeA(m_fontSize == 0.0f ? font->FontSize : m_fontSize, FLT_MAX, 0.0f, begin, end);
+}
+
+
+
+//LabelImage
+
+LabelImage::LabelImage(const std::string& text, const ImColor& color, bool outlined, float font_size)
+	: Widget()
+{
+	//m_text = text;
+	//Encoding::cp2utf(text);
+	m_text = text;
+	m_color = color;
+	m_outlined = outlined;
+	m_fontSize = font_size;
+}
+void LabelImage::setText(const std::string& text)
+{
+	m_text = text;
+	this->performLayout();
+}
+
+void LabelImage::performLayout()
+{
+	ImVec2 sz = calculateTextSize(m_text);
+	this->setSize(sz);
+}
+
+void LabelImage::draw(ImGuiRenderer* renderer)
+{
+	renderer->drawText(absolutePosition(), m_color, m_text, m_outlined, m_fontSize);
+	Widget::draw(renderer);
+}
+
+ImVec2 LabelImage::calculateTextSize(const std::string& text) const
+{
+	ImVec2 text_size = { 0.0f, 0.0f };
+	if (text.empty()) return text_size;
+
+	ImVec2 cur_size = { 0.0f, 0.0f };
+
+	float font_size = m_fontSize == 0.0f ? ImGui::GetIO().Fonts->Fonts[0]->FontSize : m_fontSize;
+	const char* text_start = text.c_str();
+	const char* text_cur = text.c_str();
+	const char* text_end = text.c_str() + text.length();
+
+	while (*text_cur)
+	{
+		if (*text_cur == '{' && ((&text_cur[7] < text_end) && text_cur[7] == '}'))
+		{
+			if (text_cur != text_start)
+			{
+
+
+===== app/src/main/cpp/samp/gui/widget.cpp =====
+#include "gui.h"
+#include<algorithm>
+
+Widget::Widget()
+{
+	m_parent = nullptr;
+	m_visible = true;
+	m_position = ImVec2(0.0f, 0.0f);
+	m_size = ImVec2(0.0f, 0.0f);
+
+	m_minSize = { 0.0f, 0.0f };
+	m_maxSize = { FLT_MAX, FLT_MAX };
+
+	m_focused = false;
+	m_active = false;
+	m_pushAbsolutePos = { 0.0f, 0.0f };
+	m_moveDelta = { 0.0f, 0.0f };
+}
+
+Widget::~Widget()
+{
+	for (auto child : m_children)
+	{
+		if (child) delete child;
+	}
+}
+
+void Widget::setSize(const ImVec2& size)
+{
+	ImVec2 sz = size;
+
+	/* min */
+	if (sz.x < m_minSize.x) sz.x = m_minSize.x;
+	if (sz.y < m_minSize.y) sz.y = m_minSize.y;
+	/* max */
+	if (sz.x > m_maxSize.x) sz.x = m_maxSize.x;
+	if (sz.y > m_maxSize.y) sz.y = m_maxSize.y;
+
+	m_size = sz;
+}
+
+void Widget::setWidth(float width)
+{
+	/* min */
+	if (width < m_minSize.x) width = m_minSize.x;
+	/* max */
+	if (width > m_maxSize.x) width = m_maxSize.x;
+
+	m_size.x = width;
+}
+
+void Widget::setHeight(float height)
+{
+	/* min */
+	if (height < m_minSize.y) height = m_maxSize.y;
+	/* max */
+	if (height > m_maxSize.y) height = m_maxSize.y;
+
+	m_size.y = height;
+}
+
+void Widget::setPosition(const ImVec2& position)
+{
+	// relative-pos
+	m_position = position;
+
+	// пересчитываем абсолютную позицию для this и child
+	this->updateAbsolutePosition();
+}
+
+void Widget::updateAbsolutePosition()
+{
+	m_absolutePosition = m_parent ? m_parent->absolutePosition() + m_position : m_position;
+
+	if (m_children.empty()) return;
+	for (auto child : m_children)
+	{
+		child->updateAbsolutePosition();
+	}
+}
+
+void Widget::setFocus(bool focus)
+{
+	m_focused = focus;
+	focuseEvent(focus);
+}
+
+void Widget::setActive(bool active)
+{
+	m_active = active;
+	activateEvent(active);
+}
+
+void Widget::addChild(int index, Widget* widget)
+{
+	assert(index <= childCount());
+	m_children.insert(m_children.begin() + index, widget);
+	widget->setParent(this);
+}
+
+void Widget::addChild(Widget* widget)
+{
+	addChild(childCount(), widget);
+}
+
+void Widget::removeChild(const Widget* widget)
+{
+	m_children.erase(std::remove(m_children.begin(), m_children.end(), widget), m_children.end());
+	delete widget;
+}
+
+void Widget::removeChild(int index)
+{
+	Widget* widget = m_children[index];
+	m_children.erase(m_children.begin() + index);
+	delete widget;
+}
+
+int Widget::childIndex(Widget* widget) const
+{
+	auto it = std::find(m_children.begin(), m_children.end(), widget);
+	if (it == m_children.end()) return -1;
+	return (int)(it - m_children.begin());
+}
+
+bool Widget::contains(const ImVec2& pos) const
+{
+	ImVec2 d = pos - absolutePosition();
+	return (
+		d.x >= 0 && d.y >= 0 &&
+		d.x < size().x && d.y < size().y);
+}
+
+void Widget::touchEvent(const ImVec2& pos, TouchType type)
+{
+	if (type == TouchType::push)
+	{
+		if (visible() && contains(pos))
+		{
+			setFocus(true);
+			m_pushAbsolutePos = pos;
+			touchPushEvent();
+		}
+		else
+		{
+			setActive(false);
+		}
+	}
+	else if (type == TouchType::move)
+	{
+		ImVec2 delta = pos - m_pushAbsolutePos;
+		if (m_focused) touchMoveEvent(delta - m_moveDelta);
+		m_moveDelta = delta;
+	}
+	else if (type == TouchType::pop)
+	{
+		bool focused = m_focused;
+		setFocus(false);
+
+		if (visible() && contains(pos) && focused) 
+		{
+			setActive(true);
+			touchPopEvent();
+		}
+
+		m_pushAbsolutePos = { 0.0f, 0.0f };
+		m_moveDelta = { 0.0f, 0.0f };
+	}
+
+	/* проходим по дочерним окнам */
+	if (m_children.empty()) return;
+	for (auto child : m_children)
+	{
+		if(child->visible()) child->touchEvent(pos, type);
+	}
+}
+
+void Widget::draw(ImGuiRenderer* renderer)
+{
+
+	if (!m_children.empty())
+	{
+		for (auto child : m_children)
+		{
+			if (child->visible())
+			{
+#if DEBUG_GUI == 0
+				//renderer->pushClipRect(child->absolutePosition(), child->absolutePosition() + child->size(), true);
+#endif
+				child->draw(renderer);
+#if DEBUG_GUI == 0
+				//renderer->popClipRect();
+#endif
+			}
+		}
+	}
+
+#if DEBUG_GUI == 1
+	renderer->drawRect(absolutePosition(), absolutePosition() + size(), m_active ? ImColor(0, 255, 0) : m_focused ? ImColor(0, 0, 255) : ImColor(255, 0, 0), false);
+#endif
+}
+
+void Widget::performLayout()
+{
+	for (auto c : m_children)
+	{
+		c->performLayout();
+	}
+} 
+
+===== C1) hooks.cpp 100-210 (CHud::Draw ve render hook) =====
+    //   CClouds::VolumetricCloudsRender();
+////    if (CHeli::NumberOfSearchLights || CTheScripts::NumberOfScriptSearchLights) {
+////        CHeli::Pre_SearchLightCone();
+////        CHeli::RenderAllHeliSearchLights();
+////        CTheScripts::RenderAllSearchLights();
+////        CHeli::Post_SearchLightCone();
+////    }
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005E3390 + 1 : 0x708DF0));
+////    if (CReplay::Mode != MODE_PLAYBACK && !CPad::GetPad(0)->DisablePlayerControls) {
+////        FindPlayerPed()->DrawTriangleForMouseRecruitPed();
+////    }
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005C0B14 + 1 : 0x6E50CC));
+//    //CVehicleRecording::Render();
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005B19D0 + 1 : 0x6D6068));
+//    //CRenderer::RenderFirstPersonVehicle();
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005B5F78 + 1 : 0x6DA2B8));
+
+    //DebugModules::Render3D();
+}
+
+/*void MainLoop();
+void(*Render2dStuff)();
+void Render2dStuff_hook()
+{
+    Render2dStuff();
+    if(pNetGame)
+    {
+        CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
+        if(pTextDrawPool) pTextDrawPool->Draw();
+    }
+    if (pUI) pUI->render();
+    return;
+}*/
+void Render2dStuff()
+{
+    if( CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x001BB7F4 + 1 : 0x24EA90)) ) // emu_IsAltRenderTarget()
+        CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x001BC20C + 1 : 0x24F5B8)); // emu_FlushAltRenderTarget()
+
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE, RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, RWRSTATE(FALSE));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND, RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND, RWRSTATE(rwBLENDINVSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEFOGENABLE, RWRSTATE(rwRENDERSTATENARENDERSTATE));
+    RwRenderStateSet(rwRENDERSTATECULLMODE, RWRSTATE(rwCULLMODECULLNONE));
+
+    //((void (*)()) (g_libGTASA + (VER_x32 ? 0x00437B0C + 1 : 0x51CFF0)))(); // CHud::DrawRadar
+    //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
+    CHook::CallFunction<void>("_ZN4CHud4DrawEv");
+    //	GPS::Draw();
+    //
+    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(false); // CTouchInterface::DrawAll
+
+    CHook::CallFunction<void>("_Z12emu_GammaSeth", 1);
+
+    ((void (*)(bool)) (g_libGTASA + (VER_x32 ? 0x0054BDD4 + 1 : 0x66B678)))(1u); // CMessages::Display - gametext
+    ((void (*)(bool)) (g_libGTASA + (VER_x32 ? 0x005A9120 + 1 : 0x6CCEA0)))(1u); // CFont::RenderFontBuffer
+    CHook::CallFunction<void>("_Z12emu_GammaSeth", 0);
+
+    if(pNetGame)
+    {
+        CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
+        if(pTextDrawPool) pTextDrawPool->Draw();
+    }
+
+    if (pUI) pUI->render();
+}
+
+/* =============================================================================== */
+
+int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char* name);
+int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char* name)
+{
+	if(pNetGame && !strncmp(name, "CODEWAY", 7))
+	{
+		float fFindZ = CWorld::FindGroundZForCoord(X, Y) + 1.5f;
+
+		if(pNetGame->GetGameState() != GAMESTATE_CONNECTED) return 0;
+
+		RakNet::BitStream bsSend;
+		bsSend.Write(X);
+		bsSend.Write(Y);
+		bsSend.Write(fFindZ);
+		pNetGame->GetRakClient()->RPC(&RPC_MapMarker, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+	}
+
+	return CRadar__SetCoordBlip(r0, X, Y, Z, r4, r5, name);
+}
+
+/* =============================================================================== */
+
+void(*CRadar_DrawRadarGangOverlay)(uint32_t unk);
+void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
+{
+	if (pNetGame)
+	{
+		CGangZonePool *pGangZonePool = pNetGame->GetGangZonePool();
+		if (pGangZonePool) {
+			pGangZonePool->Draw(unk);
+		}
+	}
+}
+
+/* =============================================================================== */
+
+typedef struct {
+    CVector     vecPosObject;
+    CQuaternion m_qRotation;
+    int32       wModelIndex;
+    union {
+        struct { // CFileObjectInstanceType
+
+
+===== C2) render / HUD cagirislari =====
+app/src/main/cpp/samp/game/hooks.cpp:121:void(*Render2dStuff)();
+app/src/main/cpp/samp/game/hooks.cpp:122:void Render2dStuff_hook()
+app/src/main/cpp/samp/game/hooks.cpp:124:    Render2dStuff();
+app/src/main/cpp/samp/game/hooks.cpp:130:    if (pUI) pUI->render();
+app/src/main/cpp/samp/game/hooks.cpp:133:void Render2dStuff()
+app/src/main/cpp/samp/game/hooks.cpp:147:    //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
+app/src/main/cpp/samp/game/hooks.cpp:148:    CHook::CallFunction<void>("_ZN4CHud4DrawEv");
+app/src/main/cpp/samp/game/hooks.cpp:165:    if (pUI) pUI->render();
+app/src/main/cpp/samp/game/hooks.cpp:1249:	//CHook::InstallPLT(g_libGTASA + 0x67589C, (uintptr_t)Render2dStuff_hook, (uintptr_t*)&Render2dStuff);
+app/src/main/cpp/samp/game/hooks.cpp:1841:    CHook::Redirect("_Z13Render2dStuffv", &Render2dStuff);
+app/src/main/cpp/samp/game/hooks.cpp:1906:    CHook::InlineHook("_ZN4CHud14DrawCrossHairsEv", &DrawCrosshair_hook, &DrawCrosshair);
+app/src/main/cpp/samp/game/patches.cpp:265:    CHook::RET("_ZN4CHud23DrawBustedWastedMessageEv"); // CHud::DrawBustedWastedMessage
+app/src/main/cpp/samp/game/patches.cpp:266:    CHook::RET("_ZN4CHud14SetHelpMessageEPKcPtbbbj"); // CHud::SetHelpMessage
+app/src/main/cpp/samp/game/patches.cpp:267:    CHook::RET("_ZN4CHud24SetHelpMessageStatUpdateEhtff"); // CHud::SetHelpMessageStatUpdate
+
+
+===== C3) libGTASA native HUD / toxunus dugmeleri / radar simvollari =====
+000000000037ff08 T _ZN13CWidgetRegion4DrawEv
+000000000037ff04 T _ZN13CWidgetRegion6UpdateEv
+0000000000380284 W _ZN13CWidgetRegion7GetNameEv
+0000000000380290 W _ZN13CWidgetRegion8IsRegionEv
+000000000037ff30 T _ZN13CWidgetRegion8StretchXEf
+000000000037ff5c T _ZN13CWidgetRegion8StretchYEf
+000000000037ff88 T _ZN13CWidgetRegion9DrawFrameEf5CRectf
+000000000037fed4 T _ZN13CWidgetRegionC1EPKcRK14WidgetPositioni10HIDMapping
+000000000037fed4 T _ZN13CWidgetRegionC2EPKcRK14WidgetPositioni10HIDMapping
+0000000000380260 W _ZN13CWidgetRegionD0Ev
+000000000037008c T _ZN15CTouchInterface10IsHeldDownENS_9WidgetIDsEi
+000000000036fd1c T _ZN15CTouchInterface10IsReleasedENS_9WidgetIDsEP9CVector2Di
+000000000036ffe4 T _ZN15CTouchInterface10IsSwipedUpENS_9WidgetIDsEi
+00000000008d2010 B _ZN15CTouchInterface10m_pWidgetsE
+0000000000371b38 T _ZN15CTouchInterface11DebugReloadEv
+000000000036f9a4 T _ZN15CTouchInterface11IsTouchDownEi
+0000000000371aa0 T _ZN15CTouchInterface12DeleteWidgetENS_9WidgetIDsE
+00000000003701f4 T _ZN15CTouchInterface12DrawHelpIconEPKcfffi
+0000000000370134 T _ZN15CTouchInterface12IsSwipedDownENS_9WidgetIDsEi
+000000000036fe94 T _ZN15CTouchInterface12IsSwipedLeftENS_9WidgetIDsEi
+000000000036c274 T _ZN15CTouchInterface12LoadFromFileEPKcb
+000000000036fc04 T _ZN15CTouchInterface12VisualizeAllEb
+00000000008d2ea0 B _ZN15CTouchInterface12m_bPinchZoomE
+00000000008d2ea1 B _ZN15CTouchInterface12m_bTouchDownE
+0000000000371720 T _ZN15CTouchInterface13AddButtonFlagENS_9WidgetIDsEi
+00000000003716e0 T _ZN15CTouchInterface13AddWidgetFlagENS_9WidgetIDsEi
+000000000036f9dc T _ZN15CTouchInterface13GetNumTouchesEv
+000000000037185c T _ZN15CTouchInterface13GetTouchDeltaEi
+000000000036ff3c T _ZN15CTouchInterface13IsSwipedRightENS_9WidgetIDsEi
+000000000036ed14 T _ZN15CTouchInterface13LoadTextureDBEv
+0000000000371b50 T _ZN15CTouchInterface13MarketingHackEi
+00000000003714b8 T _ZN15CTouchInterface13SetWidgetInfoENS_9WidgetIDsEPcfbbbbi
+000000000085e748 D _ZN15CTouchInterface13m_nMaxTouchesE
+0000000000371218 T _ZN15CTouchInterface14GetWidgetValueENS_9WidgetIDsE
+0000000000371120 T _ZN15CTouchInterface14IsDoubleTappedENS_9WidgetIDsEbi
+000000000036fdd8 T _ZN15CTouchInterface14IsPinchZoomingENS_9WidgetIDsEP9CVector2Di
+000000000037165c T _ZN15CTouchInterface14SetSliderRangeENS_9WidgetIDsEff
+0000000000371570 T _ZN15CTouchInterface14SetWidgetInfo2ENS_9WidgetIDsEiiiiPcS1_
+0000000000371320 T _ZN15CTouchInterface14SetWidgetValueENS_9WidgetIDsEf
+00000000008d2ea8 B _ZN15CTouchInterface14m_vecCachedPosE
+00000000003701dc T _ZN15CTouchInterface15ClearTapHistoryENS_9WidgetIDsE
+0000000000371284 T _ZN15CTouchInterface15GetWidgetValue2ENS_9WidgetIDsEPfS1_
+000000000037163c T _ZN15CTouchInterface15SetEquippedItemENS_9WidgetIDsEi
+000000000037139c T _ZN15CTouchInterface15SetWidgetValue2ENS_9WidgetIDsEff
+0000000000371420 T _ZN15CTouchInterface15SetWidgetValue3ENS_9WidgetIDsEfff
+000000000036f1f4 T _ZN15CTouchInterface15UnloadTextureDBEP22TextureDatabaseRuntime
+00000000003719fc T _ZN15CTouchInterface16CreateShopWidgetEPKcPS1_iR14WidgetPositionb
+000000000036f9c8 T _ZN15CTouchInterface16GetTouchPositionEi
+000000000037177c T _ZN15CTouchInterface16RemoveButtonFlagENS_9WidgetIDsEi
+0000000000371700 T _ZN15CTouchInterface16RemoveWidgetFlagENS_9WidgetIDsEi
+0000000000371614 T _ZN15CTouchInterface16SetWidgetTextureENS_9WidgetIDsEPc
+00000000008d2600 B _ZN15CTouchInterface16m_WidgetPositionE
+00000000008d2ec8 B _ZN15CTouchInterface16m_vecCachedDeltaE
+000000000037182c T _ZN15CTouchInterface17GetWidgetPositionENS_17WidgetPositionIDsERfS1_S1_S1_
+00000000003717d8 T _ZN15CTouchInterface17GetWidgetPositionENS_9WidgetIDsERfS1_S1_S1_
+0000000000371ae0 T _ZN15CTouchInterface17LoadAllTextureDBsEv
+000000000036c7d4 T _ZN15CTouchInterface17LoadTouchControlsEv
+000000000036f018 T _ZN15CTouchInterface17SetupSteeringModeEv
+000000000036ee5c T _ZN15CTouchInterface18SetupLayoutObjectsEv
+0000000000371b0c T _ZN15CTouchInterface19UnloadAllTextureDBsEv
+00000000008d2ee8 B _ZN15CTouchInterface19m_pszWidgetTexturesE
+000000000037194c T _ZN15CTouchInterface20CreateListTextWidgetEPPKciNS_9WidgetIDsER14WidgetPositionbbb
+0000000000371870 T _ZN15CTouchInterface20CreateListTextWidgetEPPKciNS_9WidgetIDsEbbb
+000000000036edf4 T _ZN15CTouchInterface20CreateTapMeterWidgetEv
+000000000036c1b8 T _ZN15CTouchInterface21LoadDefaultConfigFileEv
+0000000000371b84 T _ZN15CTouchInterface22AnyWidgetsUsingAltBackEv
+000000000036ed8c T _ZN15CTouchInterface23CreateThumbCircleWidgetEv
+000000000085e750 D _ZN15CTouchInterface24m_pszWidgetPositionNamesE
+000000000036f1f8 T _ZN15CTouchInterface27RepositionAdjustableWidgetsEv
+000000000036f374 T _ZN15CTouchInterface5ClearEv
+000000000036fa74 T _ZN15CTouchInterface6UpdateEv
+000000000036fb00 T _ZN15CTouchInterface7DrawAllEb
+000000000036d0c8 T _ZN15CTouchInterface9CreateAllEv
+000000000036ed44 T _ZN15CTouchInterface9DeleteAllEv
+000000000036fc60 T _ZN15CTouchInterface9IsTouchedENS_9WidgetIDsEP9CVector2Di
+000000000055c1c8 T _ZN4CHud10InitialiseEv
+000000000051c528 T _ZN4CHud10SetMessageEPt
+000000000051c3a4 T _ZN4CHud11SetZoneNameEPth
+0000000000c20d88 B _ZN4CHud11m_ZoneStateE
+0000000000c1fa48 B _ZN4CHud11m_pZoneNameE
+000000000051d568 T _ZN4CHud12DrawAreaNameEv
+000000000051dff0 T _ZN4CHud12DrawHelpTextEv
+000000000051bf40 T _ZN4CHud12ReInitialiseEv
+0000000000c1fd80 B _ZN4CHud12m_BigMessageE
+0000000000c20dd8 B _ZN4CHud12m_LastWantedE
+0000000000c20de8 B _ZN4CHud12m_LastWeaponE
+000000000051f9b0 T _ZN4CHud13DrawAfterFadeEv
+000000000051fbbc T _ZN4CHud13DrawFadeStateE15DRAW_FADE_STATEi
+000000000051e21c T _ZN4CHud13DrawSubtitlesEv
+000000000051c574 T _ZN4CHud13SetBigMessageEPtt
+0000000000c1fa10 B _ZN4CHud13m_ItemToFlashE
+0000000000c20de4 B _ZN4CHud13m_WantedStateE
+0000000000c20ddc B _ZN4CHud13m_WantedTimerE
+0000000000c20df4 B _ZN4CHud13m_WeaponStateE
+0000000000c20dec B _ZN4CHud13m_WeaponTimerE
+0000000000c1fa58 B _ZN4CHud13m_ZoneToPrintE
+000000000051c694 T _ZN4CHud14DrawCrossHairsEv
+000000000051e02c T _ZN4CHud14DrawScriptTextEh
+000000000051cfcc T _ZN4CHud14DrawVitalStatsEv
+000000000051c3e0 T _ZN4CHud14SetHelpMessageEPKcPtbbbj
+000000000051c518 T _ZN4CHud14SetVehicleNameEPt
+0000000000c20da8 B _ZN4CHud14m_VehicleStateE
+0000000000c20d90 B _ZN4CHud14m_pVehicleNameE
+000000000051db48 T _ZN4CHud15DrawVehicleNameEv
+000000000051c670 T _ZN4CHud15ResetWastedTextEv
+0000000000c20d84 B _ZN4CHud15m_ZoneFadeTimerE
+0000000000c20d80 B _ZN4CHud15m_ZoneNameTimerE
+0000000000c1fa50 B _ZN4CHud15m_pLastZoneNameE
+000000000051f438 T _ZN4CHud16DrawMissionTitleEv
+0000000000c20df8 B _ZN4CHud16m_LastBreathTimeE
+000000000051df8c T _ZN4CHud17DrawMissionTimersEv
+000000000051ed38 T _ZN4CHud17DrawOddJobMessageEh
+0000000000c20dc4 B _ZN4CHud17m_EnergyLostStateE
+0000000000c20dbc B _ZN4CHud17m_EnergyLostTimerE
+0000000000c20de0 B _ZN4CHud17m_WantedFadeTimerE
+0000000000c20df0 B _ZN4CHud17m_WeaponFadeTimerE
+0000000000c20d8e B _ZN4CHud18bDrawingVitalStatsE
+0000000000c20dc8 B _ZN4CHud18m_LastDisplayScoreE
+0000000000c20da4 B _ZN4CHud18m_VehicleFadeTimerE
+0000000000c20da0 B _ZN4CHud18m_VehicleNameTimerE
+0000000000c20d98 B _ZN4CHud18m_pLastVehicleNameE
+0000000000c20dd4 B _ZN4CHud19m_DisplayScoreStateE
+0000000000c20dcc B _ZN4CHud19m_DisplayScoreTimerE
+0000000000c20d8c B _ZN4CHud19m_Wants_To_Draw_HudE
+000000000051c358 T _ZN4CHud20GetYPosBasedOnHealthEhfa
+0000000000c20db8 B _ZN4CHud20m_LastTimeEnergyLostE
+0000000000c20dc0 B _ZN4CHud21m_EnergyLostFadeTimerE
+0000000000c20db0 B _ZN4CHud21m_pVehicleNameToPrintE
+000000000051c194 T _ZN4CHud22GetRidOfAllHudMessagesEh
+000000000051ead8 T _ZN4CHud23DrawBustedWastedMessageEv
+0000000000c20dfc B _ZN4CHud23bScriptDontDisplayRadarE
+0000000000c20dd0 B _ZN4CHud23m_DisplayScoreFadeTimerE
+000000000051e6c0 T _ZN4CHud24DrawSuccessFailedMessageEv
+000000000051c488 T _ZN4CHud24SetHelpMessageStatUpdateEhtff
+0000000000c20d8d B _ZN4CHud25m_Wants_To_Draw_3dMarkersE
+0000000000c20dff B _ZN4CHud26bScriptDontDisplayAreaNameE
+0000000000c20dfe B _ZN4CHud29bScriptDontDisplayVehicleNameE
+0000000000c20dfd B _ZN4CHud31bScriptForceDisplayWithCountersE
+000000000051f6f0 T _ZN4CHud4DrawEv
+0000000000c1fa18 B _ZN4CHud7SpritesE
+000000000051bee4 T _ZN4CHud8ShutdownEv
+000000000051cff0 T _ZN4CHud9DrawRadarEv
+0000000000c1fa60 B _ZN4CHud9m_MessageE
+0000000000526e78 T _ZN6CRadar10DrawLegendEiii
+0000000000523118 T _ZN6CRadar10InitialiseEv
+00000000005277ec T _ZN6CRadar10LimitToMapEPfS0_
+0000000000527eb0 T _ZN6CRadar11SetBlipFadeEih
+0000000000c24614 B _ZN6CRadar11m_radarRectE
+00000000005239c8 T _ZN6CRadar12DrawRadarMapEv
+0000000000523480 T _ZN6CRadar12LoadTexturesEv
+AdjustableButton.cpp
+AdjustableButton.h
+AdjustableHUD.cpp
+AdjustableHUD.h
+TouchInterface.cpp
+TouchInterface.h
+WidgetButton.cpp
+WidgetButton.h
+WidgetGta.cpp
+WidgetGta.h
+WidgetRadar.cpp
+WidgetRadar.h
+WidgetRegion.cpp
+WidgetRegion.h
+WidgetRegionLook.cpp
+WidgetRegionLook.h
+
+
+===== app/src/main/cpp/samp/game/Widgets/WidgetGta.cpp =====
+//
+// Created by x1y2z on 03.02.2023.
+//
+
+#include "WidgetGta.h"
+#include "main.h"
+#include "game/game.h"
+#include "net/netgame.h"
+#include "vendor/armhook/patch.h"
+#include "WidgetRegionLook.h"
+#include "TouchInterface.h"
+#include "WidgetButton.h"
+
+extern CNetGame *pNetGame;
+extern CGame *pGame;
+
+CWidgetGta* m_pWidgets[WidgetIDs::NUM_WIDGETS];
+
+enum eWidgetState {
+    STATE_NONE,
+    STATE_FIXED
+};
+
+WidgetIDs GetWidgetTypeFromWidget(CWidgetGta* pWidget)
+{
+    if(pWidget)
+    {
+        if(m_pWidgets[WidgetIDs::WIDGET_ATTACK] && pWidget == m_pWidgets[WidgetIDs::WIDGET_ATTACK]) return WidgetIDs::WIDGET_ATTACK;
+        if(m_pWidgets[WidgetIDs::WIDGET_SPRINT] && pWidget == m_pWidgets[WidgetIDs::WIDGET_SPRINT]) return WidgetIDs::WIDGET_SPRINT;
+        if(m_pWidgets[WidgetIDs::WIDGET_ACCELERATE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_ACCELERATE]) return WidgetIDs::WIDGET_ACCELERATE;
+        if(m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR] && pWidget == m_pWidgets[WidgetIDs::WIDGET_ENTER_CAR]) return WidgetIDs::WIDGET_ENTER_CAR;
+        if(m_pWidgets[WidgetIDs::WIDGET_BRAKE] && pWidget == m_pWidgets[WidgetIDs::WIDGET_BRAKE]) return WidgetIDs::WIDGET_BRAKE;
+    }
+
+    return static_cast<WidgetIDs>(-1);
+}
+
+void SetWidgetFromId(int idWidget, CWidgetGta* pWidget)
+{
+    m_pWidgets[idWidget] = pWidget;
+}
+
+void SetWidgetFromName(const char* name, CWidgetGta* pWidget)
+{
+    if(!strcmp("accelerate", name)) SetWidgetFromId(WidgetIDs::WIDGET_ACCELERATE, pWidget);
+    if(!strcmp("hud_car", name)) SetWidgetFromId(WidgetIDs::WIDGET_ENTER_CAR, pWidget);
+    if(!strcmp("brake", name)) SetWidgetFromId(WidgetIDs::WIDGET_BRAKE, pWidget);
+}
+
+eWidgetState ProcessFixedWidget(CWidgetGta* pWidget)
+{
+    WidgetIDs widgetType = GetWidgetTypeFromWidget(pWidget);
+
+    CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
+    switch(widgetType)
+    {
+        case -1:
+            return STATE_NONE;
+        case WidgetIDs::WIDGET_ATTACK:
+        case WidgetIDs::WIDGET_SPRINT:
+            if(pPlayerPed->IsInVehicle() ||
+               pPlayerPed->IsInJetpackMode())
+            {
+                return STATE_FIXED;
+            }
+            break;
+        case WidgetIDs::WIDGET_ACCELERATE:
+        case WidgetIDs::WIDGET_BRAKE:
+            if(!pPlayerPed->IsInVehicle() &&
+               !pPlayerPed->IsInJetpackMode())
+            {
+                return STATE_FIXED;
+            }
+            break;
+        case WidgetIDs::WIDGET_ENTER_CAR:
+            if(pPlayerPed->IsInJetpackMode()) return STATE_NONE;
+
+            if(pNetGame)
+            {
+                CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+                if(pVehiclePool)
+                {
+                    VEHICLEID vehicleId = pVehiclePool->FindNearestToLocalPlayerPed();
+                    if(vehicleId == INVALID_VEHICLE_ID) return STATE_FIXED;
+
+                    if(vehicleId != INVALID_VEHICLE_ID)
+                    {
+                        CVehicle *pVehicle = pVehiclePool->GetAt(vehicleId);
+                        if(pVehicle)
+                        {
+                            if(!pPlayerPed->IsInVehicle() &&
+                               pVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed() > 10.0f)
+                            {
+                                return STATE_FIXED;
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+    }
+
+    return STATE_NONE;
+}
+
+void CWidgetGta::SetEnabled(bool bEnabled) {
+    m_bEnabled = bEnabled;
+}
+
+bool (*CWidget__IsTouched)(uintptr_t *thiz, CVector2D *pVecOut);
+bool CWidget__IsTouched_hook(uintptr_t *thiz, CVector2D *pVecOut) {
+//    if(*thiz == CWidgetGta::pWidgets[WIDGET_POSITION_HORN]) {
+//        return true;
+//    }
+//    if(!CHUD::bIsShow)
+//        return false;
+
+
+    return CWidget__IsTouched(thiz, pVecOut);
+}
+
+uintptr_t (*CWidget)(CWidgetButton* thiz, const char* name, uintptr_t* a3, int a4, uintptr_t* a5);
+uintptr_t CWidget_hook(CWidgetButton* thiz, const char* name, uintptr_t*  a3, int a4, uintptr_t* a5)
+{
+    FLog("New Widget: \"%s\" 0x%X", name, thiz-g_libGTASA);
+
+    SetWidgetFromName(name, thiz);
+    return CWidget(thiz, name, a3, a4, a5);
+}
+
+void (*CWidget__SetEnabled)(CWidgetGta* pWidget, bool bEnabled);
+void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
+{
+    if(pNetGame)
+    {
+        switch(ProcessFixedWidget(pWidget))
+        {
+            case STATE_NONE: break;
+            case STATE_FIXED:
+                bEnabled = false;
+                break;
+        }
+    }
+
+    CWidget__SetEnabled(pWidget, bEnabled);
+}
+
+void (*CWidgetButton__Update)(CWidgetButton* thiz);
+void CWidgetButton__Update_hook(CWidgetButton* thiz) {
+    if(pNetGame)
+    {
+        switch(ProcessFixedWidget(thiz))
+        {
+            case STATE_NONE: break;
+            case STATE_FIXED: return;
+        }
+    }
+
+    CWidgetButton__Update(thiz);
+}
+
+void CWidgetGta::InjectHooks() {
+    CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x00671424 : 0x842408), &CWidgetButton__Update_hook, &CWidgetButton__Update);
+    CHook::InlineHook("_ZN13CWidgetButtonC2EPKcRK14WidgetPositionjj10HIDMapping", &CWidget_hook, &CWidget);
+    CHook::InlineHook("_ZN7CWidget10SetEnabledEb", &CWidget__SetEnabled_hook, &CWidget__SetEnabled);
+}
+
+void CWidgetGta::SetTexture(const char *name) {
+    m_Sprite.m_pTexture = CUtil::LoadTextureFromDB("mobile", name);
+}
+
+bool CWidgetGta::IsReleased(CVector2D *pVecOut) {
+    return CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x002B3484 + 1 : 0x372794), this, pVecOut);
+}
+
+bool CWidgetGta::IsTouched(CVector2D *pVecOut) {
+    return CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x002B3324 + 1 : 0x3725D0), this, pVecOut);
+}
+
+
+
+
+===== app/src/main/cpp/samp/game/tHandlingData.h =====
+//
+// Created by x1y2z on 09.04.2023.
+//
+
+#pragma once
+
+#include "game/Core/Vector.h"
+#include "cTransmission.h"
+#include "Enums/eVehicleHandlingModelFlags.h"
+#include "Enums/eVehicleHandlingFlags.h"
+
+
+enum eVehicleLightsSize : uint8_t {
+    LIGHTS_LONG,
+    LIGHTS_SMALL,
+    LIGHTS_BIG,
+    LIGHTS_TALL
+};
+
+struct tHandlingData
+{
+    int32_t       m_nVehicleId;
+    float         m_fMass; // 1.0 to 50000.0
+    float         m_fMassRecpr; // = 1.f / m_fMass
+    float         m_fTurnMass;
+    float         m_fDragMult;
+    CVector       m_vecCentreOfMass;   // x, y, z - 1.0 to 50000.0
+    uint8_t       m_nPercentSubmerged; // 10 to 120 (> 100% vehicle sinks)
+    uint8_t       pad0[3];
+    float         m_fBuoyancyConstant;
+    float         m_fTractionMultiplier; // 0.5 to 2.0
+    cTransmission m_transmissionData;
+    float         m_fBrakeDeceleration; // 0.1 to 10.0
+    float         m_fBrakeBias;         // 0.0 > x > 1.0
+    bool          m_bABS;               // 0/1
+    char          field_9D;
+    char          field_9E;
+    char          field_9F;
+    float         m_fSteeringLock; // 10.0 to 40.0
+    float         m_fTractionLoss;
+    float         m_fTractionBias;
+    float         m_fSuspensionForceLevel;     // not [L/M/H]
+    float         m_fSuspensionDampingLevel;   // not [L/M/H]
+    float         m_fSuspensionHighSpdComDamp; // often zero - 200.0 or more for bouncy vehicles
+    float         m_fSuspensionUpperLimit;
+    float         m_fSuspensionLowerLimit;
+    float         m_fSuspensionBiasBetweenFrontAndRear;
+    float         m_fSuspensionAntiDiveMultiplier;
+    float         m_fCollisionDamageMultiplier; // 0.2 to 5.0
+    union {
+        eVehicleHandlingModelFlags m_nModelFlags;
+        struct {
+            uint32_t m_bIsVan : 1;
+            uint32_t m_bIsBus : 1;
+            uint32_t m_bIsLow : 1;
+            uint32_t m_bIsBig : 1;
+            uint32_t m_bReverseBonnet : 1;
+            uint32_t m_bHangingBoot : 1;
+            uint32_t m_bTailgateBoot : 1;
+            uint32_t m_bNoswingBoot : 1;
+
+            uint32_t m_bNoDoors : 1;
+            uint32_t m_bTandemSeats : 1;
+            uint32_t m_bSitInBoat : 1;
+            uint32_t m_bConvertible : 1;
+            uint32_t m_bNoExhaust : 1;
+            uint32_t m_bDoubleExhaust : 1;
+            uint32_t m_bNo1fpsLookBehind : 1;
+            uint32_t m_bForceDoorCheck : 1;
+
+            uint32_t m_bAxleFNotlit : 1;
+            uint32_t m_bAxleFSolid : 1;
+            uint32_t m_bAxleFMcpherson : 1;
+            uint32_t m_bAxleFReverse : 1;
+            uint32_t m_bAxleRNotlit : 1;
+            uint32_t m_bAxleRSolid : 1;
+            uint32_t m_bAxleRMcpherson : 1;
+            uint32_t m_bAxleRReverse : 1;
+
+            uint32_t m_bIsBike : 1;
+            uint32_t m_bIsHeli : 1;
+            uint32_t m_bIsPlane : 1;
+            uint32_t m_bIsBoat : 1;
+            uint32_t m_bBouncePanels : 1;
+            uint32_t m_bDoubleRwheels : 1;
+            uint32_t m_bForceGroundClearance : 1;
+            uint32_t m_bIsHatchback : 1;
+        };
+    };
+    union {
+        eVehicleHandlingFlags m_nHandlingFlags;
+        struct {
+            uint32_t m_b1gBoost : 1;
+            uint32_t m_b2gBoost : 1;
+            uint32_t m_bNpcAntiRoll : 1;
+            uint32_t m_bNpcNeutralHandl : 1;
+            uint32_t m_bNoHandbrake : 1;
+            uint32_t m_bSteerRearwheels : 1;
+            uint32_t m_bHbRearwheelSteer : 1;
+            uint32_t m_bAltSteerOpt : 1;
+
+            uint32_t m_bWheelFNarrow2 : 1;
+            uint32_t m_bWheelFNarrow : 1;
+            uint32_t m_bWheelFWide : 1;
+            uint32_t m_bWheelFWide2 : 1;
+            uint32_t m_bWheelRNarrow2 : 1;
+            uint32_t m_bWheelRNarrow : 1;
+            uint32_t m_bWheelRWide : 1;
+            uint32_t m_bWheelRWide2 : 1;
+
+            uint32_t m_bHydraulicGeom : 1;
+            uint32_t m_bHydraulicInst : 1;
+            uint32_t m_bHydraulicNone : 1;
+            uint32_t m_bNosInst : 1;
+            uint32_t m_bOffroadAbility : 1;
+            uint32_t m_bOffroadAbility2 : 1;
+            uint32_t m_bHalogenLights : 1;
+            uint32_t m_bProcRearwheelFirst : 1;
+            uint32_t m_bUseMaxspLimit : 1;
+
+            uint32_t m_bLowRider : 1;
+            uint32_t m_bStreetRacer : 1;
+            uint32_t m_bSwingingChassis : 1;
+        };
+    };
+    float              m_fSeatOffsetDistance; // // ped seat position offset towards centre of car
+    uint32_t           m_nMonetaryValue;      // 1 to 100000
+    eVehicleLightsSize m_nFrontLights;
+    eVehicleLightsSize m_nRearLights;
+    uint8_t            m_nAnimGroup;
+    uint8_t            pad2;
+
+    cTransmission& GetTransmission() { return m_transmissionData; }
+
+    int InitFromData(int id, const char *line);
+};
+static_assert(sizeof(tHandlingData) == 0xE0, "Invalid size tHandlingData");
+
+
+
+===== D1) cTransmission / tTransmissionGear tanimi =====
+
+
+===== app/src/main/cpp/samp/game/tTransmissionGear.h =====
+/*
+    Plugin-SDK file
+    Authors: GTA Community. See more here
+    https://github.com/DK22Pac/plugin-sdk
+    Do not delete this comment block. Respect others' work!
+*/
+#pragma once
+
+struct tTransmissionGear {
+    float m_maxVelocity;
+    float m_changeUpVelocity;   // max velocity needed to change the current gear to higher
+    float m_changeDownVelocity; // min velocity needed to change the current gear to lower
+};
+
+static_assert(sizeof(tTransmissionGear) == 0xC, "Invalid size tGearRatio");
+
+===== app/src/main/cpp/samp/game/vehicle.cpp =====
+#include "../main.h"
+#include "game.h"
+#include "../net/netgame.h"
+#include "vehicle.h"
+#include "Streaming.h"
+#include "VehControls.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <unordered_map>
+
+extern CGame* pGame;
+extern CNetGame* pNetGame;
+
+bool bInProcessDetachTrailer = false;
+
+// ============================================================================
+//  HANDLING (her masin ucun ferdi, realtime)
+// ============================================================================
+
+// CVehicleGTA daxilinde handling pointerinin offseti
+#define VEH_HANDLING_PTR_OFFSET   (VER_x32 ? 0x384 : 0x4B0)
+#define VEH_HEADLIGHT_OFFSET      (VER_x32 ? 0x588 : 0x6C0)
+
+// tHandlingData daxilinde offsetler (struktura gore: sizeof == 0xE0)
+#define HND_SIZE                  0xE0
+#define HND_MASS                  0x04   // m_fMass
+#define HND_ENGINE_ACCEL          0x7C   // cTransmission::m_fEngineAcceleration
+#define HND_MAX_VELOCITY          0x84   // cTransmission::m_fMaxGearVelocity
+#define HND_BRAKE_DECEL           0x94   // m_fBrakeDeceleration
+#define HND_STEERING_LOCK         0xA0   // m_fSteeringLock
+
+struct HandlingEntry
+{
+    uintptr_t pOriginal; // oyunun orijinal handling pointeri
+    uintptr_t pOwn;      // bu masina aid kopya
+};
+
+// CVehicleGTA* -> bu masinin oz handling kopyasi
+static std::unordered_map<uintptr_t, HandlingEntry> g_VehicleHandlings;
+
+static inline uintptr_t* GetHandlingSlot(void* pVeh)
+{
+    return (uintptr_t*)((uintptr_t)pVeh + VEH_HANDLING_PTR_OFFSET);
+}
+
+// Masinin oz handling kopyasini qaytarir (yoxdursa yaradir). Ugursuzdursa 0.
+static uintptr_t GetOrCreateOwnHandling(void* pVeh)
+{
+    if (!pVeh) return 0;
+
+    uintptr_t* pSlot = GetHandlingSlot(pVeh);
+    uintptr_t pCurrent = *pSlot;
+    if (!pCurrent) return 0;
+
+    auto it = g_VehicleHandlings.find((uintptr_t)pVeh);
+    if (it != g_VehicleHandlings.end())
+    {
+        // artiq oz kopyasi var ve masin hele de ondan istifade edir
+        if (it->second.pOwn == pCurrent)
+            return pCurrent;
+
+        // oyun pointeri deyismisdir (masin yeniden yaradilib ve s.) -> kohne kopyani at
+        free((void*)it->second.pOwn);
+        g_VehicleHandlings.erase(it);
+    }
+
+    uintptr_t pNew = (uintptr_t)malloc(HND_SIZE);
+    if (!pNew) return 0;
+
+    memcpy((void*)pNew, (void*)pCurrent, HND_SIZE);
+
+    HandlingEntry entry;
+    entry.pOriginal = pCurrent;
+    entry.pOwn = pNew;
+    g_VehicleHandlings[(uintptr_t)pVeh] = entry;
+
+    *pSlot = pNew;
+    return pNew;
+}
+
+// Masin silinende orijinal pointeri qaytar ve kopyani azad et
+static void ReleaseOwnHandling(void* pVeh)
+{
+    auto it = g_VehicleHandlings.find((uintptr_t)pVeh);
+    if (it == g_VehicleHandlings.end()) return;
+
+    if (pVeh)
+    {
+        uintptr_t* pSlot = GetHandlingSlot(pVeh);
+        if (*pSlot == it->second.pOwn)
+            *pSlot = it->second.pOriginal;
+    }
+
+    free((void*)it->second.pOwn);
+    g_VehicleHandlings.erase(it);
+}
+
+static inline uintptr_t GetCurrentHandling(void* pVeh)
+{
+    if (!pVeh) return 0;
+    return *GetHandlingSlot(pVeh);
+}
+
+// ============================================================================
+
+CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, bool bPreloaded, bool bSiren)
+{
+    RwMatrix matEnt;
+    static CVehicleGTA* pCreatedTrain = nullptr;
+
+    m_pVehicle = nullptr;
+    m_dwGTAId = 0;
+    m_pTrailer = nullptr;
+
+    if ((iType != TRAIN_PASSENGER_LOCO) &&
+        (iType != TRAIN_FREIGHT_LOCO) &&
+        (iType != TRAIN_PASSENGER) &&
+        (iType != TRAIN_FREIGHT) &&
+        (iType != TRAIN_TRAM)) {
+
+        if (!CStreaming::TryLoadModel(iType))
+            throw std::runtime_error("Model not loaded");
+
+        ScriptCommand(&create_car, iType, fX, fY, fZ, &m_dwGTAId);
+        ScriptCommand(&set_car_z_angle, m_dwGTAId, fRotation);
+        ScriptCommand(&car_gas_tank_explosion, m_dwGTAId, 0);
+        ScriptCommand(&set_car_hydraulics, m_dwGTAId, 0);
+        ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 0);
+
+        m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+
+        if (m_pVehicle)
+        {
+            m_pVehicle->m_nDoorLock = (eCarLock)0;
+            m_bIsLocked = false;
+
+            m_pVehicle->GetMatrix(&matEnt);
+            matEnt.pos.x = fX;
+            matEnt.pos.y = fY;
+            matEnt.pos.z = fZ;
+
+            if (GetVehicleSubtype() != VEHICLE_SUBTYPE_BIKE &&
+                GetVehicleSubtype() != VEHICLE_SUBTYPE_PUSHBIKE)
+                matEnt.pos.z += 0.25f;
+
+            m_pVehicle->SetMatrix((CMatrix&)matEnt);
+            m_bPreloaded = bPreloaded;
+        }
+    }
+    else if ((iType == TRAIN_PASSENGER_LOCO) ||
+        (iType == TRAIN_FREIGHT_LOCO) ||
+        (iType == TRAIN_TRAM))
+    {
+        if (iType == TRAIN_PASSENGER_LOCO) iType = 5;
+        else if (iType == TRAIN_FREIGHT_LOCO) iType = 3;
+        else if (iType == TRAIN_TRAM) iType = 9;
+
+        uint32_t dwDirection = 0;
+        if (fRotation > 180.0f) {
+            dwDirection = 1;
+        }
+
+        if (!CStreaming::TryLoadModel(TRAIN_PASSENGER_LOCO))
+            throw std::runtime_error("Model not loaded");
+
+        if (!CStreaming::TryLoadModel(TRAIN_PASSENGER))
+            throw std::runtime_error("Model not loaded");
+
+        if (!CStreaming::TryLoadModel(TRAIN_FREIGHT_LOCO))
+            throw std::runtime_error("Model not loaded");
+
+        if (!CStreaming::TryLoadModel(TRAIN_FREIGHT))
+            throw std::runtime_error("Model not loaded");
+        if (!CStreaming::TryLoadModel(TRAIN_TRAM))
+            throw std::runtime_error("Model not loaded");
+
+        ScriptCommand(&create_train, iType, fX, fY, fZ, dwDirection, &m_dwGTAId);
+        m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+
+        pCreatedTrain = m_pVehicle;
+
+        GamePrepareTrain(m_pVehicle);
+    }
+    else if ((iType == TRAIN_PASSENGER) ||
+        (iType == TRAIN_FREIGHT))
+    {
+        if (!pCreatedTrain)
+        {
+            m_pVehicle = nullptr;
+            return;
+        }
+
+        m_dwGTAId = GamePool_Vehicle_GetIndex(m_pVehicle);
+        pCreatedTrain = m_pVehicle;
+    }
+
+    m_bIsInvulnerable = false;
+    m_byteObjectiveVehicle = 0;
+    m_bSpecialMarkerEnabled = false;
+    m_dwMarkerID = 0;
+    m_iEngineState = -1;
+    m_iLightState = -1;
+    m_bDoorsLocked = false;
+    m_bHaveColor = false;
+    m_bHasBeenDriven = false;
+    m_dwTimeSinceLastDriven = GetTickCount();
+    memset(m_szPlateText, 0, sizeof(m_szPlateText));
+}
+
+CVehicle::~CVehicle()
+{
+    m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+
+    if (m_pVehicle) {
+        auto modelId = m_pVehicle->m_nModelIndex;
+        if (m_dwMarkerID)
+        {
+            pGame->DisableMarker(m_dwMarkerID);
+            m_dwMarkerID = 0;
+        }
+
+        RemoveEveryoneFromVehicle();
+
+        if (SirenEnabled()) EnableSiren(false);
+
+        if (m_pTrailer) {
+            DetachTrailer();
+            m_pTrailer = nullptr;
+        }
+
+        // Ferdi handling kopyasini sil, orijinal pointeri geri qaytar
+        ReleaseOwnHandling(m_pVehicle);
+        VehControls::Forget(m_pVehicle);
+
+        int iModel = m_pVehicle->m_nModelIndex;
+        if (iModel == 538 || iModel == 537)
+        {
+            ScriptCommand(&destroy_train, m_dwGTAId);
+        }
+        else
+        {
+            ScriptCommand(&destroy_car, m_dwGTAId);
+        }
+
+        CStreaming::RemoveModelIfNoRefs(modelId);
+    }
+}
+
+bool CVehicle::IsRCVehicle()
+{
+    if (m_pVehicle)
+    {
+        if (GamePool_Vehicle_GetAt(m_dwGTAId))
+        {
+            int iModel = m_pVehicle->m_nModelIndex;
+            if (iModel == 441
+                || iModel == 464
+                || iModel == 465
+                || iModel == 594
+                || iModel == 501
+                || iModel == 564) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+float CVehicle::GetHealth()
+{
+    if (m_pVehicle) {
+        return m_pVehicle->fHealth;
+    }
+
+    return 0.0f;
+}
+
+void CVehicle::SetHealth(float fHealth)
+{
+    if (m_pVehicle) {
+        m_pVehicle->fHealth = fHealth;
+    }
+}
+
+int CVehicle::GetVehicleSubtype()
+{
+    if (m_pVehicle) {
+        return ::GetVehicleSubtype(m_pVehicle);
+    }
+
+    return 0;
+}
+
+void CVehicle::AddComponent(int iComponentID)
+{
+    if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
+    if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
+
+    if (!CStreaming::TryLoadModel(iComponentID))
+        throw std::runtime_error("Model not loaded");
+
+    if (!ScriptCommand(&is_component_available, iComponentID)) {
+        return;
+    }
+
+    uint32_t dwRet;
+    ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
+}
+
+void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
+{
+    if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+    {
+        if (GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
+        {
+            if (bytePaintJobID <= 3) {
+                if (m_dwGTAId) ScriptCommand(&change_car_skin, m_dwGTAId, bytePaintJobID);
+            }
+        }
+    }
+}
+
+void CVehicle::SetColor(uint8_t byteColor1, uint8_t byteColor2)
+{
+    if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+    {
+        m_pVehicle->m_nPrimaryColor = byteColor1;
+        m_pVehicle->m_nSecondaryColor = byteColor2;
+    }
+
+    m_byteColor1 = byteColor1;
+    m_byteColor2 = byteColor2;
+    m_bHaveColor = true;
+}
+
+void CVehicle::DetachTrailer()
+{
+    bInProcessDetachTrailer = true;
+    if (m_pTrailer)
+    {
+        if (m_dwGTAId && GamePool_Vehicle_GetAt(m_dwGTAId))
+        {
+            if (m_pTrailer->m_pVehicle)
+                ScriptCommand(&detach_trailer_from_cab, m_pTrailer->m_dwGTAId, m_dwGTAId);
+        }
+    }
+}
+
+void CVehicle::SetTrailer(CVehicle* pTrailer)
+{
+    m_pTrailer = pTrailer;
+}
+
+void CVehicle::LinkToInterior(int iInterior)
+{
+    if (m_pVehicle)
+        m_pVehicle->SetInterior(iInterior);
+}
+
+void CVehicle::SetDamageStatus(uint32_t dwPanelDamageStatus, uint32_t dwDoorDamageStatus, uint8_t byteLightDamageStatus)
+{
+
+}
+
+void CVehicle::SetTireDamageStatus(uint8_t byteTireDamageStatus)
+{
+
+}
+
+void CVehicle::RemoveEveryoneFromVehicle()
+{
+    if (!m_pVehicle) return;
+    if (!GamePool_Vehicle_GetAt(m_dwGTAId)) return;
+
+    if (m_pVehicle->pDriver)
+    {
+        m_pVehicle->pDriver->RemoveFromVehicle();
+    }
+
+    for (int i = 0; i < 7; i++)
+    {
+        if (m_pVehicle->m_apPassengers[i] != nullptr)
+        {
+            m_pVehicle->m_apPassengers[i]->RemoveFromVehicle();
+        }
+    }
+}
+
+CVehicle* CVehicle::GetTrailer()
+{
+    if (m_pVehicle)
+    {
+        CVehicleGTA* pTrailer = m_pVehicle->m_pTrailer;
+        if (pTrailer)
+        {
+            if (pNetGame)
+            {
+                CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+                if (pVehiclePool) {
+                    VEHICLEID TrailerID = pVehiclePool->FindIDFromGtaPtr(pTrailer);
+                    if (TrailerID != INVALID_VEHICLE_ID)
+                    {
+                        return pVehiclePool->GetAt(TrailerID);
+                    }
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+CVehicle* CVehicle::GetTractor()
+{
+    if (!m_pVehicle) return nullptr;
+
+    int iSubType = ::GetVehicleSubtype(m_pVehicle);
+    if (iSubType == VEHICLE_SUBTYPE_BIKE
+
+
+===== D2) libGTASA masin yukseltme / nitro / hidravlika simvollari =====
+000000000067efe8 T _ZN11CAutomobile13DoNitroEffectEf
+0000000000677034 T _ZN11CAutomobile14NitrousControlEa
+000000000066ed3c T _ZN11CAutomobile15StopNitroEffectEv
+000000000066f384 T _ZN11CAutomobile16HydraulicControlEv
+00000000004604d4 T _ZN17CVehicleModelInfo16SetVehicleColourEhhhh
+000000000048f87c T _ZN21CAEVehicleAudioEntity12ProcessNitroER14cVehicleParams
+0000000000374920 T _ZN23CWidgetButtonHydraulics4DrawEv
+00000000003749d0 T _ZN23CWidgetButtonHydraulics6UpdateEv
+0000000000374e28 W _ZN23CWidgetButtonHydraulics7GetNameEv
+00000000003748a8 T _ZN23CWidgetButtonHydraulicsC1EPKcRK14WidgetPosition
+00000000003748a8 T _ZN23CWidgetButtonHydraulicsC2EPKcRK14WidgetPosition
+0000000000374dd4 W _ZN23CWidgetButtonHydraulicsD0Ev
+0000000000374d88 W _ZN23CWidgetButtonHydraulicsD2Ev
+00000000003840f4 T _ZN23CWidgetRegionHydraulics20ResetHydraulicRegionEv
+0000000000384144 T _ZN23CWidgetRegionHydraulics4DrawEv
+000000000038426c T _ZN23CWidgetRegionHydraulics6UpdateEv
+00000000003847f8 W _ZN23CWidgetRegionHydraulics7GetNameEv
+0000000000384024 T _ZN23CWidgetRegionHydraulicsC1EPKcRK14WidgetPosition
+0000000000384024 T _ZN23CWidgetRegionHydraulicsC2EPKcRK14WidgetPosition
+00000000003847bc W _ZN23CWidgetRegionHydraulicsD0Ev
+0000000000384788 W _ZN23CWidgetRegionHydraulicsD2Ev
+000000000038d88c T _ZN24CCustomCarEnvMapPipeline10CreatePipeEv
+000000000038da78 T _ZN24CCustomCarEnvMapPipeline11DestroyPipeEv
+00000000008eac08 B _ZN24CCustomCarEnvMapPipeline11ObjPipelineE
+000000000038dc74 T _ZN24CCustomCarEnvMapPipeline13SetFxEnvScaleEP10RpMaterialff
+000000000038dd40 T _ZN24CCustomCarEnvMapPipeline14GetFxEnvScaleXEP10RpMaterial
+000000000038dd70 T _ZN24CCustomCarEnvMapPipeline14GetFxEnvScaleYEP10RpMaterial
+000000000038e01c T _ZN24CCustomCarEnvMapPipeline14RegisterPluginEv
+000000000038cf10 T _ZN24CCustomCarEnvMapPipeline15GetFxEnvTextureEP10RpMaterial
+000000000038d1cc T _ZN24CCustomCarEnvMapPipeline15PreRenderUpdateEv
+000000000038cd8c T _ZN24CCustomCarEnvMapPipeline15SetFxEnvTextureEP10RpMaterialP9RwTexture
+000000000038cf58 T _ZN24CCustomCarEnvMapPipeline16GetFxSpecTextureEP10RpMaterial
+000000000038dda0 T _ZN24CCustomCarEnvMapPipeline16SetFxEnvTransSclEP10RpMaterialff
+000000000038df9c T _ZN24CCustomCarEnvMapPipeline16SetFxSpecTextureEP10RpMaterialP9RwTexture
+000000000038cedc T _ZN24CCustomCarEnvMapPipeline17GetFxEnvShininessEP10RpMaterial
+000000000038de6c T _ZN24CCustomCarEnvMapPipeline17GetFxEnvTransSclXEP10RpMaterial
+000000000038de9c T _ZN24CCustomCarEnvMapPipeline17GetFxEnvTransSclYEP10RpMaterial
+000000000038decc T _ZN24CCustomCarEnvMapPipeline17SetFxEnvShininessEP10RpMaterialf
+000000000038d1d0 T _ZN24CCustomCarEnvMapPipeline18CustomPipeRenderCBEP10RwResEntryPvhj
+000000000038cfd4 T _ZN24CCustomCarEnvMapPipeline20CustomPipeInstanceCBEPvP24RxOpenGLMeshInstanceDataii
+000000000038cf34 T _ZN24CCustomCarEnvMapPipeline20GetFxSpecSpecularityEP10RpMaterial
+000000000038e000 T _ZN24CCustomCarEnvMapPipeline20SetFxSpecSpecularityEP10RpMaterialf
+000000000085ebcc D _ZN24CCustomCarEnvMapPipeline20m_EnvMapLightingMultE
+000000000038cf7c T _ZN24CCustomCarEnvMapPipeline21CustomPipeAtomicSetupEP8RpAtomic
+00000000008eac28 B _ZN24CCustomCarEnvMapPipeline21fakeEnvMapPipeMatDataE
+000000000085ebc0 D _ZN24CCustomCarEnvMapPipeline21ms_envMapPluginOffsetE
+000000000038ccac T _ZN24CCustomCarEnvMapPipeline23CustomPipeMaterialSetupEP10RpMaterialPv
+00000000008eac18 B _ZN24CCustomCarEnvMapPipeline24m_gEnvMapPipeAtmDataPoolE
+00000000008eac10 B _ZN24CCustomCarEnvMapPipeline24m_gEnvMapPipeMatDataPoolE
+000000000085ebc4 D _ZN24CCustomCarEnvMapPipeline24ms_envMapAtmPluginOffsetE
+000000000038e4ec T _ZN24CCustomCarEnvMapPipeline24pluginEnvAtmDestructorCBEPvii
+000000000038e190 T _ZN24CCustomCarEnvMapPipeline24pluginEnvMatDestructorCBEPvii
+000000000038e2b8 T _ZN24CCustomCarEnvMapPipeline24pluginEnvMatStreamReadCBEP8RwStreamiPvii
+000000000038e970 T _ZN24CCustomCarEnvMapPipeline25AllocEnvMapPipeAtomicDataEP8RpAtomic
+000000000038d7d0 T _ZN24CCustomCarEnvMapPipeline25CreateCustomOpenGLObjPipeEv
+00000000008eac20 B _ZN24CCustomCarEnvMapPipeline25m_gSpecMapPipeMatDataPoolE
+000000000038e4e4 T _ZN24CCustomCarEnvMapPipeline25pluginEnvAtmConstructorCBEPvii
+000000000038e180 T _ZN24CCustomCarEnvMapPipeline25pluginEnvMatConstructorCBEPvii
+000000000038e418 T _ZN24CCustomCarEnvMapPipeline25pluginEnvMatStreamWriteCBEP8RwStreamiPKvii
+000000000038e61c T _ZN24CCustomCarEnvMapPipeline25pluginSpecMatDestructorCBEPvii
+000000000038e768 T _ZN24CCustomCarEnvMapPipeline25pluginSpecMatStreamReadCBEP8RwStreamiPvii
+000000000085ebc8 D _ZN24CCustomCarEnvMapPipeline26ms_specularMapPluginOffsetE
+000000000038e608 T _ZN24CCustomCarEnvMapPipeline26pluginSpecMatConstructorCBEPvii
+000000000038e8a0 T _ZN24CCustomCarEnvMapPipeline26pluginSpecMatStreamWriteCBEP8RwStreamiPKvii
+000000000038e4b8 T _ZN24CCustomCarEnvMapPipeline27pluginEnvMatStreamGetSizeCBEPKvii
+000000000038e948 T _ZN24CCustomCarEnvMapPipeline28pluginSpecMatStreamGetSizeCBEPKvii
+000000000038e544 T _ZN24CCustomCarEnvMapPipeline29pluginEnvAtmCopyConstructorCBEPvPKvii
+000000000038e1ec T _ZN24CCustomCarEnvMapPipeline29pluginEnvMatCopyConstructorCBEPvPKvii
+000000000038e6a4 T _ZN24CCustomCarEnvMapPipeline30pluginSpecMatCopyConstructorCBEPvPKvii
+000000000038dbc4 T _ZN24CCustomCarEnvMapPipeline37DuplicateCustomEnvMapPipeMaterialDataEPP28CustomEnvMapPipeMaterialData
+000000000038e964 T _ZN24CCustomCarEnvMapPipeline37SetCustomEnvMapPipeAtomicDataDefaultsEP26CustomEnvMapPipeAtomicData
+000000000038e4c8 T _ZN24CCustomCarEnvMapPipeline39SetCustomEnvMapPipeMaterialDataDefaultsEP28CustomEnvMapPipeMaterialData
+000000000038cca4 T _ZN24CCustomCarEnvMapPipelineC1Ev
+000000000038cca4 T _ZN24CCustomCarEnvMapPipelineC2Ev
+000000000038cca8 T _ZN24CCustomCarEnvMapPipelineD1Ev
+000000000038cca8 T _ZN24CCustomCarEnvMapPipelineD2Ev
+0000000000375efc T _ZN27CWidgetButtonAutoHydraulics6UpdateEv
+0000000000375fec W _ZN27CWidgetButtonAutoHydraulics7GetNameEv
+0000000000375ebc T _ZN27CWidgetButtonAutoHydraulicsC1EPKcRK14WidgetPosition
+0000000000375ebc T _ZN27CWidgetButtonAutoHydraulicsC2EPKcRK14WidgetPosition
+0000000000375fb0 W _ZN27CWidgetButtonAutoHydraulicsD0Ev
+00000000004dd42c T _ZN4CPad13GetNitroFiredEv
+00000000004dd40c T _ZN4CPad16GetHydraulicJumpEv
+00000000006aff4c T _ZN8CVehicle17AddVehicleUpgradeEi
+00000000006b0718 T _ZN8CVehicle20RemoveVehicleUpgradeEi
+0000000000cb3198 B _ZN8CVehicle23m_aSpecialHydraulicDataE
+0000000000827558 D _ZTV23CWidgetButtonHydraulics
+000000000082a978 D _ZTV23CWidgetRegionHydraulics
+0000000000828210 D _ZTV27CWidgetButtonAutoHydraulics
+
+
+===== E1) kamera fayllari =====
+app/src/main/cpp/samp/game/Camera.cpp
+app/src/main/cpp/samp/game/Camera.h
+app/src/main/cpp/samp/game/ShadowCamera.cpp
+app/src/main/cpp/samp/game/ShadowCamera.h
+
+
+===== app/src/main/cpp/samp/game/Camera.cpp =====
+//
+// Created by x1y2z on 26.07.2023.
+//
+
+#include "Camera.h"
+#include "../vendor/armhook/patch.h"
+#include "scripting.h"
+
+void CCamera::InjectHooks() {
+
+}
+
+CCam& CCamera::GetActiveCamera() {
+    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+
+    return TheCamera.m_aCams[TheCamera.m_nActiveCam];
+}
+
+void CCamera::Init() {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x0046F8C0 + 1 : 0x55BA30), this);
+}
+
+void CCamera::SetRwCamera(RwCamera *pCamera) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x003E161C + 1 : 0x4BF318), this, pCamera);
+}
+
+void CCamera::TakeControl(CEntityGTA *target, eCamMode modeToGoTo, eSwitchType switchType, int32 whoIsInControlOfTheCamera) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x003E1714 + 1 : 0x4BF474), this, target, modeToGoTo, switchType, whoIsInControlOfTheCamera);
+}
+
+float CCamera::CalculateGroundHeight(eGroundHeightType type) {
+    return CHook::CallFunction<float>(g_libGTASA + (VER_x32 ? 0x3DC5C8 + 1 : 0x4BA958), this, type);
+}
+
+void CCamera::RestoreWithJumpCut() {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x3DB154 + 1 : 0x4B94B4), this);
+}
+
+void CCamera::SetBehindPlayer()
+{
+    ScriptCommand(&lock_camera_position, 0);
+    ScriptCommand(&restore_camera_to_user);
+    ScriptCommand(&set_camera_behind_player);
+    ScriptCommand(&restore_camera_jumpcut);
+}
+
+// 0.3.7
+void CCamera::SetPosition(float fX, float fY, float fZ, float fRotationX, float fRotationY, float fRotationZ)
+{
+    ScriptCommand(&restore_camera_to_user);
+    ScriptCommand(&set_camera_position, fX, fY, fZ, fRotationX, fRotationY, fRotationZ);
+}
+
+
+// 0.3.7
+void CCamera::LookAtPoint(float fX, float fY, float fZ, int iType)
+{
+    ScriptCommand(&restore_camera_to_user);
+    ScriptCommand(&point_camera, fX, fY, fZ, iType);
+}
+
+// 0.3.7
+void CCamera::InterpolateCameraPos(CVector *posFrom, CVector *posTo, int time, uint8_t mode)
+{
+    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+
+    ScriptCommand(&restore_camera_to_user);
+    ScriptCommand(&lock_camera_position1, 1);
+    ScriptCommand(&set_camera_pos_time_smooth, posFrom->x, posFrom->y, posFrom->z, posTo->x, posTo->y, posTo->z, time, mode);
+}
+
+// 0.3.7
+void CCamera::InterpolateCameraLookAt(CVector *posFrom, CVector *posTo, int time, uint8_t mode)
+{
+    ScriptCommand(&lock_camera_position, 1);
+    ScriptCommand(&point_camera_transverse, posFrom->x, posFrom->y, posFrom->z, posTo->x, posTo->y, posTo->z, time, mode);
+}
+
+
+
+===== app/src/main/cpp/samp/game/Camera.h =====
+//
+// Created by x1y2z on 26.07.2023.
+//
+
+#pragma once
+
+
+#include "common.h"
+#include "game/Enums/eCamMode.h"
+#include "Cam.h"
+#include "QueuedMode.h"
+#include "Matrix.h"
+#include "game/Entity/Placeable.h"
+#include "game/Entity/CEntityGTA.h"
+
+struct CPedGTA;
+enum class eFadeFlag : uint16 {
+    FADE_IN,
+    FADE_OUT
+};
+
+enum class eSwitchType : uint16 {
+    NONE,
+    INTERPOLATION,
+    JUMPCUT
+};
+
+enum class eGroundHeightType : int32 {
+    ENTITY_BB_BOTTOM = 0,    // ground height + boundingBoxMin.z of colliding entity
+    EXACT_GROUND_HEIGHT = 1, // ignores height of colliding entity at position
+    ENTITY_BB_TOP = 2        // ground height + boundingBoxMax.z of colliding entity
+};
+
+struct CVehicleCamTweak
+{
+    int32 m_ModelId;
+    float m_LenMod;
+    float m_TargetZMod;
+    float m_PitchMod;
+};
+VALIDATE_SIZE(CVehicleCamTweak, 0x10);
+
+class CCamera : public CPlaceable {
+public:
+    bool            m_bAboveGroundTrainNodesLoaded{};
+    bool            m_bBelowGroundTrainNodesLoaded{};
+    bool            m_bCamDirectlyBehind{};
+    bool            m_bCamDirectlyInFront{};
+
+    bool            m_bCameraJustRestored{};
+    bool            m_bCutsceneFinished{};
+    bool            m_bCullZoneChecksOn{};
+    bool            m_bIdleOn{};
+
+    bool            m_bInATunnelAndABigVehicle{};
+    bool            m_bInitialNodeFound{};
+    bool            m_bInitialNoNodeStaticsSet{};
+    bool            m_bIgnoreFadingStuffForMusic{};
+
+    bool            m_bPlayerIsInGarage{};
+    bool            m_bPlayerWasOnBike{};
+    bool            m_bJustCameOutOfGarage{};
+    bool            m_bJustInitialized{true};
+
+    bool8           m_bJust_Switched;
+    bool            m_bLookingAtPlayer{true};
+    bool            m_bLookingAtVector;
+    bool            m_bMoveCamToAvoidGeom;
+
+    bool            m_bObbeCinematicPedCamOn;
+    bool            m_bObbeCinematicCarCamOn;
+    bool            m_bRestoreByJumpCut;
+    bool            m_bUseNearClipScript;
+
+    bool            m_bStartInterScript;
+    bool8           m_bStartingSpline;
+    bool            m_bTargetJustBeenOnTrain;
+    bool            m_bTargetJustCameOffTrain;
+
+    bool            m_bUseSpecialFovTrain;
+    bool            m_bUseTransitionBeta;
+    bool            m_bUseScriptZoomValuePed;
+    bool            m_bUseScriptZoomValueCar;
+
+    bool            m_bWaitForInterpolToFinish;
+    bool            m_bItsOkToLookJustAtThePlayer;
+    bool            m_bWantsToSwitchWidescreenOff;
+    bool            m_WideScreenOn;
+
+    bool            m_1rstPersonRunCloseToAWall;
+    bool            m_bHeadBob;
+    bool            m_bVehicleSuspenHigh;
+    bool            m_bEnable1rstPersonCamCntrlsScript;
+
+    bool            m_bAllow1rstPersonWeaponsCamera;
+    bool            m_bCooperativeCamMode;
+    bool            m_bAllowShootingWith2PlayersInCar{true};
+    bool            m_bDisableFirstPersonInCar;
+
+    eCamMode        m_nModeForTwoPlayersSeparateCars{ MODE_TWOPLAYER_SEPARATE_CARS };
+    eCamMode        m_nModeForTwoPlayersSameCarShootingAllowed{ MODE_TWOPLAYER_IN_CAR_AND_SHOOTING };
+    eCamMode        m_nModeForTwoPlayersSameCarShootingNotAllowed{ MODE_BEHINDCAR };
+    eCamMode        m_nModeForTwoPlayersNotBothInCar{ MODE_TWOPLAYER };
+
+    bool            m_bGarageFixedCamPositionSet;
+    bool            m_vecDoingSpecialInterPolation;
+    bool            m_bScriptParametersSetForInterPol;
+    bool            m_bFading;
+
+    bool            m_bMusicFading;
+    bool            m_bMusicFadedOut;
+    bool            m_bFailedCullZoneTestPreviously;
+    bool            m_FadeTargetIsSplashScreen;
+
+    bool            WorldViewerBeingUsed;
+    uint8           m_uiTransitionJUSTStarted;
+    uint8           m_uiTransitionState;
+    uint8           m_nActiveCam; // SA - ActiveCam;
+
+    uint32          m_uiCamShakeStart;
+    uint32          m_uiFirstPersonCamLastInputTime;
+    uint32          m_uiLongestTimeInMill{ 5000 };
+    uint32          m_uiNumberOfTrainCamNodes;
+
+    uint32          m_uiTimeLastChange;
+    uint32          m_uiTimeWeLeftIdle_StillNoInput;
+    uint32          m_uiTimeWeEnteredIdle;
+    uint32          m_uiTimeTransitionStart;
+
+    uint32          m_uiTransitionDuration;
+    uint32          m_uiTransitionDurationTargetCoors;
+    int32           m_BlurBlue;
+    int32           m_BlurGreen;
+
+    int32           m_BlurRed;
+    int32           m_BlurType;
+    int32           m_iWorkOutSpeedThisNumFrames{4};
+    int32           m_iNumFramesSoFar;
+
+    int32           m_iCurrentTrainCamNode;
+    int32           m_motionBlur;
+    int32           m_imotionBlurAddAlpha;
+    int32           m_iCheckCullZoneThisNumFrames{6};
+
+    int32           m_iZoneCullFrameNumWereAt;
+    int32           WhoIsInControlOfTheCamera;
+    int32           m_nCarZoom{2};
+    float           m_fCarZoomBase;
+
+    float           m_fCarZoomTotal;
+    float           m_fCarZoomSmoothed;
+    float           m_fCarZoomValueScript;
+    int32           m_nPedZoom{2};
+
+    float           m_fPedZoomBase;
+    float           m_fPedZoomTotal;
+    float           m_fPedZoomSmoothed;
+    float           m_fPedZoomValueScript;
+
+    float           m_fCamFrontXNorm;
+    float           m_fCamFrontYNorm;
+    float           DistanceToWater;
+    float           HeightOfNearestWater;
+
+    float           FOVDuringInter;
+    float           m_fLODDistMultiplier{1.f}; // SA - LODDistMultiplier;
+    float           GenerationDistMultiplier;
+    float           m_fAlphaSpeedAtStartInter;
+
+    float           m_fAlphaWhenInterPol;
+    float           m_fAlphaDuringInterPol;
+    float           m_fBetaDuringInterPol;
+    float           m_fBetaSpeedAtStartInter;
+
+    float           m_fBetaWhenInterPol;
+    float           m_fFOVWhenInterPol;
+    float           m_fFOVSpeedAtStartInter;
+    float           m_fStartingBetaForInterPol;
+
+    float           m_fStartingAlphaForInterPol;
+    float           m_PedOrientForBehindOrInFront;
+    float           m_CameraAverageSpeed;
+    float           m_CameraSpeedSoFar;
+
+    float           m_fCamShakeForce;
+    float           m_fFovForTrain{70.f};
+    float           m_fFOV_Wide_Screen;
+    float           m_fNearClipScript{ 0.9f };
+
+    float           m_fOldBetaDiff;
+    float           m_fPositionAlongSpline;
+    float           m_ScreenReductionPercentage;
+    float           m_ScreenReductionSpeed;
+
+    float           m_AlphaForPlayerAnim1rstPerson;
+    float           m_fOrientation;
+    float           m_fPlayerExhaustion{1.f}; // SA - PlayerExhaustion;
+    float           SoundDistUp;
+
+    float           SoundDistUpAsRead;
+    float           SoundDistUpAsReadOld;
+    float           m_fAvoidTheGeometryProbsTimer;
+    int16           m_nAvoidTheGeometryProbsDirn;
+    uint8           pad0[2];
+
+    float           m_fWideScreenReductionAmount;
+    float           m_fStartingFOVForInterPol;
+
+    CCam            m_aCams[3]{};
+    uintptr         *pToGarageWeAreIn;
+    uintptr         *pToGarageWeAreInForHackAvoidFirstPerson;
+
+    CQueuedMode     m_PlayerMode;
+    CQueuedMode     PlayerWeaponMode;
+
+    CVector         m_PreviousCameraPosition;
+    CVector         m_RealPreviousCameraPosition;
+    CVector         m_vecAimingTargetCoors;
+    CVector         m_vecFixedModeVector;
+
+
+
+===== app/src/main/cpp/samp/game/ShadowCamera.cpp =====
+//
+// Created by plaka on 18.10.2023.
+//
+
+#include "ShadowCamera.h"
+
+void CShadowCamera::Destroy() {
+    if (!m_pRwCamera) {
+        return;
+    }
+
+    if (auto frame = RwCameraGetFrame(m_pRwCamera)) {
+        rwObjectHasFrameSetFrame(frame, nullptr);
+        RwFrameDestroy(frame);
+    }
+
+    if (auto frameBuffer = GetRwRenderRaster()) {
+        RwRasterDestroy(frameBuffer);
+        RwCameraSetRaster(m_pRwCamera, nullptr);
+    }
+
+    if (m_pRwRenderTexture) {
+        RwTextureSetRaster(m_pRwRenderTexture, nullptr);
+        RwTextureDestroy(m_pRwRenderTexture);
+        m_pRwRenderTexture = nullptr;
+    }
+
+    RwCameraDestroy(m_pRwCamera);
+    m_pRwCamera = nullptr;
+}
+
+void CShadowCamera::SetFrustum(float radius) {
+    RwCameraSetFarClipPlane(m_pRwCamera, 2 * radius);
+    RwCameraSetNearClipPlane(m_pRwCamera, radius / 1000.0f);
+
+    const CVector2D window(radius, radius);
+    RwCameraSetViewWindow(m_pRwCamera, &window);
+}
+
+void CShadowCamera::InvertRaster() {
+    const auto& raster = GetRwRenderRaster();
+    const auto  width = (float)RwRasterGetWidth(raster), height = (float)RwRasterGetHeight(raster);
+
+    // Helper to construct vertices used here
+    const auto MkVert = [rhw = 1.f / RwCameraGetNearClipPlane(m_pRwCamera)](float x, float y) {
+        return RwIm2DVertex{
+                .x = x,
+                .y = y,
+                .z = RwIm2DGetNearScreenZ(),
+
+                .rhw = rhw,
+
+                .emissiveColor = 0xFFFFFFFF
+        };
+    };
+
+    RwIm2DVertex vertices[]{
+            MkVert(0.f,   0.f),    // Top left
+            MkVert(0.f,   height), // Bottom left
+            MkVert(width, 0.f),    // Top right
+            MkVert(width, height), // Bottom right
+    };
+
+    RwRenderStateSet(rwRENDERSTATETEXTURERASTER, RWRSTATE(NULL));
+    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND, RWRSTATE(rwBLENDINVDESTCOLOR));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND, RWRSTATE(rwBLENDZERO));
+
+    RwIm2DRenderPrimitive(rwPRIMTYPETRISTRIP, vertices, std::size(vertices));
+
+    RwRenderStateSet(rwRENDERSTATEZTESTENABLE, RWRSTATE(TRUE));
+    RwRenderStateSet(rwRENDERSTATESRCBLEND, RWRSTATE(rwBLENDSRCALPHA));
+    RwRenderStateSet(rwRENDERSTATEDESTBLEND, RWRSTATE(rwBLENDINVSRCALPHA));
+}
+
+void CShadowCamera::SetLight(RpLight *light) {
+    auto* lightFrame  = RpLightGetFrame(light);
+    auto* lightMatrix = RwFrameGetMatrix(lightFrame);
+    auto* cameraFrame = RwCameraGetFrame(m_pRwCamera);
+    cameraFrame->modelling.right = lightMatrix->right;
+    cameraFrame->modelling.up = lightMatrix->up;
+    cameraFrame->modelling.at = lightMatrix->at;
+    RwMatrixUpdate(&cameraFrame->modelling);
+    RwFrameUpdateObjects(cameraFrame);
+}
+
+RwCamera* CShadowCamera::Create(int32 rasterSizePower) {
+    const auto rasterSizeInPx = 1 << rasterSizePower; // Size of raster in pixels. Same as `pow(2, rasterSize)`
+
+    m_pRwCamera = RwCameraCreate();
+    if (!m_pRwCamera) {
+        fail:
+        Destroy();
+        return nullptr;
+    }
+
+    const auto frame = RwFrameCreate();
+    if (!frame) {
+        goto fail;
+    }
+
+    rwObjectHasFrameSetFrame(m_pRwCamera, frame);
+
+    if (!RwCameraGetFrame(m_pRwCamera)) {
+        goto fail;
+    }
+
+    const auto raster = RwRasterCreate(rasterSizeInPx, rasterSizeInPx, 0, rwRASTERTYPECAMERATEXTURE);
+    if (!raster) {
+        goto fail;
+    }
+
+    RwCameraSetRaster(m_pRwCamera, raster);
+
+    m_pRwRenderTexture = RwTextureCreate(raster);
+    if (!m_pRwRenderTexture) {
+        goto fail;
+    }
+
+    RwTextureSetAddressing(m_pRwRenderTexture, rwFILTERMIPNEAREST | rwFILTERMIPNEAREST);
+    RwTextureSetFilterMode(m_pRwRenderTexture, rwFILTERLINEAR);
+
+    RwCameraSetProjection(m_pRwCamera, rwPARALLEL);
+
+    return m_pRwCamera;
+}
+
+
+RwRaster* CShadowCamera::GetRwRenderRaster() const {
+    return RwCameraGetRaster(m_pRwCamera);
+}
+
+RwTexture* CShadowCamera::GetRwRenderTexture() const {
+    return m_pRwRenderTexture;
+}
+
+RwRaster* CShadowCamera::DrawOutlineBorder(const CRGBA& color) {
+    // Helper to construct vertices used here
+    const auto MkVert = [
+            &color,
+            rhw = 1.f / RwCameraGetNearClipPlane(m_pRwCamera)
+    ](float x, float y) {
+        RwIm2DVertex vtx;
+
+        RwIm2DVertexSetScreenX(&vtx, x);
+        RwIm2DVertexSetScreenY(&vtx, y);
+        RwIm2DVertexSetScreenZ(&vtx, RwIm2DGetNearScreenZ());
+
+        RwIm2DVertexSetRecipCameraZ(&vtx, rhw);
+
+        RwIm2DVertexSetIntRGBA(&vtx, color.r, color.g, color.b, color.a);
+
+        return vtx;
+    };
+
+    // NOTE: Code seemingly assumes the aspect ratio of the image is 1:1
+    const auto w = RwRasterGetWidth(GetRwRenderRaster()) - 1.f;
+    RwIm2DVertex vertices[]{
+            MkVert(0.f, 0.f),
+            MkVert(w,   0.f),
+            MkVert(w,   w),
+            MkVert(0.f, w),
+    };
+
+    if (RwCameraBeginUpdate(m_pRwCamera)) {
+        RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(FALSE));
+        RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+        RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(NULL));
+
+        RwImVertexIndex indices[]{0, 1, 2, 3, 0};
+        VERIFY(RwIm2DRenderIndexedPrimitive(rwPRIMTYPEPOLYLINE, vertices, std::size(vertices), indices, std::size(indices)));
+
+        RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
+        RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+
+        RwCameraEndUpdate(m_pRwCamera);
+    }
+
+    return GetRwRenderRaster();
+}
+
+
+===== E2) CCamera / TheCamera / camPtr istifadesi =====
+app/src/main/cpp/samp/LuaManager.cpp:298:static int l_camPtr(lua_State* S) {
+app/src/main/cpp/samp/LuaManager.cpp:429:    lua_register(L, "camPtr", l_camPtr);
+app/src/main/cpp/samp/game/Cam.h:9:#include "Enums/eCamMode.h"
+app/src/main/cpp/samp/game/Cam.h:14://extern bool& gbFirstPersonRunThisFrame;
+app/src/main/cpp/samp/game/Cam.h:17:struct CCam
+app/src/main/cpp/samp/game/Cam.h:36:    eCamMode m_nMode;
+app/src/main/cpp/samp/game/Cam.h:122:    bool m_bFirstPersonRunAboutActive;
+app/src/main/cpp/samp/game/Cam.h:127:VALIDATE_SIZE(CCam, (VER_x32 ? 0x210 : 0x228));
+app/src/main/cpp/samp/game/Camera.cpp:9:void CCamera::InjectHooks() {
+app/src/main/cpp/samp/game/Camera.cpp:13:CCam& CCamera::GetActiveCamera() {
+app/src/main/cpp/samp/game/Camera.cpp:14:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Camera.cpp:16:    return TheCamera.m_aCams[TheCamera.m_nActiveCam];
+app/src/main/cpp/samp/game/Camera.cpp:19:void CCamera::Init() {
+app/src/main/cpp/samp/game/Camera.cpp:23:void CCamera::SetRwCamera(RwCamera *pCamera) {
+app/src/main/cpp/samp/game/Camera.cpp:27:void CCamera::TakeControl(CEntityGTA *target, eCamMode modeToGoTo, eSwitchType switchType, int32 whoIsInControlOfTheCamera) {
+app/src/main/cpp/samp/game/Camera.cpp:28:    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x003E1714 + 1 : 0x4BF474), this, target, modeToGoTo, switchType, whoIsInControlOfTheCamera);
+app/src/main/cpp/samp/game/Camera.cpp:31:float CCamera::CalculateGroundHeight(eGroundHeightType type) {
+app/src/main/cpp/samp/game/Camera.cpp:35:void CCamera::RestoreWithJumpCut() {
+app/src/main/cpp/samp/game/Camera.cpp:39:void CCamera::SetBehindPlayer()
+app/src/main/cpp/samp/game/Camera.cpp:48:void CCamera::SetPosition(float fX, float fY, float fZ, float fRotationX, float fRotationY, float fRotationZ)
+app/src/main/cpp/samp/game/Camera.cpp:56:void CCamera::LookAtPoint(float fX, float fY, float fZ, int iType)
+app/src/main/cpp/samp/game/Camera.cpp:63:void CCamera::InterpolateCameraPos(CVector *posFrom, CVector *posTo, int time, uint8_t mode)
+app/src/main/cpp/samp/game/Camera.cpp:65:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Camera.cpp:73:void CCamera::InterpolateCameraLookAt(CVector *posFrom, CVector *posTo, int time, uint8_t mode)
+app/src/main/cpp/samp/game/Camera.h:9:#include "game/Enums/eCamMode.h"
+app/src/main/cpp/samp/game/Camera.h:43:class CCamera : public CPlaceable {
+app/src/main/cpp/samp/game/Camera.h:96:    bool            m_bCooperativeCamMode;
+app/src/main/cpp/samp/game/Camera.h:98:    bool            m_bDisableFirstPersonInCar;
+app/src/main/cpp/samp/game/Camera.h:100:    eCamMode        m_nModeForTwoPlayersSeparateCars{ MODE_TWOPLAYER_SEPARATE_CARS };
+app/src/main/cpp/samp/game/Camera.h:101:    eCamMode        m_nModeForTwoPlayersSameCarShootingAllowed{ MODE_TWOPLAYER_IN_CAR_AND_SHOOTING };
+app/src/main/cpp/samp/game/Camera.h:102:    eCamMode        m_nModeForTwoPlayersSameCarShootingNotAllowed{ MODE_BEHINDCAR };
+app/src/main/cpp/samp/game/Camera.h:103:    eCamMode        m_nModeForTwoPlayersNotBothInCar{ MODE_TWOPLAYER };
+app/src/main/cpp/samp/game/Camera.h:121:    uint32          m_uiFirstPersonCamLastInputTime;
+app/src/main/cpp/samp/game/Camera.h:146:    int32           WhoIsInControlOfTheCamera;
+app/src/main/cpp/samp/game/Camera.h:209:    CCam            m_aCams[3]{};
+app/src/main/cpp/samp/game/Camera.h:211:    uintptr         *pToGarageWeAreInForHackAvoidFirstPerson;
+app/src/main/cpp/samp/game/Camera.h:298:    eCamMode        m_nModeToGoTo{ MODE_FOLLOWPED }; // SA - m_iModeToGoTo;
+app/src/main/cpp/samp/game/Camera.h:406:    static CCam& GetActiveCamera(); // TODO: Replace this with `TheCamera.GetActiveCam()`
+app/src/main/cpp/samp/game/Camera.h:408:    void TakeControl(CEntityGTA *target, eCamMode modeToGoTo, eSwitchType switchType, int32 whoIsInControlOfTheCamera);
+app/src/main/cpp/samp/game/Camera.h:419:VALIDATE_SIZE(CCamera, (VER_x32 ? 0xD00 : 0xDB0));
+app/src/main/cpp/samp/game/Entity/CEntityGTA.cpp:107:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Entity/CEntityGTA.cpp:108:    return DistanceBetweenPoints(GetPosition(), TheCamera.GetPosition());
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp:215:                /*TheCamera.LODDistMultiplier*/ 70.f,
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp:238:                /*TheCamera.LODDistMultiplier*/ 70.f,
+app/src/main/cpp/samp/game/Enums/eCamMode.h:11:enum eCamMode : uint16_t {
+app/src/main/cpp/samp/game/Pickup.cpp:32:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Pickup.cpp:34:    return DistanceBetweenPoints2D(GetPosn2D(), TheCamera.GetPosition()) < 100.0f;
+app/src/main/cpp/samp/game/RW/rwplcore.h:314:#define RwIm2DVertexSetCameraX(vert, camx)          /* Nothing */
+app/src/main/cpp/samp/game/RW/rwplcore.h:315:#define RwIm2DVertexSetCameraY(vert, camy)          /* Nothing */
+app/src/main/cpp/samp/game/RW/rwplcore.h:316:#define RwIm2DVertexSetCameraZ(vert, camz)          /* Nothing */
+app/src/main/cpp/samp/game/Streaming.cpp:383:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Streaming.cpp:385:    const auto& camPos = TheCamera.GetPosition();
+app/src/main/cpp/samp/game/Streaming.cpp:386:    const float fCamDistanceToGroundZ = camPos.z - TheCamera.CalculateGroundHeight(eGroundHeightType::ENTITY_BB_BOTTOM);
+app/src/main/cpp/samp/game/Streaming.cpp:954:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/Streaming.cpp:955:    if (TheCamera.GetPosition().z - TheCamera.CalculateGroundHeight(eGroundHeightType::ENTITY_BB_BOTTOM) <= 50.0f){
+app/src/main/cpp/samp/game/aimstuff.cpp:29:    CCamera& origCam = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/aimstuff.cpp:35:	// CWeapon::FireSniper *((unsigned __int16 *)&TheCamera + 0x108 * (unsigned __int8)TheCamera_nActiveCam + 0xBF
+app/src/main/cpp/samp/game/aimstuff.cpp:36:	// TheCamera = 0x951FA8
+app/src/main/cpp/samp/game/aimstuff.cpp:76:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/aimstuff.cpp:88:	pbyteCameraMode = (uint8_t *) &TheCamera.m_aCams[0].m_nMode;
+
+
+===== E3) libGTASA kamera simvollari =====
+00000000004af3ec T _ZN4CCam10LookBehindEv
+00000000004a7c58 T _ZN4CCam13Process_FixedERK7CVectorfff
+000000000054e18c T _ZN4CCam13Process_FlyByERK7CVectorfff
+00000000004aa410 T _ZN4CCam14Process_EditorERK7CVectorfff
+00000000004a5484 T _ZN4CCam14Process_RocketERK7CVectorfffb
+00000000004c0cec T _ZN4CCam15IsTargetInWaterERK7CVector
+00000000004a73e0 T _ZN4CCam16Process_WheelCamERK7CVectorfff
+00000000004c0cf4 T _ZN4CCam17DoAverageOnVectorERK7CVector
+00000000004a8118 T _ZN4CCam17Process_1stPersonERK7CVectorfff
+00000000004a5b04 T _ZN4CCam17Process_AimWeaponERK7CVectorfff
+00000000004c0d04 T _ZN4CCam17Process_BehindCarERK7CVectorfff
+00000000004ae2bc T _ZN4CCam18Process_DW_FishCamEb
+00000000004b42f8 T _ZN4CCam18RotCamIfInFrontCarERK7CVectorf
+0000000000885508 D _ZN4CCam19CAM_BUMPED_END_TIMEE
+00000000004af034 T _ZN4CCam19KeepTrackOfTheSpeedERK7CVectorS2_S2_RKfS4_S4_
+00000000004ab160 T _ZN4CCam19ProcessArrestCamOneEv
+00000000004c0d10 T _ZN4CCam19ProcessArrestCamTwoEv
+00000000004b3074 T _ZN4CCam19ProcessDWBustedCam1EP4CPedb
+00000000004a86e0 T _ZN4CCam19ProcessPedsDeadBabyEv
+00000000004abd34 T _ZN4CCam19Process_AttachedCamEv
+00000000004ad3cc T _ZN4CCam19Process_DW_BirdyCamEb
+000000000088550c D _ZN4CCam20CAM_BUMPED_DAMP_RATEE
+0000000000885510 D _ZN4CCam20CAM_BUMPED_MOVE_MULTE
+00000000004b02b4 T _ZN4CCam20GetVectorsReadyForRWEv
+00000000004acc74 T _ZN4CCam20Process_DW_CamManCamEb
+00000000004ae2d0 T _ZN4CCam20Process_DW_PlaneCam1Eb
+00000000004ae7cc T _ZN4CCam20Process_DW_PlaneCam2Eb
+00000000004aecb4 T _ZN4CCam20Process_DW_PlaneCam3Eb
+000000000049fd38 T _ZN4CCam20Process_FollowCar_SAERK7CVectorfffb
+00000000004a22b8 T _ZN4CCam20Process_FollowPed_SAERK7CVectorfffb
+00000000004c06ec T _ZN4CCam21Finalise_DW_CineyCamsEP7CVectorS1_ffff
+00000000004b3594 T _ZN4CCam21GetLookAlongGroundPosEP7CEntityP4CPedR7CVectorS5_
+00000000004a8b18 T _ZN4CCam21Process_Cam_TwoPlayerEv
+00000000004a3ea8 T _ZN4CCam21Process_M16_1stPersonERK7CVectorfff
+00000000004b36b4 T _ZN4CCam22GetLookFromLampPostPosEP7CEntityP4CPedR7CVectorS5_
+00000000004b33bc T _ZN4CCam22GetLookOverShoulderPosEP7CEntityP4CPedR7CVectorS5_
+00000000004b0664 T _ZN4CCam22GetWeaponFirstPersonOnEv
+00000000004ae2a8 T _ZN4CCam22Process_DW_DogFightCamEb
+000000000049fc78 T _ZN4CCam22Using3rdPersonMouseCamEv
+0000000000885504 D _ZN4CCam23CAM_BUMPED_SWING_PERIODE
+00000000004b4864 T _ZN4CCam23Get_TwoPlayer_AimVectorER7CVector
+00000000004ac06c T _ZN4CCam23Process_DW_HeliChaseCamEb
+00000000004aa960 T _ZN4CCam25Process_1rstPersonPedOnPCERK7CVectorfff
+00000000004add24 T _ZN4CCam26Process_DW_PlaneSpotterCamEb
+00000000004a1894 T _ZN4CCam26Process_FollowPedWithMouseERK7CVectorfff
+00000000004c04cc T _ZN4CCam27CacheLastSettingsDWCineyCamEv
+00000000004b0608 T _ZN4CCam28GetBoatLook_L_R_HeightOffsetERf
+00000000004c02e4 T _ZN4CCam28GetCoreDataForDWCineyCamModeEPP7CEntityPP8CVehicleP7CVectorS7_S7_S7_S7_S7_PfS7_S8_P10CColSphere
+00000000004a7edc T _ZN4CCam29Process_SpecialFixedForSyphonERK7CVectorfff
+00000000004c0b74 T _ZN4CCam30IsTimeToExitThisDWCineyCamModeEiP7CVectorS1_fb
+00000000004b4210 T _ZN4CCam30Process_Cam_TwoPlayer_TestLOSsE7CVector
+00000000004b4040 T _ZN4CCam32Process_Cam_TwoPlayer_CalcSourceEfP7CVectorS1_S1_
+00000000004a9de0 T _ZN4CCam35Process_Cam_TwoPlayer_Separate_CarsEv
+00000000004a9330 T _ZN4CCam38Process_Cam_TwoPlayer_InCarAndShootingEv
+00000000004aa27c T _ZN4CCam43Process_Cam_TwoPlayer_Separate_Cars_TopDownEv
+00000000004b06a4 T _ZN4CCam4InitEv
+000000000049eebc T _ZN4CCam7ProcessEv
+00000000004b13c0 T _ZN4CCam8LookLeftEv
+00000000004bf800 T _ZN4CCam9DoCamBumpEff
+00000000004afbf0 T _ZN4CCam9LookRightEb
+00000000004b4c48 T _ZN7CCamera10CamControlEv
+00000000004b9ac4 T _ZN7CCamera10FindCamFOVEv
+00000000004bc5c0 T _ZN7CCamera11ProcessFadeEv
+00000000004bf318 T _ZN7CCamera11SetRwCameraEP8RwCamera
+00000000004bf474 T _ZN7CCamera11TakeControlEP7CEntityssi
+00000000004bfdfc T _ZN7CCamera12ProcessShakeEf
+00000000004bc874 T _ZN7CCamera12ProcessShakeEv
+00000000004b97a0 T _ZN7CCamera13GetScreenRectER5CRect
+00000000004b2bf4 T _ZN7CCamera13SetColVarsPedEii
+00000000004bf224 T _ZN7CCamera13SetFadeColourEhhh
+00000000004b2f40 T _ZN7CCamera13SetMotionBlurEiiiii
+00000000004bfa04 T _ZN7CCamera14AddShakeSimpleEfif
+00000000004b9a14 T _ZN7CCamera14FinishCutsceneEv
+00000000004c0164 T _ZN7CCamera14ProcessFOVLerpEf
+00000000004c00ac T _ZN7CCamera14ProcessFOVLerpEv
+00000000004bd414 T _ZN7CCamera14SetToSphereMapEf
+00000000004b0e78 T _ZN7CCamera15ImproveNearClipEP8CVehicleP4CPedP7CVectorS5_
+00000000003c0430 W _ZN7CCamera15IsSphereVisibleERK7CVectorf
+000000000054dc14 T _ZN7CCamera15LoadPathSplinesEy
+00000000004bf34c T _ZN7CCamera15SetWideScreenOnEv
+00000000004b8d0c T _ZN7CCamera15StartTransitionEs
+00000000004b391c T _ZN7CCamera16AvoidTheGeometryERK7CVectorS2_RS0_f
+00000000004b9dc0 T _ZN7CCamera16GetLookDirectionEv
+00000000004bc6c0 T _ZN7CCamera16ProcessMusicFadeEv
+00000000004bf08c T _ZN7CCamera16RenderMotionBlurEv
+00000000004b80e4 T _ZN7CCamera16SetWideScreenOffEv
+00000000004bf93c T _ZN7CCamera16VectorMoveLinearEP7CVectorS1_fb
+00000000004b9e60 T _ZN7CCamera17IsItTimeForNewcamEii
+00000000004bf290 T _ZN7CCamera17IsTargetingActiveEP10CPlayerPed
+00000000004b8154 T _ZN7CCamera17IsTargetingActiveEv
+00000000004b2e68 T _ZN7CCamera17SetColVarsVehicleEii
+00000000004ba948 T _ZN7CCamera17SetNearClipScriptEf
+00000000004bf7ec T _ZN7CCamera17UpdateAimingCoorsERK7CVector
+00000000004bf988 T _ZN7CCamera17VectorTrackLinearEP7CVectorS1_fb
+00000000004b2bd4 T _ZN7CCamera18GetFadingDirectionEv
+00000000004b9d7c T _ZN7CCamera18GetGameCamPositionEv
+00000000004b1520 T _ZN7CCamera18ResetDuckingSystemEP4CPed
+00000000004b94b4 T _ZN7CCamera18RestoreWithJumpCutEv
+00000000004b9940 T _ZN7CCamera18SetMotionBlurAlphaEi
+00000000004bbec0 T _ZN7CCamera18UpdateTargetEntityEv
+00000000004b9d58 T _ZN7CCamera19GetScreenFadeStatusEv
+00000000004bc820 T _ZN7CCamera19ProcessWideScreenOnEv
+00000000004b1678 T _ZN7CCamera19SetColVarsAimWeaponEi
+00000000004bf59c T _ZN7CCamera19TakeControlNoEntityERK7CVectorsi
+00000000004b09b4 T _ZN7CCamera20CameraColDetAndReactEP7CVectorS1_
+00000000004bf8f4 T _ZN7CCamera20ConsiderPedAsDuckingEP4CPed
+000000000049fcb8 T _ZN7CCamera20GetCamDirectlyBehindEv
+00000000004b9948 T _ZN7CCamera20GetCutsceneBarHeightEv
+00000000004bf0b0 T _ZN7CCamera20SetCamCutSceneOffSetERK7CVector
+00000000004bcfd4 T _ZN7CCamera20SetCameraUpForMirrorEv
+00000000004bd64c T _ZN7CCamera20TryToStartNewCamModeEi
+00000000004bcdc8 T _ZN7CCamera20UpdateSoundDistancesEv
+0000000000bbb680 B _ZN7CCamera20m_fMouseAccelHorzntlE
+00000000004ba958 T _ZN7CCamera21CalculateGroundHeightEj
+00000000004b81dc T _ZN7CCamera21ClearPlayerWeaponModeEv
+00000000004b9d08 T _ZN7CCamera21GetCutSceneFinishTimeEv
+00000000004bf8b0 T _ZN7CCamera21IsExtraEntityToIgnoreEP7CEntity
+00000000004bf7c8 T _ZN7CCamera21TakeControlWithSplineEs
+0000000000bbb684 B _ZN7CCamera21m_fMouseAccelVerticalE
+00000000004bc93c T _ZN7CCamera22CalculateDerivedValuesEbb
+00000000004bd420 T _ZN7CCamera22CalculateFrustumPlanesEb
+00000000004b9e54 T _ZN7CCamera22GetPositionAlongSplineEv
+00000000004bf27c T _ZN7CCamera22SetNewPlayerWeaponModeEsss
+00000000004bf450 T _ZN7CCamera22StopCooperativeCamModeEv
+0000000000bbb688 B _ZN7CCamera22m_f3rdPersonCHairMultXE
+0000000000bbb68c B _ZN7CCamera22m_f3rdPersonCHairMultYE
+00000000004bcf28 T _ZN7CCamera23CalculateMirroredMatrixE7CVectorfP7CMatrixS2_
+00000000004bca24 T _ZN7CCamera23CopyCameraMatrixToRWCamEb
+00000000004b2e3c T _ZN7CCamera23GetArrPosForVehicleTypeEiRi
+00000000004b2c68 T _ZN7CCamera23InitCameraVehicleTweaksEv
+00000000004bc360 T _ZN7CCamera23ProcessScriptedCommandsEv
+00000000004bfd34 T _ZN7CCamera23ProcessVectorMoveLinearEf
+00000000004bfc2c T _ZN7CCamera23ProcessVectorMoveLinearEv
+00000000004b9a6c T _ZN7CCamera23SetPercentAlongCutSceneEf
+00000000004bf434 T _ZN7CCamera23StartCooperativeCamModeEv
+00000000004b2cf8 T _ZN7CCamera24ApplyVehicleCameraTweaksEP8CVehicle
+00000000004b2f50 T _ZN7CCamera24ConeCastCollisionResolveEP7CVectorS1_S1_ffPf
+00000000004b9850 T _ZN7CCamera24DrawBordersForWideScreenEv
+00000000004b9d84 T _ZN7CCamera24GetLookingLRBFirstPersonEv
+00000000004c01dc T _ZN7CCamera24GetRoughDistanceToGroundEv
+00000000004b9d50 T _ZN7CCamera24Get_Just_Switched_StatusEv
+00000000004bfb64 T _ZN7CCamera24ProcessVectorTrackLinearEf
+00000000004bfa5c T _ZN7CCamera24ProcessVectorTrackLinearEv
+00000000004bd168 T _ZN7CCamera24RestoreCameraAfterMirrorEv
+00000000004b811c T _ZN7CCamera24Using1stPersonWeaponModeEv
+00000000004b1394 T _ZN7CCamera25CameraPedModeSpecialCasesEP4CPed
+00000000004bf818 T _ZN7CCamera25SetCamCollisionVarDataSetEi
+00000000004bc898 T _ZN7CCamera25StoreValuesDuringInterPolER7CVectorS1_S1_Rf
+00000000004bf5e8 T _ZN7CCamera25TakeControlAttachToEntityEP7CEntityS1_R7CVectorS3_fsi
+00000000004b17e4 T _ZN7CCamera26Find3rdPersonQuickAimPitchEv
+
+
+===== F1) vehicle.cpp SetPlateText =====
+865:void CVehicle::SetPlateText(const char* szPlateText)
+866-{
+867-    if (!szPlateText) return;
+868-    strncpy(m_szPlateText, szPlateText, sizeof(m_szPlateText) - 1);
+869-    m_szPlateText[sizeof(m_szPlateText) - 1] = '\0';
+870-}
+
+
+===== F2) RW: struct RpMaterial / RwTexture / frame adi funksiyalari =====
+app/src/main/cpp/samp/game/RW/rpworld.h:95:#define RpGeometryGetMaterialMacro(_geometry, _num)             \
+app/src/main/cpp/samp/game/RW/rpworld.h:147:#define RpGeometryGetMaterial(_geometry, _num)                  \
+app/src/main/cpp/samp/game/RW/rpworld.h:148:    RpGeometryGetMaterialMacro(_geometry, _num)
+app/src/main/cpp/samp/game/RW/rpworld.h:781:#define RpClumpGetFrameMacro(_clump)                                    \
+app/src/main/cpp/samp/game/RW/rpworld.h:847:#define RpClumpGetFrame(_clump) \
+app/src/main/cpp/samp/game/RW/rpworld.h:848:    RpClumpGetFrameMacro(_clump)
+app/src/main/cpp/samp/game/RW/rwcore.h:566:struct RwTexture
+app/src/main/cpp/samp/game/RW/rwplcore.h:411:struct RpMaterial
+app/src/main/cpp/samp/game/RW/rwplcore.h:413:	struct RwTexture*   texture; /**< texture */
+app/src/main/cpp/samp/game/RW/rwplcore.h:422:struct RpMaterialList
+app/src/main/cpp/samp/game/RealTimeShadow.h:37:    struct RwTexture* GetShadowRwTexture();
+--- app/src/main/cpp/samp/game/RW/rwplcore.h ---
+struct RpMaterial
+{
+	struct RwTexture*   texture; /**< texture */
+	RwRGBA              color; /**< color */
+	struct RxPipeline*  pipeline; /**< pipeline */
+	RwSurfaceProperties surfaceProps; /**< surfaceProps */
+	RwInt16             refCount;          /* C.f. rwsdk/world/bageomet.h:RpGeometry */
+	RwInt16             pad;
+};
+static_assert(sizeof(RpMaterial) == (VER_x32 ? 0x1C : 0x28));
+
+struct RpMaterialList
+{
+	RpMaterial**    materials;
+	RwInt32         numMaterials;
+	RwInt32         space;
+};
+static_assert(sizeof(RpMaterialList) == (VER_x32 ? 0xC : 0x10));
+
+/* Doubly linked list. End marked as start (its a ring) */
+
+/**
+ * \ingroup rwresources
+ * \struct RwResEntry
+ * RwResEntry object. Instanced data block in resources arena.
+ * This should be considered an opaque
+ * type. Use the RwResEntry API functions to access.
+ */
+
+typedef struct RwResEntry RwResEntry;
+
+--- app/src/main/cpp/samp/game/RW/rwcore.h ---
+struct RwTexture
+{
+    RwRaster           *raster; /** pointer to RwRaster with data */                      //+0
+    void               *dict;   /* Dictionary this texture is in */                       //+4
+    RwLLLink            lInDictionary; /* List of textures in this dictionary */          //+8
+
+    RwChar              name[rwTEXTUREBASENAMELENGTH];  /* Name of the texture */         //+16
+    RwChar              mask[rwTEXTUREBASENAMELENGTH];  /* Name of the textures mask */   //+48
+
+    /* 31 [xxxxxxxx xxxxxxxx vvvvuuuu ffffffff] 0 */
+    RwUInt32            filterAddressing; /* Filtering & addressing mode flags */         //+80
+
+    RwInt32             refCount; /* Reference count, surprisingly enough */              //+84
+};
+static_assert(sizeof(RwTexture) == (VER_x32 ? 0x58 : 0x68));
+
+/* Type ID */
+#define rwTEXDICTIONARY 6
+
+/* Mipmap Name generation - maximum number of RwChar characters which can
+ * be appended to the root name.
+ */
+#define rwTEXTUREMIPMAPNAMECHARS    16
+
+/* We define texture names to be a maximum of 16 ISO chars */
+#define rwTEXTUREBASENAMELENGTH     32

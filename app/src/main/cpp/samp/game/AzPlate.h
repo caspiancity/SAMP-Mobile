@@ -13,6 +13,8 @@ namespace AzPlate
     bool Set(CVehicleGTA* veh, const std::string& normalized);
     void Clear(CVehicleGTA* veh);
     bool Get(CVehicleGTA* veh, std::string& out);
+    // /dump: masinin materiallari + dummy-leri <storage>/vehdump.txt faylina (append)
+    bool Dump(CVehicleGTA* veh, std::string& outPath);
 
     // UI::render-den cagirilir, ImGui kadrindan EVVEL (tekstura yaradilir)
     void ProcessPending();

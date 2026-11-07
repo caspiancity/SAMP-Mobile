@@ -19,6 +19,7 @@ public:
 	virtual void keyboardEvent(const std::string& input) override;
 
 private:
+	float m_slide = 0.0f;   // yeni mesaj gelende alt-ustu suruşme (piksel)
 	void addMessage(const std::string& messsage, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f));
 	void addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
 

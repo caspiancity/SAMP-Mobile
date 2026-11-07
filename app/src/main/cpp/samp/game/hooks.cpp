@@ -130,6 +130,7 @@ void Render2dStuff_hook()
     if (pUI) pUI->render();
     return;
 }*/
+extern bool g_bHideAllUI;
 void Render2dStuff()
 {
     if( CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x001BB7F4 + 1 : 0x24EA90)) ) // emu_IsAltRenderTarget()
@@ -145,10 +146,10 @@ void Render2dStuff()
 
     //((void (*)()) (g_libGTASA + (VER_x32 ? 0x00437B0C + 1 : 0x51CFF0)))(); // CHud::DrawRadar
     //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
-    CHook::CallFunction<void>("_ZN4CHud4DrawEv");
+    if (!g_bHideAllUI) CHook::CallFunction<void>("_ZN4CHud4DrawEv");
     //	GPS::Draw();
     //
-    ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(false); // CTouchInterface::DrawAll
+    if (!g_bHideAllUI) ((void(*)(bool) )(g_libGTASA + (VER_x32 ? 0x002B0BD8 + 1 : 0x36FB00)) )(false); // CTouchInterface::DrawAll
 
     CHook::CallFunction<void>("_Z12emu_GammaSeth", 1);
 
@@ -159,7 +160,7 @@ void Render2dStuff()
     if(pNetGame)
     {
         CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
-        if(pTextDrawPool) pTextDrawPool->Draw();
+        if(pTextDrawPool && !g_bHideAllUI) pTextDrawPool->Draw();
     }
 
     if (pUI) pUI->render();

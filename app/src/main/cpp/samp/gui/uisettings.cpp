@@ -3,6 +3,7 @@
 #include "../vendor/imgui/imgui_internal.h"
 
 #include <string>
+#include <algorithm>
 #include "uisettings.h"
 #include "../main.h"
 #include "../settings.h"
@@ -82,7 +83,7 @@ void UISettings::Initialize(const ImVec2& display_size)
 	m_scaleFactor = display_size / m_baseSize;
 
 	/* chat line count */
-	m_chatDispMesssages = pSettings->Get().iChatMaxMessages;
+	m_chatDispMesssages = std::max<int>(3, std::min<int>((int)pSettings->Get().iChatMaxMessages, 6));   // kicik chat: en cox 6 setir
 
 	/* font */
 	m_fontSize *= m_scaleFactor.y;

@@ -4,6 +4,7 @@
 #include "../../net/netgame.h"
 #include <algorithm>
 #include <sstream>
+#include <chrono>
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/VehControls.h"
@@ -69,6 +70,7 @@ void Chat::addMessage(const std::string& message, const ImColor& color)
         MessageItem* item = new MessageItem(message, color);
         this->addItem(item);
         /*if(!active())*/ this->setScrollY(1.0f);
+        m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
 }
 
 void Chat::addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
@@ -81,11 +83,36 @@ void Chat::addPlayerMessage(const std::string& message, const std::string& nick,
         PlayerMessageItem* item = new PlayerMessageItem(message, nick, nick_color);
         this->addItem(item);
         /*if(!active())*/ this->setScrollY(1.0f);
+        m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
 }
 
 void Chat::draw(ImGuiRenderer* renderer)
 {
-        ListBox::draw(renderer);
+        // yeni mesajlar altdan yavas-yavas yuxari suruslenir
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        if (dt > 0.1f) dt = 0.1f;
+
+        if (m_slide > 0.0f)
+        {
+                m_slide -= (m_slide * 7.0f + 10.0f) * dt;      // yumsaq basla, sona dogru yavasla
+                if (m_slide < 0.5f) m_slide = 0.0f;
+        }
+
+        if (m_slide > 0.0f && !children().empty())
+        {
+                Widget* panel = children()[0];
+                const ImVec2 pos = panel->position();
+                panel->setPosition(ImVec2(pos.x, pos.y + m_slide));
+                ListBox::draw(renderer);
+                panel->setPosition(pos);
+        }
+        else
+        {
+                ListBox::draw(renderer);
+        }
 }
 
 void Chat::activateEvent(bool active)
@@ -167,6 +194,33 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
+        if (cmd == "/dump")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string path;
+                if (AzPlate::Dump(pVeh->m_pVehicle, path))
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Yazildi: %s", path.c_str());
+                else
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Dump yazila bilmedi.");
+                return true;
+        }
+
         if (cmd == "/sinyalayar")
         {
                 std::string a;
@@ -175,11 +229,14 @@ bool ProcessClientCommands(const std::string& input)
                 if (a == "ters") {
                         VehControls::g_sigSwapSides = !VehControls::g_sigSwapSides;
                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
+                } else if (a == "lampa") {
+                        VehControls::g_sigLamp = !VehControls::g_sigLamp;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal lampa parildamasi: %s", VehControls::g_sigLamp ? "aciq" : "bagli");
                 } else if (a == "korona") {
                         VehControls::g_sigCorona = !VehControls::g_sigCorona;
                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
                 } else {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona]");
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona|lampa]");
                 }
                 return true;
         }

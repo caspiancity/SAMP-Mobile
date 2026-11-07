@@ -12,9 +12,11 @@
 #include "game/Entity/CEntityGTA.h"
 #include "game/VehTuner.h"
 #include "game/VehControls.h"
+#include "game/AzPlate.h"
 #include <unordered_map>
 #include <chrono>
 #include <cmath>
+#include <utility>
 
 void CVehicleGTA::RenderDriverAndPassengers() {
     if(IsRCVehicleModelID())
@@ -179,6 +181,7 @@ void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint
 
     thiz->m_nVehicleFlags.bEngineOn = old;
 
+    VehControls::ApplyRenderLightBits(thiz);
     VehControls::RenderSignals(thiz);
 }
 
@@ -290,12 +293,55 @@ namespace VehControls
         s_signals.erase(veh);
     }
 
+    // ms_lightsOn / m_renderLights indeksleri: 0 = surucu terefi on, 1 = sernisin terefi on,
+    //                                           2 = surucu terefi arxa, 3 = sernisin terefi arxa
+    static void ComputeSides(uint8_t mode, bool& left, bool& right)
+    {
+        left  = (mode == VEH_SIGNAL_HAZARD) || (mode == VEH_SIGNAL_LEFT);
+        right = (mode == VEH_SIGNAL_HAZARD) || (mode == VEH_SIGNAL_RIGHT);
+        if (g_sigSwapSides) std::swap(left, right);
+    }
+
+    // DoVehicleLights hook-undan (PreRender): oyunun oz "bu lampa yanir" bayraqlari
+    void ApplyRenderLightBits(CVehicleGTA* veh)
+    {
+        if (s_signals.empty() || !veh) return;
+        auto it = s_signals.find(veh);
+        if (it == s_signals.end()) return;
+
+        bool l, r;
+        ComputeSides(it->second, l, r);
+        const uint8_t on = BlinkOn() ? 1 : 0;
+        if (l) { veh->m_renderLights.m_bLeftFront  = on; veh->m_renderLights.m_bLeftRear  = on; }
+        if (r) { veh->m_renderLights.m_bRightFront = on; veh->m_renderLights.m_bRightRear = on; }
+    }
+
+    // CVehicleModelInfo::SetupLightFlags-dan SONRA: render zamani lampa materiallarinin yanma massivi
+    void ApplyLampArray(CVehicleGTA* veh)
+    {
+#if !VER_x32
+        if (s_signals.empty() || !veh) return;
+        auto it = s_signals.find(veh);
+        if (it == s_signals.end()) return;
+
+        bool l, r;
+        ComputeSides(it->second, l, r);
+        const uint8_t on = BlinkOn() ? 1 : 0;
+        uint8_t* lamps = reinterpret_cast<uint8_t*>(g_libGTASA + 0xB8DB40);   // CVehicleModelInfo::ms_lightsOn (libGTASA nm)
+        if (l) { lamps[0] = on; lamps[2] = on; }
+        if (r) { lamps[1] = on; lamps[3] = on; }
+#else
+        (void)veh;
+#endif
+    }
+
     void RenderSignals(CVehicleGTA* veh)
     {
         if (s_signals.empty() || !veh) return;
 
         auto it = s_signals.find(veh);
         if (it == s_signals.end()) return;
+        if (!g_sigCorona) return;      // lampanin ozu yanir; ayri corona yalniz /sinyalayar korona ile
         if (!BlinkOn()) return;
 
         auto* pModelInfo = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
@@ -347,6 +393,14 @@ namespace VehControls
     }
 }
 
+// Render zamani lampa materiallarinin yanma massivini (ms_lightsOn) sinyala gore deyisir
+void (*CVehicleModelInfo__SetupLightFlags)(CVehicleGTA* veh);
+void CVehicleModelInfo__SetupLightFlags_hook(CVehicleGTA* veh)
+{
+    CVehicleModelInfo__SetupLightFlags(veh);
+    VehControls::ApplyLampArray(veh);
+}
+
 void CVehicleGTA::InjectHooks() {
     // var
     CHook::Write(g_libGTASA + (VER_x32 ? 0x675F10 : 0x849EA8), &CVehicleGTA::m_aSpecialColModel);
@@ -357,6 +411,8 @@ void CVehicleGTA::InjectHooks() {
     CHook::Redirect("_ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh", &CVehicle__DoTailLightEffect);
     CHook::InlineHook("_ZN8CVehicle15DoVehicleLightsER7CMatrixj", &CVehicle__DoVehicleLights_hook, &CVehicle__DoVehicleLights);
     CHook::Redirect("_ZN8CVehicle22GetVehicleLightsStatusEv", &CVehicle__GetVehicleLightsStatus_hook);
+    CHook::InlineHook("_ZN17CVehicleModelInfo15SetupLightFlagsEP8CVehicle", &CVehicleModelInfo__SetupLightFlags_hook, &CVehicleModelInfo__SetupLightFlags);
+    AzPlate::InstallHooks();
 }
 
 bool CVehicleGTA::IsRCVehicleModelID() {

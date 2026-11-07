@@ -1,0 +1,2215 @@
+
+
+===== A1) adinda 'plate' olan butun fayllar =====
+app/src/main/cpp/samp/vendor/raknet/BitStream_NoTemplate.cpp
+app/src/main/cpp/samp/vendor/raknet/BitStream_NoTemplate.h
+
+
+===== app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp =====
+//
+// Created by x1y2z on 11.04.2023.
+//
+
+#include "VehicleModelInfo.h"
+#include "../vendor/armhook/patch.h"
+#include "../RW/rpworld.h"
+#include "ModelInfo.h"
+#include "game/VisibilityPlugins.h"
+
+void CVehicleModelInfo::CVehicleModelInfo__SetClump(RpClump* clump)
+{
+    m_pVehicleStruct = new CVehicleStructure();
+    CClumpModelInfo__SetClump(clump);
+    SetAtomicRenderCallbacks();
+
+    RwObjectNameIdAssocation* (&ms_vehicleDescs)[NUM_VEHICLE_MODEL_DESCS] = *(RwObjectNameIdAssocation*(*)[NUM_VEHICLE_MODEL_DESCS])(g_libGTASA + (VER_x32 ? 0x00687C7C : 0x8614C0));
+    CClumpModelInfo::SetFrameIds(ms_vehicleDescs[m_nVehicleType]);
+    SetRenderPipelines();
+    PreprocessHierarchy();
+    ReduceMaterialsInVehicle();
+//    m_nCurrentPrimaryColor = 255;
+//    m_nCurrentSecondaryColor = 255;
+//    m_nCurrentTertiaryColor = 255;
+//    m_nCurrentQuaternaryColor = 255;
+//    SetCarCustomPlate();
+}
+
+void CVehicleModelInfo::CVehicleModelInfo__DeleteRwObject()
+{
+    delete m_pVehicleStruct;
+    m_pVehicleStruct = nullptr;
+    CClumpModelInfo__DeleteRwObject();
+}
+
+void CVehicleModelInfo::SetAtomicRenderCallbacks()
+{
+   CHook::CallFunction<void>("_ZN17CVehicleModelInfo24SetAtomicRenderCallbacksEv", this);
+}
+
+CVehicleModelInfo::CVehicleStructure::CVehicleStructure() : m_aUpgrades()
+{
+    for (auto& vecPos : m_avDummyPos)
+        vecPos.Set(0.0F, 0.0F, 0.0F);
+
+    for (auto& upgrade : m_aUpgrades)
+        upgrade.m_nParentComponentId = -1;
+
+    memset(m_apExtras, 0, sizeof(m_apExtras));
+    m_nNumExtras = 0;
+    m_nMaskComponentsDamagable = 0;
+}
+
+CVehicleModelInfo::CVehicleStructure::~CVehicleStructure()
+{
+    for (int32 i = 0; i < m_nNumExtras; ++i) {
+        auto atomic = m_apExtras[i];
+        auto frame = RpAtomicGetFrame(atomic);
+        RpAtomicDestroy(atomic);
+        RwFrameDestroy(frame);
+    }
+}
+
+void CVehicleModelInfo::ReduceMaterialsInVehicle()
+{
+   CHook::CallFunction<void>("_ZN17CVehicleModelInfo24ReduceMaterialsInVehicleEv", this);
+}
+
+
+void CVehicleModelInfo::PreprocessHierarchy()
+{
+   CHook::CallFunction<void>("_ZN17CVehicleModelInfo19PreprocessHierarchyEv", this);
+}
+
+void CVehicleModelInfo::SetRenderPipelines()
+{
+    CHook::CallFunction<void>("_ZN17CVehicleModelInfo18SetRenderPipelinesEv", this);
+}
+
+void* CVehicleModelInfo::CVehicleStructure::operator new(size_t size)
+{
+    return m_pInfoPool->New();
+}
+
+void CVehicleModelInfo::CVehicleStructure::operator delete(void* data)
+{
+    m_pInfoPool->Delete(reinterpret_cast<CVehicleStructure*>(data));
+}
+
+/*RpMaterial* RemoveWindowAlphaCB(RpMaterial* mat, void* data)
+{
+    if (mat->color.alpha != 255) {
+        AddStoredMaterial(RpMaterialGetColor(mat));
+
+        mat->color = {0, 0, 0, 0};
+    }
+    return mat;
+}
+
+RpAtomic* CVehicleModelInfo::SetEditableMaterialsCB(RpAtomic* atomic, void* data)
+{
+    if (rwObjectTestFlags(atomic, RpAtomicFlag::rpATOMICRENDER) == 0)
+        return atomic;
+
+    if (CVisibilityPlugins::GetAtomicId(atomic) & eAtomicComponentFlag::ATOMIC_IS_DOOR_WINDOW_OPENED)
+        RpGeometryForAllMaterials(RpAtomicGetGeometry(atomic), RemoveWindowAlphaCB, data);
+
+    RpGeometryForAllMaterials(RpAtomicGetGeometry(atomic), SetEditableMaterialsCB, data);
+    return atomic;
+}
+
+RpMaterial* CVehicleModelInfo::SetEditableMaterialsCB(RpMaterial* mat, void* data)
+{
+    auto pVeh = (CVehicle*)data;
+    int color = *(int*)&mat->color;
+    
+    if(mat->texture) {
+        if (RpMaterialGetTexture(mat) == ms_pLightsTexture) {
+            int32 iLightIndex = -1;
+            if (color == 0xff00afff) // driver side. front 255, 175, 0
+                iLightIndex = 0;
+            else if (color == 0xffc8ff00) // pass side. front  0, 255, 200
+                iLightIndex = 1;
+            else if (color == 0xff00ffb9) // driver side. rear 185, 255, 0
+                iLightIndex = 2;
+            else if (color == 0xff003cff) // pass side. rear 255, 60, 0, 0
+                iLightIndex = 3;
+
+            AddStoredMaterial(RpMaterialGetColor(mat));
+
+            RpMaterialGetColor(mat)->red = 255;
+            RpMaterialGetColor(mat)->green = 255;
+            RpMaterialGetColor(mat)->blue = 255;
+
+            if (iLightIndex != -1 && ms_lightsOn[iLightIndex]) {
+                AddStoredMaterial(&mat->texture);
+                AddStoredMaterial(RpMaterialGetSurfaceProperties(mat));
+
+
+                mat->texture = ms_pLightsOnTexture;
+                RpMaterialSetSurfaceProperties(mat, &gLightSurfProps);
+            }
+        }
+        if (!strcmp(mat->texture->name, "nomer")) {
+            AddStoredMaterial(&mat->texture);
+            if (pVeh->pPlateTexture) {
+                mat->texture = pVeh->pPlateTexture;
+            } else {
+                mat->texture = CCustomPlateManager::GetNoPlateTex();
+            }
+            mat->color.alpha = 255;
+
+            return mat;
+        }
+    }
+
+    if ( color == 0xff00ff3c ) { // first color 60, 255, 0
+        AddStoredMaterial(RpMaterialGetColor(mat));
+        if (pVeh->m_pVinylTex) {
+            AddStoredMaterial(&mat->texture);
+            mat->texture = pVeh->m_pVinylTex;
+            mat->color = {255, 255, 255, 255};
+            return mat;
+        }
+        mat->color = pVeh->mainColor;
+        return mat;
+    }
+    if ( color == 0xffaf00ff ) { // second color 255, 0, 175
+        AddStoredMaterial(RpMaterialGetColor(mat));
+        mat->color = pVeh->secondColor;
+        return mat;
+    }
+    else if (color == 0xff00ffff) { // toner
+        AddStoredMaterial(RpMaterialGetColor(mat));
+
+        mat->color = pVeh->tonerColor;
+        return mat;
+    }
+    if ( color == 0xff00647d ) { // wheel
+        AddStoredMaterial(RpMaterialGetColor(mat));
+
+        mat->color = pVeh->wheelColor;
+        return mat;
+    }
+    return mat;
+}
+
+void CVehicleModelInfo::SetEditableMaterials(RpClump* clump)
+{
+    if (clump)
+    {
+        auto vehId = CVehiclePool::FindIDFromRwObject(&clump->object);
+        auto pVehicle = CVehiclePool::GetAt(vehId);
+        if (pVehicle)
+        {
+            RpClumpForAllAtomics(clump, SetEditableMaterialsCB, pVehicle);
+        }
+    }
+}
+
+void CVehicleModelInfo::ResetEditableMaterials(RpClump* clump)
+{
+    for (auto& p : gStoredMaterials)
+    {
+        *p.first = p.second;
+    }
+    gStoredMaterials.clear();
+}
+
+//  ----------------- hook ----------------------
+
+void CVehicleModelInfo__SetClump_hook(CVehicleModelInfo* thiz, RpClump* clump) {
+    thiz->CVehicleModelInfo__SetClump(clump);
+}
+
+void CVehicleModelInfo__DeleteRwObject_hook(CVehicleModelInfo* thiz) {
+    thiz->CVehicleModelInfo__DeleteRwObject();
+}*/
+
+void CVehicleModelInfo::InjectHooks() {
+    //CHook::Write(g_libGTASA + (VER_x32 ? 0x679D00 : 0x851A18), &ms_pLightsTexture);
+    //CHook::Write(g_libGTASA + (VER_x32 ? 0x67820C : 0x84E440), &ms_pLightsOnTexture);
+    //CHook::Write(g_libGTASA + (VER_x32 ? 0x676CD4 : 0x84BA08), &ms_lightsOn);
+
+    //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x66E910 : 0x83DEE0), &SetEditableMaterials);
+    //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x675E30 : 0x849D10), &ResetEditableMaterials);
+
+//    CVehicleStructure::m_pInfoPool = new CPool<CVehicleStructure>(CModelInfo::NUM_VEHICLE_MODEL_INFOS, "VehicleStruct");
+//
+//    CHook::Redirect("_ZN17CVehicleModelInfo8SetClumpEP7RpClump", &CVehicleModelInfo__SetClump_hook);
+
+
+===== app/src/main/cpp/samp/game/Models/VehicleModelInfo.h =====
+//
+// Created by x1y2z on 07.03.2023.
+//
+
+#pragma once
+
+#include "ClumpModelInfo.h"
+#include "game/Enums/eVehicleClass.h"
+#include "game/Core/Quaternion.h"
+#include "game/Core/Vector.h"
+#include "game/RW/rpworld.h"
+#include "game/Enums/eVehicleType.h"
+#include "game/Core/Pool.h"
+
+enum eVehicleDummy {
+    DUMMY_LIGHT_FRONT_MAIN      = 0,
+    DUMMY_LIGHT_REAR_MAIN       = 1,
+
+    DUMMY_LIGHT_FRONT_SECONDARY = 2,
+    DUMMY_LIGHT_REAR_SECONDARY  = 3,
+
+    DUMMY_SEAT_FRONT            = 4,
+    DUMMY_SEAT_REAR             = 5,
+
+    DUMMY_EXHAUST               = 6,
+    DUMMY_ENGINE                = 7,
+    DUMMY_GAS_CAP               = 8,
+    DUMMY_TRAILER_ATTACH        = 9,
+    DUMMY_HAND_REST             = 10,
+    DUMMY_EXHAUST_SECONDARY     = 11,
+    DUMMY_WING_AIR_TRAIL        = 12,
+    DUMMY_VEHICLE_GUN           = 13,
+};
+
+union tVehicleCompsUnion {
+    uint32_t m_nComps;
+    struct {
+        uint32_t nExtraA_comp1 : 4;
+        uint32_t nExtraA_comp2 : 4;
+        uint32_t nExtraA_comp3 : 4;
+        uint32_t : 4;
+
+        uint32_t nExtraB_comp1 : 4;
+        uint32_t nExtraB_comp2 : 4;
+        uint32_t nExtraB_comp3 : 4;
+        uint32_t : 4;
+    };
+    struct {
+        uint32_t nExtraAComp : 12;
+        uint32_t nExtraARule : 4;
+
+        uint32_t nExtraBComp : 12;
+        uint32_t nExtraBRule : 4;
+    };
+
+    struct {
+        uint32_t nExtraA : 16;
+        uint32_t nExtraB : 16;
+    };
+};
+
+struct UpgradePosnDesc {
+    CVector         m_vPosition;
+    CQuaternion     m_qRotation;
+    int32_t         m_nParentComponentId;
+};
+static_assert(sizeof(UpgradePosnDesc) == 0x20, "Invalid size UpgradePosnDesc");
+
+
+struct CVehicleModelInfo : public CClumpModelInfo {
+public:
+    RpMaterial*         m_pPlateMaterial; // 3C
+    char                m_szPlateText[9]; // 40
+    unsigned char       m_nPlateType;    //  49
+    char                m_szGameName[8]; //  4a
+    char               _pad3A[2];
+    eVehicleType        m_nVehicleType;  //  54
+    float               m_fWheelSizeFront;// 58
+    float               m_fWheelSizeRear;    //5C
+    int16_t             m_nWheelModelIndex;  //60
+    int16_t             m_nHandlingId;       // 62
+    int8_t              m_nNumDoors;     //64
+    eVehicleClass       m_nVehicleClass; //65
+    int8_t              m_nFlags;    //66
+    int8_t              m_nWheelUpgradeClass;//67
+    int8_t              m_nTimesUsed;    //68
+    uint8_t             pad_0;
+    int16_t             m_freq;
+    tVehicleCompsUnion  m_extraComps;    //6c
+    float               m_fBikeSteerAngle; // 70
+
+    struct CVehicleStructure {
+    public:
+        CVehicleStructure();
+        ~CVehicleStructure();
+        static void* operator new(size_t size);
+        static void  operator delete(void* data);
+
+    public:
+        static constexpr int32 NUM_DUMMIES = 15;
+        static constexpr int32 NUM_UPGRADES = 18;
+        static constexpr int32 NUM_EXTRAS = 6;
+
+    public:
+        CVector         m_avDummyPos[NUM_DUMMIES];
+        UpgradePosnDesc m_aUpgrades[NUM_UPGRADES];
+        RpAtomic*       m_apExtras[NUM_EXTRAS];
+        RpAtomic*       m_pXtraAtomicLOD[6];
+        int8_t          m_nNumExtras;
+        uint8           pad0[3];
+        uint32_t        m_nMaskComponentsDamagable;
+
+    public:
+        static inline CPool<CVehicleStructure>* m_pInfoPool;
+
+    public: // Helpers
+        [[nodiscard]] bool IsDummyActive(eVehicleDummy dummy) const {
+            return m_avDummyPos[dummy] != 0.0F;
+        }
+
+        [[nodiscard]] bool IsComponentDamageable(int32 nodeIndex) const {
+            return m_nMaskComponentsDamagable & (1 << nodeIndex);
+        }
+
+    } * m_pVehicleStruct;
+    VALIDATE_SIZE(CVehicleStructure, (VER_x32 ? 0x32C : 0x360));
+
+    RpMaterial* m_firstColour[49];
+    RpMaterial* m_secondColour[33];
+    RpMaterial* m_thirdColour[17];
+    RpMaterial* m_fourthColour[17];
+    RpMaterial* m_apDirtMaterials[64];
+    uint8_t     m_possibleColours[4][8];
+    uint8_t     m_numPossibleColours;
+    uint8_t     m_lastColUsed;
+    uint8_t     m_lastCol[4];
+    int16_t     m_anUpgrades[18];
+    uint8_t     pad_1[2];
+    const char* m_remaps[4];
+
+    union {
+        uintptr_t* m_pAnimBlock;
+        char* m_animBlockFileName;
+        unsigned int m_dwAnimBlockIndex;
+    };
+
+    // vehicle components description tables
+    // static RwObjectNameIdAssocation ms_vehicleDescs[12];
+    static constexpr int32 NUM_VEHICLE_MODEL_DESCS = 12;
+   // static inline RwObjectNameIdAssocation* ms_vehicleDescs[NUM_VEHICLE_MODEL_DESCS]; need initializer
+
+    // vehiclelights128 texture
+    static inline RwTexture* ms_pLightsTexture;
+    // vehiclelightson128 texture
+    static inline RwTexture* ms_pLightsOnTexture;
+
+    // Light states for currently rendered car
+    static constexpr int32 NUM_LIGHTS = 4;
+    static inline uint8 ms_lightsOn[NUM_LIGHTS];
+
+public:
+    static void InjectHooks();
+
+    // vt
+    void CVehicleModelInfo__DeleteRwObject();
+    void CVehicleModelInfo__SetClump(RpClump* clump);
+
+    // setup model render callbacks
+    void SetAtomicRenderCallbacks();
+    // set component flags
+    void SetVehicleComponentFlags(RwFrame* component, uint32 flags);
+    // setups rendering pipelines for atomics in model (CCustomCarEnvMapPipeline::CustomPipeAtomicSetup)
+    void SetRenderPipelines();
+    // get position of dummy in model-space
+    CVector* GetModelDummyPosition(eVehicleDummy dummy) const { return &m_pVehicleStruct->m_avDummyPos[dummy]; } // NOTSA
+    // setup vehicle model components
+    void PreprocessHierarchy();
+    // remove some unused materials in model?
+    void ReduceMaterialsInVehicle();
+
+    // change colors and settings of material according to vehicle color and lights states.  Data
+    // contains pointer to restore entries
+    static RpMaterial* SetEditableMaterialsCB(RpMaterial* material, void* data);
+    // execute SetEditableMaterialsCB(RpMaterial *, void *) for atomic materials and also remove
+    // vehicle window if needed. Data contains pointer to restore entries
+    static RpAtomic* SetEditableMaterialsCB(RpAtomic* atomic, void* data);
+    // execute SetEditableMaterialsCB(RpAtomic *, void *) for atomics in clump. This one is called
+    // before vehicle rendering
+    static void SetEditableMaterials(RpClump* clump);
+    // reset materials settings. This one is called after vehicle rendering
+    static void ResetEditableMaterials(RpClump* clump);
+};
+
+static inline RwSurfaceProperties gLightSurfProps {5.0, 0.0, 1.0};
+static inline RwSurfaceProperties gLightOffSurfProps {0.0, 0.0, 1.0};
+
+
+static inline std::list<std::pair<uint32*, uint32>> gStoredMaterials;
+template <typename Addr>
+static inline void AddStoredMaterial(Addr addr)
+
+
+===== A2) scriptrpc.cpp - ScrSetVehicleNumberPlate =====
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	float fX, fY, fZ;
+	uint32_t dwType;
+	float fRadius;
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	bsData.Read(fX);
+	bsData.Read(fY);
+	bsData.Read(fZ);
+	bsData.Read(dwType);
+	bsData.Read(fRadius);
+
+	ScriptCommand(&create_explosion_with_radius, fX, fY, fZ, dwType, fRadius);
+}
+// 0.3.7
+void ScrSetVehicleNumberPlate(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	VEHICLEID VehicleID;
+	uint8_t byteLength;
+	char szPlateName[32+1];
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	bsData.Read(VehicleID);
+	bsData.Read(byteLength);
+	if (byteLength > 32) return;
+
+	bsData.Read(szPlateName, byteLength);
+	szPlateName[byteLength] = '\0';
+
+	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+	if (!pVehiclePool) return;
+
+	CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
+	if (!pVehicle) return;
+
+	pVehicle->SetPlateText(szPlateName);
+}
+
+#define SPECTATE_TYPE_NORMAL	1
+#define SPECTATE_TYPE_FIXED		2
+#define SPECTATE_TYPE_SIDE		3
+
+// 0.3.7
+void ScrSpectatePlayer(RPCParameters* rpcParams)
+{
+	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	PLAYERID PlayerID;
+	uint8_t byteMode;
+	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+	bsData.Read(PlayerID);
+	bsData.Read(byteMode);
+
+	switch (byteMode) 
+	{
+	case SPECTATE_TYPE_FIXED:
+		byteMode = 15;
+		break;
+	case SPECTATE_TYPE_SIDE:
+		byteMode = 14;
+		break;
+	default:
+		byteMode = 4;
+
+
+===== A3) patches.cpp 195-275 (ENABLE_CUSTOM_PLATE konteksti) =====
+    CHook::RET("_ZN14SurfaceInfos_c17CreatesWheelSprayEj"); // SurfaceInfos_c::CreatesWheelSpray
+
+    //CHook::RET("_ZN4Fx_c13AddWheelGrassEP8CVehicle7CVectorhf"); // Fx_c::AddWheelGrass
+    //CHook::RET("_ZN4Fx_c14AddWheelGravelEP8CVehicle7CVectorhf"); // Fx_c::AddWheelGravel
+    //CHook::RET("_ZN4Fx_c11AddWheelMudEP8CVehicle7CVectorhf"); // Fx_c::AddWheelMud
+    CHook::RET("_ZN4Fx_c12AddWheelDustEP8CVehicle7CVectorhf"); // Fx_c::AddWheelDust
+    //CHook::RET("_ZN4Fx_c12AddWheelSandEP8CVehicle7CVectorhf"); // Fx_c::AddWheelSand
+    CHook::RET("_ZN4Fx_c13AddWheelSprayEP8CVehicle7CVectorhhf"); // Fx_c::AddWheelSpray
+}
+
+void ApplyGlobalPatches()
+{
+    FLog("Installing patches..");
+
+    CHook::RET("_ZN17CVehicleModelInfo17SetCarCustomPlateEv"); // default plate
+
+    CHook::RET("_Z16SaveGameForPause10eSaveTypesPc"); // не сохранять при сворачивании. черный экран
+
+#if VER_x32
+    // черные значки
+    CHook::WriteMemory(g_libGTASA + 0x00442120, (uintptr_t)"\x2C\xE0", 2); // B 0x44217c
+    CHook::WriteMemory(g_libGTASA + 0x0044217C, (uintptr_t)"\x30\x46", 2); // mov r0, r6
+#else
+    // черные значки
+    CHook::WriteMemory(g_libGTASA + 0x52737C, (uintptr_t)"\x1E\x00\x00\x14", 4); // B 0x5273F4
+    CHook::WriteMemory(g_libGTASA + 0x5273F4, (uintptr_t)"\xE1\x03\x14\x2A", 4); // mov w1, w20
+
+    // crash legend
+    CHook::NOP(g_libGTASA + 0x36A690, 1);
+#endif
+
+    CHook::RET("_ZN12CAudioEngine16StartLoadingTuneEv"); // звук загрузочного экрана
+
+    // DefaultPCSaveFileName
+    char* DefaultPCSaveFileName = (char*)(g_libGTASA + (VER_x32 ? 0x006B012C : 0x88CB08));
+    memcpy(DefaultPCSaveFileName, "GTASAMP", 8);
+
+#if VER_x32
+    CHook::NOP(g_libGTASA + 0x003F61B6, 2);        // CCoronas::RenderSunReflection crash
+    CHook::NOP(g_libGTASA + 0x00584884, 2);        // не давать ган при выходе из тачки
+    CHook::NOP(g_libGTASA + 0x00584850, 2);        // не давать ган при выходе из тачки
+#else
+    CHook::NOP(g_libGTASA + 0x004D8700, 1);  // CCoronas::RenderSunReflection crash
+    CHook::NOP(g_libGTASA + 0x006A852C, 1);  // не давать ган при выходе из тачки
+    CHook::NOP(g_libGTASA + 0x006A84E0, 1);  // не давать ган при выходе из тачки
+#endif
+
+    CHook::RET("_ZN17CVehicleRecording4LoadEP8RwStreamii"); // CVehicleRecording::Load
+
+    CHook::RET("_ZN18CMotionBlurStreaks6UpdateEv");
+    CHook::RET("_ZN7CCamera16RenderMotionBlurEv");
+
+    CHook::RET("_ZN11CPlayerInfo17FindObjectToStealEP4CPed"); // Crash
+    CHook::RET("_ZN26CAEGlobalWeaponAudioEntity21ServiceAmbientGunFireEv");        // CAEGlobalWeaponAudioEntity::ServiceAmbientGunFire
+    CHook::RET("_ZN30CWidgetRegionSteeringSelection4DrawEv"); // CWidgetRegionSteeringSelection::Draw
+    CHook::RET("_ZN23CTaskSimplePlayerOnFoot18PlayIdleAnimationsEP10CPlayerPed");        // CTaskSimplePlayerOnFoot::PlayIdleAnimations
+    CHook::RET("_ZN13CCarEnterExit17SetPedInCarDirectEP4CPedP8CVehicleib");        // CCarEnterExit::SetPedInCarDirect
+    CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend
+    CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList
+
+    #define ENABLE_CUSTOM_PLATE 0
+#if !ENABLE_CUSTOM_PLATE
+CHook::RET("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo");
+
+CHook::RET("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo");
+#endif
+
+    CHook::RET("_ZN7CCamera8CamShakeEffff"); // CCamera::CamShake
+    CHook::RET("_ZN7CEntity23PreRenderForGlassWindowEv"); // CEntity::PreRenderForGlassWindow
+    CHook::RET("_ZN8CMirrors16RenderReflBufferEb"); // CMirrors::RenderReflBuffer
+    CHook::RET("_ZN4CHud23DrawBustedWastedMessageEv"); // CHud::DrawBustedWastedMessage
+    CHook::RET("_ZN4CHud14SetHelpMessageEPKcPtbbbj"); // CHud::SetHelpMessage
+    CHook::RET("_ZN4CHud24SetHelpMessageStatUpdateEhtff"); // CHud::SetHelpMessageStatUpdate
+    CHook::RET("_ZN6CCheat16ProcessCheatMenuEv"); // CCheat::ProcessCheatMenu
+    CHook::RET("_ZN6CCheat13ProcessCheatsEv"); // CCheat::ProcessCheats
+    CHook::RET("_ZN6CCheat16AddToCheatStringEc"); // CCheat::AddToCheatString
+    CHook::RET("_ZN6CCheat12WeaponCheat1Ev"); // CCheat::WeaponCheat1
+    CHook::RET("_ZN6CCheat12WeaponCheat2Ev"); // CCheat::WeaponCheat2
+    CHook::RET("_ZN6CCheat12WeaponCheat3Ev"); // CCheat::WeaponCheat3
+    CHook::RET("_ZN6CCheat12WeaponCheat4Ev"); // CCheat::WeaponCheat4
+    CHook::RET("_ZN8CGarages14TriggerMessageEPcsts"); // CGarages::TriggerMessage
+
+
+===== app/src/main/cpp/samp/game/materialtextgenerator.h =====
+#pragma once
+
+#define OBJECT_MATERIAL_SIZE_32x32  10
+#define OBJECT_MATERIAL_SIZE_64x32  20
+#define OBJECT_MATERIAL_SIZE_64x64  30
+#define OBJECT_MATERIAL_SIZE_128x32  40
+#define OBJECT_MATERIAL_SIZE_128x64  50
+#define OBJECT_MATERIAL_SIZE_128x128  60
+#define OBJECT_MATERIAL_SIZE_256x32  70
+#define OBJECT_MATERIAL_SIZE_256x64  80
+#define OBJECT_MATERIAL_SIZE_256x128  90
+#define OBJECT_MATERIAL_SIZE_256x256  100
+#define OBJECT_MATERIAL_SIZE_512x64  110
+#define OBJECT_MATERIAL_SIZE_512x128  120
+#define OBJECT_MATERIAL_SIZE_512x256  130
+#define OBJECT_MATERIAL_SIZE_512x512  140
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "../vendor/imgui/imgui.h"
+
+class MaterialTextGenerator
+{
+public:
+	MaterialTextGenerator();
+
+    RwTexture* Generate(const char* text, int size, int font_size, bool bold, uint32_t font_color, uint32_t background_color, int alignment);
+
+private:
+	void SetUpScene();
+	void Render(const char* text, const ImVec2& size, int font_size, bool bold,
+		const ImColor& font_color, const ImColor& background_color, int align);
+	void GetMaterialSize(int size, int* x, int* y);
+
+    RwCamera* m_camera;
+	RwFrame* m_frame;
+};
+
+===== app/src/main/cpp/samp/game/materialtextgenerator.cpp =====
+#include "../main.h"
+#include "game.h"
+#include "../gui/gui.h"
+#include "RW/RenderWare.h"
+#include "Scene.h"
+#include "VisibilityPlugins.h"
+
+extern UI* pUI;
+
+MaterialTextGenerator::MaterialTextGenerator()
+{
+	m_camera = 0;
+	m_frame = 0;
+
+	SetUpScene();
+}
+
+void MaterialTextGenerator::SetUpScene()
+{
+	m_camera = RwCameraCreate();
+	m_frame = RwFrameCreate();
+
+	if (!m_camera) return;
+	if (!m_frame) return;
+
+    _rwObjectHasFrameSetFrame(m_camera, m_frame);
+    RwCameraSetFarClipPlane(m_camera, 300.0f);
+    RwCameraSetNearClipPlane(m_camera, 0.01f);
+    RwV2d view = { 0.5f, 0.5f };
+    RwCameraSetViewWindow(m_camera, &view);
+    RwCameraSetProjection(m_camera, rwPERSPECTIVE);
+    RpWorldAddCamera(Scene.m_pRpWorld, m_camera);
+}
+
+void MaterialTextGenerator::Render(const char* text, const ImVec2& size, int font_size, bool bold,
+								   const ImColor& font_color, const ImColor& background_color, int text_align)
+{
+	if (pUI) {
+		ImGui::NewFrame();
+
+		auto info = Encoding::cp2utf(text).c_str();
+
+		pUI->renderer()->drawRect(ImVec2(0.0f, 0.0f), size, background_color, true);
+		ImVec2 text_size = pUI->renderer()->calculateTextSize(info, font_size);
+
+		ImVec2 text_pos;
+		switch (text_align)
+		{
+			case 0: // LEFT
+				text_pos = ImVec2(0.0f, 0.0f);
+				break;
+			case 1: // CENTER
+				text_pos = ImVec2((size.x - text_size.x) / 2, (size.y - text_size.y) / 2);
+				break;
+			case 2: // RIGHT
+				text_pos = ImVec2(size.x - text_size.x, 0.0f);
+				break;
+		}
+
+		pUI->renderer()->drawText(text_pos, font_color, info, false, font_size);
+
+        ImGui::EndFrame();
+		ImGui::Render();
+		pUI->renderDrawData(ImGui::GetDrawData());
+	}
+}
+
+const ImColor fix_color(uint32_t color)
+{
+	unsigned char a = (int)((color & 0xFF000000) >> 24);
+	unsigned char r = (int)((color & 0x00FF0000) >> 16);
+	unsigned char g = (int)((color & 0x0000FF00) >> 8);
+	unsigned char b = (int)((color & 0x000000FF));
+
+	//FLog("RGBA: 0x%X, 0x%X, 0x%X, 0x%X", r, g, b, a);
+	ImColor col = ImColor(r, g, b, a);
+	//FLog("color: %f, %f, %f, %f", col.Value.x, col.Value.y, col.Value.z, col.Value.w);
+	return col;
+}
+
+RwTexture* MaterialTextGenerator::Generate(const char* text, int size, int font_size, bool bold, uint32_t font_color, uint32_t background_color, int alignment)
+{
+	int width, height;
+	GetMaterialSize(size, &width, &height);
+    FLog("MaterialTextGenerator::Generate");
+	RwRaster* raster = RwRasterCreate(width, height, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+    FLog("MaterialTextGenerator::Generate1");
+    RwTexture* bufferTexture = RwTextureCreate(raster);
+    FLog("MaterialTextGenerator::Generate2");
+
+	if (raster && bufferTexture)
+	{
+        FLog("MaterialTextGenerator::Generate3");
+        m_camera->frameBuffer = raster;
+        FLog("MaterialTextGenerator::Generate4");
+        CVisibilityPlugins::SetRenderWareCamera(m_camera);
+        FLog("MaterialTextGenerator::Generate5");
+		// RwCameraClear
+        RwCameraClear(m_camera, reinterpret_cast<RwRGBA *>(&background_color), 3);
+        FLog("MaterialTextGenerator::Generate6");
+		RwCameraBeginUpdate((RwCamera*)m_camera);
+		DefinedState();
+        FLog("MaterialTextGenerator::Generate7");
+		Render(text, ImVec2(width, height), font_size, bold, fix_color(font_color), fix_color(background_color), alignment);
+        FLog("MaterialTextGenerator::Generate8");
+		RwCameraEndUpdate((RwCamera*)m_camera);
+	}
+
+	return bufferTexture;
+}
+
+void MaterialTextGenerator::GetMaterialSize(int size, int* x, int* y)
+{
+	int sizes[14][2] = {
+			{ 32, 32 } , { 64, 32 }, { 64, 64 }, { 128, 32 }, { 128, 64 }, { 128,128 }, { 256, 32 },
+			{ 256, 64 } , { 256, 128 } , { 256, 256 } , { 512, 64 } , { 512,128 } , { 512,256 } , { 512,512 }
+	};
+
+	int del = (size / 10) - 1;
+	*x = sizes[del][0];
+	*y = sizes[del][1];
+}
+
+===== A4) .hpp daxil olmaqla CCustomPlateManager axtarisi =====
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp:149:                mat->texture = CCustomPlateManager::GetNoPlateTex();
+
+
+===== B1) m_renderLights / ms_lightsOn istifadesi (duzeldilmis regex) =====
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-256-    uintptr_t *m_fxSysHeliDust;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-257-    union {
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h:258:        uint8_t m_nRenderLightsFlags;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-259-        struct {
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h:260:            uint8_t m_bRightFront : 1;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-261-            uint8_t m_bLeftFront : 1;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-262-            uint8_t m_bRightRear : 1;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h:263:            uint8_t m_bLeftRear : 1;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h:264:        } m_renderLights;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-265-    };
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-266-    uint8_t skip16[3]; // wtf?
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-267-    RwTexture*   m_pCustomCarPlate;
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-268-    float        m_fRawSteerAngle; // AKA m_fSteeringLeftRight
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-269-    eVehicleType m_nVehicleType;    // Theory by forkerer:
+app/src/main/cpp/samp/game/Entity/CVehicleGTA.h-270-    eVehicleType m_nVehicleSubType; // Hack to have stuff be 2 classes at once, like vortex which can act like a car and a boat
+--
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-133-            RpMaterialGetColor(mat)->blue = 255;
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-134-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp:135:            if (iLightIndex != -1 && ms_lightsOn[iLightIndex]) {
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-136-                AddStoredMaterial(&mat->texture);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-137-                AddStoredMaterial(RpMaterialGetSurfaceProperties(mat));
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-138-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-139-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-140-                mat->texture = ms_pLightsOnTexture;
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-141-                RpMaterialSetSurfaceProperties(mat, &gLightSurfProps);
+--
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-221-    //CHook::Write(g_libGTASA + (VER_x32 ? 0x679D00 : 0x851A18), &ms_pLightsTexture);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-222-    //CHook::Write(g_libGTASA + (VER_x32 ? 0x67820C : 0x84E440), &ms_pLightsOnTexture);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp:223:    //CHook::Write(g_libGTASA + (VER_x32 ? 0x676CD4 : 0x84BA08), &ms_lightsOn);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-224-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-225-    //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x66E910 : 0x83DEE0), &SetEditableMaterials);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-226-    //CHook::InstallPLT(g_libGTASA + (VER_x32 ? 0x675E30 : 0x849D10), &ResetEditableMaterials);
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-227-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-228-//    CVehicleStructure::m_pInfoPool = new CPool<CVehicleStructure>(CModelInfo::NUM_VEHICLE_MODEL_INFOS, "VehicleStruct");
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp-229-//
+--
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-157-    // Light states for currently rendered car
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-158-    static constexpr int32 NUM_LIGHTS = 4;
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h:159:    static inline uint8 ms_lightsOn[NUM_LIGHTS];
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-160-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-161-public:
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-162-    static void InjectHooks();
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-163-
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-164-    // vt
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.h-165-    void CVehicleModelInfo__DeleteRwObject();
+
+
+===== B2) libGTASA.so simvollari (isiq / sinyal / plate) =====
+so: ./app/src/main/jniLibs/arm64-v8a/libGTASA.so
+000000000088e218 D HeadLightsFlareDef
+0000000000bd8ac4 B _ZN10CTimeCycle27m_fLightsOnGroundBrightnessE
+000000000067c5d4 T _ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo
+000000000067c5a4 T _ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo
+00000000004f5d04 T _ZN15CCutsceneObject13SetupLightingEv
+0000000000b8db40 B _ZN17CVehicleModelInfo11ms_lightsOnE
+0000000000460afc T _ZN17CVehicleModelInfo15SetupLightFlagsEP8CVehicle
+000000000045ec44 T _ZN17CVehicleModelInfo17SetCarCustomPlateEv
+0000000000b8da20 B _ZN17CVehicleModelInfo19ms_pLightsOnTextureE
+000000000046091c T _ZN17CVehicleModelInfo21GetCustomCarPlateTextEv
+0000000000460904 T _ZN17CVehicleModelInfo21SetCustomCarPlateTextEPc
+00000000006c863c T _ZN18CCustomCarPlateMgr10InitialiseEv
+00000000006c892c T _ZN18CCustomCarPlateMgr10SetupClumpEP7RpClumpPch
+0000000000cc7e90 B _ZN18CCustomCarPlateMgr11pCharsetTexE
+0000000000cc7eb0 B _ZN18CCustomCarPlateMgr15pPalette1555TabE
+0000000000cc7e98 B _ZN18CCustomCarPlateMgr16pPlatebackTexTabE
+00000000006c8720 T _ZN18CCustomCarPlateMgr17GeneratePlateTextEPci
+00000000006c8b14 T _ZN18CCustomCarPlateMgr18CreatePlateTextureEPch
+00000000006c8d58 T _ZN18CCustomCarPlateMgr19LoadPlatecharsetDatEPKcPhii
+00000000006c8a8c T _ZN18CCustomCarPlateMgr23GetMapRegionPlateDesignEv
+00000000006c8ac0 T _ZN18CCustomCarPlateMgr25SetupMaterialPlateTextureEP10RpMaterialPch
+00000000006c89a4 T _ZN18CCustomCarPlateMgr29SetupClumpAfterVehicleUpgradeEP7RpClumpP10RpMaterialh
+00000000006c8a18 T _ZN18CCustomCarPlateMgr29SetupMaterialPlatebackTextureEP10RpMaterialh
+00000000006c8890 T _ZN18CCustomCarPlateMgr8ShutdownEv
+00000000004f5b14 T _ZN4CPed13SetupLightingEv
+00000000004f5954 T _ZN7CEntity13SetupLightingEv
+00000000004f59d4 T _ZN7CObject13SetupLightingEv
+00000000006e25f4 T _ZN8CShadows21RenderIndicatorShadowEyhP9RwTextureP7CVectorffffs
+00000000006adba4 T _ZN8CVehicle10DoSunGlareEv
+00000000004f5c0c T _ZN8CVehicle13SetupLightingEv
+00000000006b4744 T _ZN8CVehicle15DoHeadLightBeamEiR7CMatrixh
+00000000006b50a4 T _ZN8CVehicle15DoVehicleLightsER7CMatrixj
+00000000006b4368 T _ZN8CVehicle17DoHeadLightEffectEiR7CMatrixhh
+00000000006b4db8 T _ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh
+00000000006b4d68 T _ZN8CVehicle21DoHeadLightReflectionER7CMatrixjhh
+00000000006b4c74 T _ZN8CVehicle25DoHeadLightReflectionTwinER7CMatrix
+00000000006b4b28 T _ZN8CVehicle27DoHeadLightReflectionSingleER7CMatrixh
+00000000006a6778 T _ZN8CVehicle28CustomCarPlate_TextureCreateEP17CVehicleModelInfo
+00000000006a5704 T _ZN8CVehicle29CustomCarPlate_TextureDestroyEv
+0000000000d21758 B _ZN8CWeather18HeadLightsSpectrumE
+0000000000ceb1f0 B gpShadowHeadLightsTex
+0000000000ceb1f8 B gpShadowHeadLightsTex2
+
+
+===== B3) CVehicle sarğı sinfi (game/vehicle.h) =====
+
+
+===== app/src/main/cpp/samp/game/vehicle.h =====
+#pragma once
+
+#include <cstring>
+#include <cstdlib>
+#include "Entity/CVehicleGTA.h"
+
+class CVehicle
+{
+public:
+	CVehicle(int iType, float fX, float fY, float fZ, float fRotation, bool bPreloaded, bool bSiren);
+	virtual ~CVehicle();
+
+	int GetVehicleSubtype();
+	void AddComponent(int iComponentID);
+	void RemoveComponent(int iComponentID);
+	void SetPaintJob(uint8_t bytePaintJobID);
+	void SetColor(uint8_t iColor1, uint8_t iColor2);
+	void LinkToInterior(int iInterior);
+	void SetDamageStatus(uint32_t dwPanelDamageStatus, uint32_t dwDoorDamageStatus, uint8_t byteLightDamageStatus);
+	void SetTireDamageStatus(uint8_t byteTireDamageStatus);
+	void SetPlateText(const char* szPlateText);
+	void SetZAngle(float fAngle);
+	void ProcessMarkers();
+	bool IsOccupied();
+
+	void AttachTrailer();
+	void DetachTrailer();
+	void SetTrailer(CVehicle* pTrailer);
+
+	bool IsRCVehicle();
+	float GetHealth();
+	void SetHealth(float fHealth);
+	CVehicle* GetTrailer();
+	CVehicle* GetTractor();
+	float GetTrainSpeed();
+	uint16_t GetHydraThrusters();
+	float GetBikeLean();
+	bool IsATrainPart();
+	bool IsATowTruck();
+	bool IsATrailer();
+	bool VerifyInstance();
+	bool IsDriverLocalPlayer();
+	void SetInvulnerable(bool bInv);
+	bool HasSunk();
+	bool HasADriver();
+
+	int GetEngineState() { return m_iEngineState; }
+	int GetLightState() { return m_iLightState; }
+
+	void ApplyEngineState(int iState);
+	void ApplyLightState(int state);
+
+	void SetDoorState(int state);
+	void SetComponentOpenState(int iDoor, int iComponent, float fDoorOpenRatio);
+	void SetAlarmState(uint16_t wAlarmState) { m_pVehicle->m_nVehicleFlags.bSirenOrAlarm = wAlarmState; }
+	void OpenWindow(uint8_t component);
+	void CloseWindow(uint8_t component);
+
+	void RemoveEveryoneFromVehicle();
+
+	void UpdateColor();
+	bool UpdateLastDrivenTime();
+
+	// Ferdi Handling ve Far funksiyalari
+	void EnsureUniqueHandling();
+	void SetMaxSpeed(float fSpeed);
+	void SetAcceleration(float fAccel);
+	void SetBrakePower(float fBrake);
+	void SetSteeringAngle(float fAngle);
+	void SetMass(float fMass);
+	void SetHeadlightColor(uint8_t colorID);
+
+	float GetMaxSpeed();
+	float GetAcceleration();
+	float GetBrakePower();
+	float GetSteeringAngle();
+	float GetMass();
+
+public:
+    CVehicleGTA* m_pVehicle;
+	CVehicle* m_pTrailer;
+    uintptr 		m_dwGTAId;
+	bool m_bPreloaded;
+	int m_iEngineState;
+	int m_iLightState;
+	bool m_bIsInvulnerable;
+	bool m_bIsLocked;
+	bool m_bDoorsLocked;
+	uint8_t m_byteObjectiveVehicle;
+	bool m_bSpecialMarkerEnabled;
+	uint8_t m_byteColor1;
+	uint8_t m_byteColor2;
+	bool m_bHaveColor;
+	bool m_bSiren;
+	char m_szPlateText[32];
+	uint32_t m_dwMarkerID;
+
+	void UpdateDamageStatus(uint32_t dwPanelDamage, uint32_t dwDoorDamage, uint8_t byteLightDamage);
+	void SetPanelDamageStatus(uint32_t dwPanelStatus);
+	uint32_t GetPanelDamageStatus();
+	void SetDoorDamageStatus(uint32_t dwDoorStatus);
+	uint32_t GetDoorDamageStatus();
+	void SetLightDamageStatus(uint8_t byteLightStatus);
+	uint8_t GetLightDamageStatus();
+	void SetWheelPoppedStatus(uint8_t byteWheelStatus);
+	uint8_t GetWheelPoppedStatus();
+
+    bool SirenEnabled();
+
+	void EnableSiren(bool bState);
+
+	bool IsLandingGearNotUp();
+
+	bool			m_bHasBeenDriven;
+	uint32_t		m_dwTimeSinceLastDriven;
+};
+// ===== END OF vehicle.h =====
+
+
+===== C1) VehTuner =====
+
+
+===== app/src/main/cpp/samp/game/Vehtuner.h =====
+#pragma once
+// ============================================================================
+//  VehTuner.h  (YENI FAYL -> game/ qovluguna qoy)
+//
+//  Ferdi (yalniz bir masina aid) handling + far rengi sistemi.
+//  Kohne CVehicle::SetMaxSpeed/SetHeadlightColor ... funksiyalari artiq
+//  ISTIFADE OLUNMUR (silmek olar, amma silmek mecburi deyil).
+// ============================================================================
+#include <cstdint>
+
+struct CVehicleGTA;
+
+// Butun handling deyerleri "faiz"dir: 100 = standart.
+// Bu, oyunun daxili vahidlerinden asili olmadan duzgun isleyir.
+struct VehTune
+{
+    // --- Muherrik ---
+    float   speedPct    = 100.0f;   // maks. suret                    (50 .. 250)
+    float   accelPct    = 100.0f;   // tecil = yerinden goturme       (30 .. 400)
+    float   inertiaPct  = 100.0f;   // muherrik ataleti (az = tez)    (20 .. 300)
+    float   massPct     = 100.0f;   // kutle                          (30 .. 300)
+    float   dragPct     = 100.0f;   // hava muqavimeti                (20 .. 300)
+    // --- Idareetme ---
+    float   brakePct    = 100.0f;   // tormoz                         (30 .. 300)
+    float   steerPct    = 100.0f;   // sukan bucagi                   (50 .. 150)
+    float   tractionPct = 100.0f;   // yapisma (traction)             (50 .. 200)
+    float   tracLossPct = 100.0f;   // sürüsme itkisi (traction loss) (20 .. 200)
+    float   turnPct     = 100.0f;   // firlanma ataleti (kutleye elave)(30 .. 300)
+    // --- Asma / zerbe ---
+    float   suspForcePct = 100.0f;  // asma gucu                      (30 .. 300)
+    float   suspDampPct  = 100.0f;  // asma sonduruculeri             (30 .. 300)
+    float   collisionPct = 100.0f;  // toqquşma zererı                (10 .. 300)
+    // --- Far ---
+    uint8_t headlight   = 0;        // 0 = standart, 1..15 = palitra rengi
+};
+
+constexpr int VEHTUNER_COLOR_COUNT = 16;
+
+namespace VehTuner
+{
+    // Masinin hazirki tenzimlemesi (yoxdursa standart).
+    VehTune Get(CVehicleGTA* veh);
+
+    // Canli tetbiq edir (hem handling, hem far rengi). Tekrar-tekrar cagirmaq tehlukesizdir.
+    void Set(CVehicleGTA* veh, const VehTune& t);
+
+    // Hamisini standarta qaytarir.
+    void Reset(CVehicleGTA* veh);
+
+    // Far rengi (DoVehicleLights hook-u istifade edir). Override yoxdursa false.
+    bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b);
+
+    // UI ucun palitra rengi (0 = "standart" ucun boz numune).
+    void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b);
+}
+
+
+===== app/src/main/cpp/samp/game/Vehtuner.cpp =====
+// ============================================================================
+//  VehTuner.cpp  (YENI FAYL -> game/ qovluguna qoy, CMake-e elave et)
+//
+//  Niye kohne yanasma islemirdi:
+//   1) m_pHandlingData MODELE gore PAYLASILIR. Ora yazsan, eyni modelin
+//      butun masinlari (baska oyunculardaki de) deyisir. Burada hemin
+//      strukturun FERDI KOPYASI yaradilir ve yalniz bu masina baglanir.
+//   2) CPhysical::m_fMass masin yaranarkən handling-den bir defe kopyalanir.
+//      Yalniz handling->m_fMass-i deyismek fizikaya tesir etmir.
+//   3) Suret ucun yalniz m_fMaxVelocity kifayet deyil: viteslerin kecid
+//      cedveli (m_aGears) da miqyaslanmalidir.
+//   4) Sliderler indi "faiz"dir (100% = standart), buna gore oyunun daxili
+//      vahidlerini (fayl vahidi vs oyun vahidi) bilmeye ehtiyac yoxdur.
+// ============================================================================
+#include "VehTuner.h"
+#include "Entity/CVehicleGTA.h"
+
+#include <algorithm>
+#include <cmath>
+#include <mutex>
+#include <unordered_map>
+
+// ---------------------------------------------------------------------------
+// Sahe adlari tHandlingData.h ile TEYID OLUNUB (m_fMass, m_fBrakeDeceleration, m_fSteeringLock).
+// ---------------------------------------------------------------------------
+#define HND_MASS(h)   ((h)->m_fMass)
+#define HND_BRAKE(h)  ((h)->m_fBrakeDeceleration)
+#define HND_STEER(h)  ((h)->m_fSteeringLock)
+
+namespace
+{
+    // 0 = standart (override yoxdur, yalniz UI-da boz numune kimi gorunur)
+    constexpr uint8_t kPalette[VEHTUNER_COLOR_COUNT][3] = {
+        { 90,  90,  90},   //  0 standart
+        {255,  30,  30},   //  1 qirmizi
+        {255, 120,   0},   //  2 narinci
+        {255, 220,   0},   //  3 sari
+        {160, 255,   0},   //  4 lime
+        {  0, 255,  70},   //  5 yasil
+        {  0, 255, 180},   //  6 firuze-yasil
+        {  0, 230, 255},   //  7 cyan
+        {  0, 140, 255},   //  8 goy-mavi
+        { 40,  60, 255},   //  9 mavi
+        {130,  60, 255},   // 10 binovseyi
+        {200,   0, 255},   // 11 bənovseyi-qirmizi
+        {255,  60, 200},   // 12 çəhrayi
+        {255,   0, 100},   // 13 magenta
+        {170, 210, 255},   // 14 buz agi
+        {255, 200, 120},   // 15 isti ag
+    };
+
+    struct Entry
+    {
+        uint32_t       creationTime = 0;      // eyni adresde BASQA masini tanimaq ucun
+        tHandlingData* orig         = nullptr; // oyunun umumi handling-i (HECVAXT deyismirik)
+        tHandlingData* copy         = nullptr; // bu masina aid ferdi kopya
+        float          baseMass     = 0.0f;    // CPhysical::m_fMass-in ilkin deyeri
+        VehTune  tune;
+    };
+
+    std::unordered_map<CVehicleGTA*, Entry> g_entries;
+    std::mutex                              g_mutex;
+
+    inline float Clamp(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
+
+    inline bool Near100(float v) { return std::fabs(v - 100.0f) < 0.5f; }
+
+    inline bool IsNeutral(const VehTune& t)
+    {
+        return Near100(t.speedPct) && Near100(t.accelPct) && Near100(t.inertiaPct) && Near100(t.massPct) &&
+               Near100(t.dragPct) && Near100(t.brakePct) && Near100(t.steerPct) && Near100(t.tractionPct) &&
+               Near100(t.tracLossPct) && Near100(t.turnPct) && Near100(t.suspForcePct) &&
+               Near100(t.suspDampPct) && Near100(t.collisionPct);
+    }
+
+    // g_mutex artiq tutulub olmalidir.
+    Entry* Find(CVehicleGTA* veh)
+    {
+        auto it = g_entries.find(veh);
+        if (it == g_entries.end()) return nullptr;
+
+        if (it->second.creationTime != veh->m_nCreationTime)
+        {
+            // Bu adresde artiq basqa masin var (kohne masin silinib).
+            // Yeni masin oyunun oz handling-i ile yaranib, bizim kopyaya baxmir.
+            delete it->second.copy;
+            g_entries.erase(it);
+            return nullptr;
+        }
+        return &it->second;
+    }
+
+    Entry& FindOrCreate(CVehicleGTA* veh)
+    {
+        if (Entry* e = Find(veh)) return *e;
+        Entry e;
+        e.creationTime = veh->m_nCreationTime;
+        return g_entries.emplace(veh, e).first->second;
+    }
+
+    void RestoreHandling(CVehicleGTA* veh, Entry& e)
+    {
+        if (!e.copy) return;
+        if (veh->m_pHandlingData == e.copy) veh->m_pHandlingData = e.orig;   // ƏVVƏL pointeri qaytar
+        veh->m_fMass = e.baseMass;
+        delete e.copy;                                                       // SONRA sil
+        e.copy = nullptr;
+    }
+
+    void ApplyHandling(CVehicleGTA* veh, Entry& e)
+    {
+        VehTune& t = e.tune;
+        t.speedPct    = Clamp(t.speedPct,    50.0f, 250.0f);
+        t.accelPct    = Clamp(t.accelPct,    30.0f, 400.0f);
+        t.inertiaPct  = Clamp(t.inertiaPct,  20.0f, 300.0f);
+        t.massPct     = Clamp(t.massPct,     30.0f, 300.0f);
+        t.dragPct     = Clamp(t.dragPct,     20.0f, 300.0f);
+        t.brakePct    = Clamp(t.brakePct,    30.0f, 300.0f);
+        t.steerPct    = Clamp(t.steerPct,    50.0f, 150.0f);
+        t.tractionPct = Clamp(t.tractionPct, 50.0f, 200.0f);
+        t.tracLossPct = Clamp(t.tracLossPct, 20.0f, 200.0f);
+        t.turnPct     = Clamp(t.turnPct,     30.0f, 300.0f);
+        t.suspForcePct= Clamp(t.suspForcePct,30.0f, 300.0f);
+        t.suspDampPct = Clamp(t.suspDampPct, 30.0f, 300.0f);
+        t.collisionPct= Clamp(t.collisionPct,10.0f, 300.0f);
+        if (t.headlight >= VEHTUNER_COLOR_COUNT) t.headlight = 0;
+
+        if (IsNeutral(t))
+        {
+            RestoreHandling(veh, e);
+            return;
+        }
+
+        if (!e.copy)
+        {
+            if (!veh->m_pHandlingData) return;
+            e.orig     = veh->m_pHandlingData;
+            e.baseMass = veh->m_fMass;
+            e.copy     = new tHandlingData(*e.orig);
+        }
+        veh->m_pHandlingData = e.copy;      // ferdi kopyaya bagla
+
+        const float kSpd = t.speedPct * 0.01f;
+        const float kAcc = t.accelPct * 0.01f;
+        const float kIne = t.inertiaPct * 0.01f;
+        const float kMas = t.massPct  * 0.01f;
+        const float kDrg = t.dragPct  * 0.01f;
+        const float kBrk = t.brakePct * 0.01f;
+        const float kStr = t.steerPct * 0.01f;
+        const float kTrc = t.tractionPct * 0.01f;
+        const float kTrl = t.tracLossPct * 0.01f;
+        const float kTrn = t.turnPct  * 0.01f;
+
+        // Her zaman ORIGINAL-dan hesablayiriq -> tekrar tetbiq edende yigilmir (idempotent).
+        const cTransmission& to = e.orig->m_transmissionData;
+        cTransmission&       tc = e.copy->m_transmissionData;
+
+        tc.m_fMaxVelocity           = to.m_fMaxVelocity        * kSpd;
+        tc.m_fMaxGearVelocity       = to.m_fMaxGearVelocity    * kSpd;
+        tc.m_maxReverseGearVelocity = to.m_maxReverseGearVelocity;
+        tc.m_fEngineAcceleration    = to.m_fEngineAcceleration * kAcc;
+        tc.m_fEngineInertia         = to.m_fEngineInertia      * kIne;
+
+        // Vites cedveli: her tTransmissionGear-in butun sahələri suretdir -> hamisini miqyasla.
+        static_assert(sizeof(tTransmissionGear) % sizeof(float) == 0, "tTransmissionGear float deyil");
+        constexpr size_t kFloatsPerGear = sizeof(tTransmissionGear) / sizeof(float);
+        for (int i = 0; i < 6; ++i)
+        {
+            const float* src = reinterpret_cast<const float*>(&to.m_aGears[i]);
+            float*       dst = reinterpret_cast<float*>(&tc.m_aGears[i]);
+            for (size_t j = 0; j < kFloatsPerGear; ++j) dst[j] = src[j] * kSpd;
+        }
+
+        HND_BRAKE(e.copy) = HND_BRAKE(e.orig) * kBrk;
+        HND_STEER(e.copy) = HND_STEER(e.orig) * kStr;
+        HND_MASS(e.copy)  = HND_MASS(e.orig)  * kMas;
+        e.copy->m_fMassRecpr = e.orig->m_fMassRecpr / kMas;            // 1/kutle ayrica saxlanir
+        e.copy->m_fTurnMass  = e.orig->m_fTurnMass * kMas * kTrn;      // kutle ile birge + oz slideri
+        e.copy->m_fDragMult  = e.orig->m_fDragMult * kDrg;
+
+        e.copy->m_fTractionMultiplier = e.orig->m_fTractionMultiplier * kTrc;
+        e.copy->m_fTractionLoss       = e.orig->m_fTractionLoss       * kTrl;
+
+        e.copy->m_fSuspensionForceLevel   = e.orig->m_fSuspensionForceLevel   * (t.suspForcePct * 0.01f);
+        e.copy->m_fSuspensionDampingLevel = e.orig->m_fSuspensionDampingLevel * (t.suspDampPct  * 0.01f);
+        e.copy->m_fCollisionDamageMultiplier = e.orig->m_fCollisionDamageMultiplier * (t.collisionPct * 0.01f);
+
+        // Fizika kutlesi handling-den AYRI saxlanir -> onu da yenile.
+        veh->m_fMass = e.baseMass * kMas;
+    }
+}
+
+namespace VehTuner
+{
+    VehTune Get(CVehicleGTA* veh)
+    {
+        if (!veh) return VehTune{};
+        std::lock_guard<std::mutex> lk(g_mutex);
+        if (Entry* e = Find(veh)) return e->tune;
+        return VehTune{};
+    }
+
+    void Set(CVehicleGTA* veh, const VehTune& t)
+    {
+        if (!veh) return;
+        std::lock_guard<std::mutex> lk(g_mutex);
+        Entry& e = FindOrCreate(veh);
+        e.tune = t;
+        ApplyHandling(veh, e);
+    }
+
+    void Reset(CVehicleGTA* veh)
+    {
+        if (!veh) return;
+        std::lock_guard<std::mutex> lk(g_mutex);
+        if (Entry* e = Find(veh))
+        {
+            RestoreHandling(veh, *e);
+            g_entries.erase(veh);
+        }
+    }
+
+    bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b)
+    {
+        if (!veh) return false;
+        std::lock_guard<std::mutex> lk(g_mutex);
+        if (g_entries.empty()) return false;
+
+        Entry* e = Find(veh);
+        if (!e) return false;
+
+        const uint8_t id = e->tune.headlight;
+        if (id == 0 || id >= VEHTUNER_COLOR_COUNT) return false;
+
+        r = kPalette[id][0];
+        g = kPalette[id][1];
+        b = kPalette[id][2];
+        return true;
+    }
+
+    void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b)
+    {
+        if (id < 0 || id >= VEHTUNER_COLOR_COUNT) id = 0;
+        r = kPalette[id][0];
+        g = kPalette[id][1];
+        b = kPalette[id][2];
+    }
+}
+
+
+===== C2) gui.cpp 1-560 (mm kommunal funksiyalari: Tap/ToggleRow/Slider...) =====
+#include "../main.h"
+#include "../game/game.h"
+#include "../net/netgame.h"
+#include "../game/vehicle.h"
+#include "../game/VehTuner.h"
+#include "../game/VehControls.h"
+#include "gui.h"
+#include "../playertags.h"
+#include "../net/playerbubblepool.h"
+#include "vendor/str_obfuscator/str_obfuscator.hpp"
+// voice
+#include "../voice_new/Plugin.h"
+#include "../voice_new/MicroIcon.h"
+#include "../voice_new/SpeakerList.h"
+#include "../voice_new/Network.h"
+
+#include "../gui/samp_widgets/voicebutton.h"
+#include "game/Textures/TextureDatabaseRuntime.h"
+#include "game/Streaming.h"
+#include "game/Pools.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cfloat>
+#include <cmath>
+#include <cstdio>
+#include <deque>
+#include <mutex>
+
+extern CGame* pGame;
+extern CNetGame* pNetGame;
+extern CPlayerTags* pPlayerTags;
+extern UI* pUI;
+
+extern bool g_bHideAllUI;
+extern bool g_bShowHandlingDlg;   // /mm (kohne addi: /tuning) ile acilir/baglanir
+
+// Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
+#define HND_DEBUG 0
+#if HND_DEBUG
+#define HND_LOG(...) FLog(__VA_ARGS__)
+#else
+#define HND_LOG(...) ((void)0)
+#endif
+
+enum eTouchType
+{
+        TOUCH_POP = 1,
+        TOUCH_PUSH = 2,
+        TOUCH_MOVE = 3
+};
+
+// ============================================================================
+//  TOXUNUS: hadiseler queue-ya yigilir, her kadrin evvelinde oxunur.
+//  Bir kadrda en cox BIR basma/buraxma emal olunur (qisa toxunus itmesin).
+//  Mod menyu ImGui-nin input sistemini istifade ETMIR, oz veziyyetini saxlayir.
+// ============================================================================
+struct MMTouch
+{
+        float    x = -1.0f, y = -1.0f;
+        bool     down = false, pressed = false, released = false;
+        unsigned events = 0;
+};
+static MMTouch g_mmTouch;
+
+namespace
+{
+        struct TouchEv { int type; float x; float y; };
+
+        std::mutex          s_touchMtx;
+        std::deque<TouchEv> s_touchQ;
+
+        void PushTouch(int type, float x, float y)
+        {
+                std::lock_guard<std::mutex> lk(s_touchMtx);
+
+                if (type == TOUCH_MOVE && !s_touchQ.empty() && s_touchQ.back().type == TOUCH_MOVE) {
+                        s_touchQ.back().x = x;
+                        s_touchQ.back().y = y;
+                        return;
+                }
+                if (s_touchQ.size() > 512) s_touchQ.clear();
+                s_touchQ.push_back({ type, x, y });
+        }
+
+        void ProcessTouchQueue()
+        {
+                std::lock_guard<std::mutex> lk(s_touchMtx);
+
+                g_mmTouch.pressed  = false;
+                g_mmTouch.released = false;
+
+                while (!s_touchQ.empty())
+                {
+                        const TouchEv e = s_touchQ.front();
+                        s_touchQ.pop_front();
+
+                        g_mmTouch.x = e.x;
+                        g_mmTouch.y = e.y;
+                        g_mmTouch.events++;
+
+                        if (e.type == TOUCH_PUSH) { g_mmTouch.down = true;  g_mmTouch.pressed  = true; break; }
+                        if (e.type == TOUCH_POP)  { g_mmTouch.down = false; g_mmTouch.released = true; break; }
+                }
+        }
+}
+
+UI::UI(const ImVec2& display_size, const std::string& font_path)
+        : Widget(), ImGuiWrapper(display_size, font_path)
+{
+        UISettings::Initialize(display_size);
+        this->setFixedSize(display_size);
+}
+
+bool UI::initialize()
+{
+        if (!ImGuiWrapper::initialize()) return false;
+
+        m_splashScreen = new SplashScreen();
+        this->addChild(m_splashScreen);
+        m_splashScreen->setFixedSize(size());
+        m_splashScreen->setPosition(ImVec2(0.0f, 0.0f));
+        m_splashScreen->setVisible(true);
+
+        m_chat = new Chat();
+        this->addChild(m_chat);
+        m_chat->setFixedSize(UISettings::chatSize());
+        m_chat->setPosition(UISettings::chatPos());
+        m_chat->setItemSize(UISettings::chatItemSize());
+        m_chat->setVisible(false);
+
+        m_buttonPanel = new ButtonPanel();
+        this->addChild(m_buttonPanel);
+        m_buttonPanel->setFixedSize(UISettings::buttonPanelSize());
+        m_buttonPanel->setPosition(UISettings::buttonPanelPos());
+        m_buttonPanel->setVisible(false);
+
+        m_voiceButton = new VoiceButton();
+        this->addChild(m_voiceButton);
+        m_voiceButton->setFixedSize(UISettings::buttonVoiceSize());
+        m_voiceButton->setPosition(UISettings::buttonVoicePos());
+        m_voiceButton->setVisible(false);
+
+        m_spawn = new Spawn();
+        this->addChild(m_spawn);
+        m_spawn->setFixedSize(UISettings::spawnSize());
+        m_spawn->setPosition(UISettings::spawnPos());
+        m_spawn->setVisible(false);
+
+        m_dialog = new Dialog();
+        this->addChild(m_dialog);
+        m_dialog->setVisible(false);
+        m_dialog->setMinSize(UISettings::dialogMinSize());
+        m_dialog->setMaxSize(UISettings::dialogMaxSize());
+
+        m_keyboard = new Keyboard();
+        this->addChild(m_keyboard);
+        m_keyboard->setFixedSize(UISettings::keyboardSize());
+        m_keyboard->setPosition(UISettings::keyboardPos());
+        m_keyboard->setVisible(false);
+
+        m_playerTabList = new PlayerTabList();
+        this->addChild(m_playerTabList);
+        m_playerTabList->setMinSize(UISettings::dialogMinSize());
+        m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
+        m_playerTabList->setVisible(false);
+
+        label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+        pUI->addChild(label);
+
+        label2 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+        pUI->addChild(label2);
+
+        label3 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+        pUI->addChild(label3);
+
+        label4 = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+        pUI->addChild(label4);
+
+        Label* d_label1;
+        d_label1 = new Label(cryptor::create("SA:MP Mobile 2.10 x64").decrypt(), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
+        this->addChild(d_label1);
+        d_label1->setPosition(ImVec2(3.0, 3.0));
+
+        return true;
+}
+
+void UI::render()
+{
+        ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
+
+        ImGuiWrapper::render();
+
+        renderDebug();
+
+        ProcessPushedTextdraws();
+}
+
+void UI::shutdown()
+{
+        ImGuiWrapper::shutdown();
+}
+
+// ============================================================================
+//  /mm MENYUSU  (kohne adi /tuning) — oz cizgisi, oz toxunusu, animasiyali
+// ============================================================================
+static bool   s_hndRectValid = false;
+static ImVec2 s_hndPos(0.0f, 0.0f);    // toxunus bloklamasi ucun panelin real sahesi
+static ImVec2 s_hndSize(0.0f, 0.0f);
+
+bool UI_IsPointInHandlingDlg(const ImVec2& p)
+{
+        if (!g_bShowHandlingDlg || !s_hndRectValid) return false;
+        return p.x >= s_hndPos.x && p.x <= s_hndPos.x + s_hndSize.x &&
+               p.y >= s_hndPos.y && p.y <= s_hndPos.y + s_hndSize.y;
+}
+
+namespace mm
+{
+        struct Rc { float x, y, w, h; };
+
+        static ImDrawList* s_dl = nullptr;
+        static float s_U = 1.0f;       // olcu vahidi (piksel)
+        static float s_A = 1.0f;       // umumi seffaflig
+        static int   s_act = 0;        // hazirda basili olan element
+        static float s_prs[96] = {};   // basma animasiyalari
+        static float s_frac[8] = {};   // slider doldurma animasiyasi
+        static float s_sw[3] = {};     // acar animasiyalari
+        static float s_blink = 0.0f;   // sinyal yanib-sonme animasiyasi
+
+        enum { ID_DRAG = 1, ID_CLOSE = 2, ID_ZOOMP = 3, ID_ZOOMM = 4, ID_RESET = 5, ID_NAV0 = 6,
+               ID_SLIDER = 16, ID_SWATCH = 40, ID_TOGGLE = 70, ID_SIG = 76 };
+
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18200
+        static const int kAllCorners = 0;
+#else
+        static const int kAllCorners = ImDrawCornerFlags_All;
+#endif
+
+        static inline float S(float v) { return v * s_U; }
+        static inline float Clamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+        static inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
+        static inline float Smooth(float cur, float target, float dt, float speed) { return Lerp(cur, target, 1.0f - expf(-dt * speed)); }
+        static inline float EaseOutCubic(float t) { const float p = 1.0f - t; return 1.0f - p * p * p; }
+        static inline bool  In(const Rc& r, float px, float py) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
+        static inline Rc    Shrink(const Rc& r, float a) { return Rc{ r.x + a, r.y + a, r.w - 2.0f * a, r.h - 2.0f * a }; }
+
+        static inline ImU32 Col(int r, int g, int b, int a = 255) { return IM_COL32(r, g, b, (int)((float)a * s_A)); }
+        static inline ImU32 Accent(float /*istifade olunmur*/, int a = 255) { return Col(78, 142, 235, a); }
+        static inline ImU32 Orange(int a = 255) { return Col(255, 153, 28, a); }
+
+        static void Fill(const Rc& r, ImU32 c, float rad) { s_dl->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad); }
+        static void Stroke(const Rc& r, ImU32 c, float rad, float th) { s_dl->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), c, rad, kAllCorners, th); }
+        static void Dot(float x, float y, float rad, ImU32 c) { s_dl->AddCircleFilled(ImVec2(x, y), rad, c, 28); }
+
+        static float TW(float size, const char* s) { return ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x; }
+        static void  Txt(float size, float x, float y, ImU32 c, const char* s) { s_dl->AddText(ImGui::GetFont(), size, ImVec2(x, y), c, s); }
+        static void  TxtB(float size, float x, float y, ImU32 c, const char* s) { Txt(size, x, y, c, s); Txt(size, x + S(0.7f), y, c, s); }
+        static void  TxtC(float size, const Rc& r, ImU32 c, const char* s, bool bold)
+        {
+                const float x = r.x + (r.w - TW(size, s)) * 0.5f;
+                const float y = r.y + (r.h - size) * 0.5f;
+                if (bold) TxtB(size, x, y, c, s); else Txt(size, x, y, c, s);
+        }
+
+        static float Prs(int id, float dt)
+        {
+                if (id < 0 || id >= 96) return 0.0f;
+                float& p = s_prs[id];
+                p = Lerp(p, (s_act == id && g_mmTouch.down) ? 1.0f : 0.0f, 1.0f - expf(-dt * 24.0f));
+                return p;
+        }
+
+        // basma + buraxma eyni elementin uzerinde olarsa true
+        static bool Tap(int id, const Rc& r, bool canInput)
+        {
+                if (!canInput) return false;
+                if (g_mmTouch.pressed && s_act == 0 && In(r, g_mmTouch.x, g_mmTouch.y)) s_act = id;
+                if (g_mmTouch.released && s_act == id) return In(r, g_mmTouch.x, g_mmTouch.y);
+                return false;
+        }
+
+        static void HeaderBtn(int id, const Rc& r, float dt, const char* label, bool danger)
+        {
+                const float p = Prs(id, dt);
+                const Rc d = Shrink(r, S(1.5f) * p);
+                Fill(d, danger ? Col(196, 58, 70, 140 + (int)(70.0f * p)) : Col(255, 255, 255, 14 + (int)(34.0f * p)), S(8.0f));
+                if (danger) {
+                        const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.5f, k = S(6.0f);
+                        s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(255, 255, 255, 235), S(2.0f));
+                        s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(255, 255, 255, 235), S(2.0f));
+                } else {
+                        TxtC(S(15.0f), d, Col(226, 230, 240), label, true);
+                }
+        }
+
+        // bir slider satiri; deyer deyisibse true
+        static bool SliderRow(int idx, const Rc& row, const char* label, float* v, float mn, float mx, float dt, bool canInput)
+        {
+                const int id = ID_SLIDER + idx * 4;
+                bool changed = false;
+
+                const float cy = row.y + S(47.0f);
+                const Rc minus{ row.x + S(14.0f), cy - S(15.0f), S(30.0f), S(30.0f) };
+                const Rc plus { row.x + row.w - S(44.0f), cy - S(15.0f), S(30.0f), S(30.0f) };
+                const float tx0 = row.x + S(60.0f), tx1 = row.x + row.w - S(60.0f);
+                const Rc hit{ tx0 - S(16.0f), row.y + S(22.0f), (tx1 - tx0) + S(32.0f), row.h - S(22.0f) };
+
+                if (canInput)
+                {
+                        const MMTouch& t = g_mmTouch;
+                        if (t.pressed && s_act == 0) {
+                                if (In(minus, t.x, t.y))      s_act = id + 1;
+                                else if (In(plus, t.x, t.y))  s_act = id + 2;
+                                else if (In(hit, t.x, t.y))   s_act = id;
+                        }
+                        if (s_act == id && t.down) {
+                                const float f  = Clamp((t.x - tx0) / (tx1 - tx0), 0.0f, 1.0f);
+                                const float nv = floorf(mn + f * (mx - mn) + 0.5f);
+                                if (nv != *v) { *v = nv; changed = true; }
+                        }
+                        if (t.released) {
+                                float nv = *v;
+                                if (s_act == id + 1 && In(minus, t.x, t.y)) nv = Clamp(*v - 5.0f, mn, mx);
+                                if (s_act == id + 2 && In(plus,  t.x, t.y)) nv = Clamp(*v + 5.0f, mn, mx);
+                                if (nv != *v) { *v = nv; changed = true; }
+                        }
+                }
+
+                const bool dragging = (s_act == id && g_mmTouch.down);
+                const float target = Clamp((*v - mn) / (mx - mn), 0.0f, 1.0f);
+                s_frac[idx] = Smooth(s_frac[idx], target, dt, dragging ? 40.0f : 14.0f);
+                const float fr = s_frac[idx];
+
+                // kart
+                Fill(row, Col(27, 30, 40, 255), S(10.0f));
+                if (dragging) Stroke(row, Accent(0.0f, 120), S(10.0f), S(1.2f));
+
+                Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(214, 220, 232), label);
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%.0f%%", *v);
+                Txt(S(18.0f), row.x + row.w - S(16.0f) - TW(S(18.0f), buf), row.y + S(7.0f), Accent(0.0f), buf);
+
+                // - / + duymeleri
+                const float pm = Prs(id + 1, dt), pp = Prs(id + 2, dt);
+                Dot(minus.x + minus.w * 0.5f, cy, S(15.0f) - S(1.5f) * pm, Col(255, 255, 255, 14 + (int)(36.0f * pm)));
+                Dot(plus.x + plus.w * 0.5f,  cy, S(15.0f) - S(1.5f) * pp, Col(255, 255, 255, 14 + (int)(36.0f * pp)));
+                {
+                        const float k = S(5.5f), mcx = minus.x + minus.w * 0.5f, pcx = plus.x + plus.w * 0.5f;
+                        s_dl->AddLine(ImVec2(mcx - k, cy), ImVec2(mcx + k, cy), Col(226, 230, 240, 220), S(2.0f));
+                        s_dl->AddLine(ImVec2(pcx - k, cy), ImVec2(pcx + k, cy), Col(226, 230, 240, 220), S(2.0f));
+                        s_dl->AddLine(ImVec2(pcx, cy - k), ImVec2(pcx, cy + k), Col(226, 230, 240, 220), S(2.0f));
+                }
+
+                // yol (track)
+                const float th = S(6.0f), ty = cy - th * 0.5f;
+                Fill(Rc{ tx0, ty, tx1 - tx0, th }, Col(255, 255, 255, 22), S(3.0f));
+                const float kx = tx0 + (tx1 - tx0) * fr;
+                if (kx - tx0 > 1.0f) Fill(Rc{ tx0, ty, kx - tx0, th }, Accent(0.0f), S(3.0f));
+
+                // "standart (100%)" ish
+                if (mn < 100.0f && mx > 100.0f) {
+                        const float sx = tx0 + (tx1 - tx0) * ((100.0f - mn) / (mx - mn));
+                        s_dl->AddLine(ImVec2(sx, ty - S(6.0f)), ImVec2(sx, ty + th + S(6.0f)), Col(255, 255, 255, 60), S(1.4f));
+                }
+
+                // topuz
+                const float kr = S(10.5f) + (dragging ? S(1.5f) : 0.0f);
+                Dot(kx, cy + S(1.0f), kr + S(1.5f), Col(0, 0, 0, 70));
+                Dot(kx, cy, kr, Col(245, 247, 252, 255));
+
+                return changed;
+        }
+
+        // acar (switch) satiri; toxunulubsa true
+        static bool ToggleRow(int idx, const Rc& row, const char* label, const char* sub, bool state, float dt, bool canInput)
+        {
+                const int id = ID_TOGGLE + idx;
+                const bool tapped = Tap(id, row, canInput);
+                const float p = Prs(id, dt);
+                s_sw[idx] = Smooth(s_sw[idx], state ? 1.0f : 0.0f, dt, 18.0f);
+                const float sw = s_sw[idx];
+
+                const Rc d = Shrink(row, S(1.5f) * p);
+                Fill(d, Col(27, 30, 40, 255), S(10.0f));
+                Txt(S(18.0f), d.x + S(18.0f), d.y + S(11.0f), Col(228, 232, 242), label);
+                Txt(S(13.0f), d.x + S(18.0f), d.y + S(36.0f), Col(124, 132, 152), sub);
+
+                const Rc tr{ d.x + d.w - S(18.0f) - S(54.0f), d.y + (d.h - S(28.0f)) * 0.5f, S(54.0f), S(28.0f) };
+                Fill(tr, Col((int)Lerp(62.0f, 78.0f, sw), (int)Lerp(68.0f, 142.0f, sw), (int)Lerp(84.0f, 235.0f, sw), 255), S(14.0f));
+                Dot(tr.x + S(14.0f) + sw * (tr.w - S(28.0f)), tr.y + tr.h * 0.5f, S(10.5f), Col(245, 247, 252, 255));
+
+                return tapped;
+        }
+
+        static void Arrow(float cx, float cy, float dir, ImU32 c)
+        {
+                const float tip = cx + dir * S(18.0f), base = cx + dir * S(2.0f), tail = cx - dir * S(18.0f);
+                s_dl->AddTriangleFilled(ImVec2(tip, cy), ImVec2(base, cy - S(12.0f)), ImVec2(base, cy + S(12.0f)), c);
+                const float x0 = std::min(base, tail), x1 = std::max(base, tail);
+                s_dl->AddRectFilled(ImVec2(x0, cy - S(5.0f)), ImVec2(x1, cy + S(5.0f)), c);
+        }
+
+        // sinyal bloku: Sol / Avariya / Sag
+        static void SignalBlock(const Rc& blk, uint8_t cur, CVehicleGTA* veh, float dt, bool canInput)
+        {
+                s_blink = Smooth(s_blink, VehControls::BlinkOn() ? 1.0f : 0.0f, dt, 28.0f);
+
+                Fill(blk, Col(27, 30, 40, 255), S(10.0f));
+                Txt(S(15.0f), blk.x + S(18.0f), blk.y + S(10.0f), Col(124, 132, 152), "Sinyal");
+
+                const float gap = S(10.0f);
+                const float bw = (blk.w - S(32.0f) - gap * 2.0f) / 3.0f;
+                static const char* kNames[3] = { "Sol", "Avariya", "Sağ" };
+                static const uint8_t kModes[3] = { VEH_SIGNAL_LEFT, VEH_SIGNAL_HAZARD, VEH_SIGNAL_RIGHT };
+
+                for (int k = 0; k < 3; ++k)
+                {
+                        const Rc b{ blk.x + S(16.0f) + k * (bw + gap), blk.y + S(34.0f), bw, blk.h - S(50.0f) };
+                        const int id = ID_SIG + k;
+                        if (Tap(id, b, canInput) && veh) VehControls::ToggleSignal(veh, kModes[k]);
+
+                        const float p = Prs(id, dt);
+                        const Rc d = Shrink(b, S(1.5f) * p);
+                        const bool on = (cur == kModes[k]);
+                        const float glow = on ? (0.28f + 0.72f * s_blink) : 0.0f;
+
+                        Fill(d, on ? Orange(30 + (int)(110.0f * glow)) : Col(36, 40, 52, 255), S(9.0f));
+                        if (on) Stroke(d, Orange(120 + (int)(100.0f * glow)), S(9.0f), S(1.3f));
+
+                        const ImU32 ic = on ? Col(255, 183, 84, 255) : Col(150, 158, 178, 255);
+                        const float cx = d.x + d.w * 0.5f, cy = d.y + d.h * 0.38f;
+                        if (k == 0)      Arrow(cx, cy, -1.0f, ic);
+                        else if (k == 2) Arrow(cx, cy, +1.0f, ic);
+                        else {
+                                s_dl->AddTriangle(ImVec2(cx, cy - S(14.0f)), ImVec2(cx - S(16.0f), cy + S(12.0f)), ImVec2(cx + S(16.0f), cy + S(12.0f)), ic, S(2.2f));
+                                s_dl->AddLine(ImVec2(cx, cy - S(5.0f)), ImVec2(cx, cy + S(2.0f)), ic, S(2.2f));
+                                Dot(cx, cy + S(7.0f), S(1.7f), ic);
+                        }
+                        TxtC(S(15.0f), Rc{ d.x, d.y + d.h * 0.62f, d.w, d.h * 0.34f }, on ? Col(255, 224, 180, 255) : Col(190, 196, 212, 255), kNames[k], true);
+                }
+        }
+}
+
+void RenderHandlingDialog()
+{
+        using namespace mm;
+
+        static bool          s_wasOpen = false;
+        static CVehicleGTA*  s_lastVeh = nullptr;
+        static VehTune       s_tune;
+
+        // maşının real veziyyeti (yalniz acıq vaxt oxunur, baglanarkən kohne pointere toxunmuruq)
+        static bool    s_eng = false, s_lig = false, s_lock = false;
+        static uint8_t s_sig = 0;
+
+        static float s_t = 0.0f;                 // acilma/baglanma animasiyasi 0..1
+        static float s_cx = -1.0f, s_cy = -1.0f; // panel merkezi
+        static float s_zoom = 1.0f;              // istifadeci olcusu
+        static int   s_page = 0;
+        static float s_pageAnim = 1.0f;
+        static float s_navRel = 74.0f;           // sidebar gostericisi (u vahidinde)
+        static float s_flash = 0.0f;
+        static float s_dragDx = 0.0f, s_dragDy = 0.0f;
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+
+        // ---- real vaxt ----
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        dt = Clamp(dt, 0.0f, 0.05f);
+
+        const bool want = g_bShowHandlingDlg;
+        if (!want && s_t <= 0.0f) {
+                s_wasOpen = false;
+                s_hndRectValid = false;
+                s_act = 0;
+                return;
+        }
+
+        CVehicleGTA* gtaVeh = s_lastVeh;
+        CVehicle*    pVehW  = nullptr;
+
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
+        if (want)
+        {
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        g_bShowHandlingDlg = false;
+                        s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
+                        return;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        s_hndRectValid = false;
+                        return;
+                }
+
+                pVehW  = pVeh;
+                gtaVeh = pVeh->m_pVehicle;
+
+                // Yeni acilis ve ya basqa masin -> deyerleri masinin real veziyyetinden oxu
+                if (!s_wasOpen || gtaVeh != s_lastVeh) {
+                        s_tune    = VehTuner::Get(gtaVeh);
+                        s_lastVeh = gtaVeh;
+                        s_wasOpen = true;
+                        for (int i = 0; i < 8; ++i) s_frac[i] = 0.0f;
+                        s_pageAnim = 0.0f;
+                        HND_LOG("[HND] dialog opened");
+                }
+
+                // real veziyyet (her kadr)
+                s_eng  = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+                s_lig  = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+                {
+                        const int lk = (int)gtaVeh->m_nDoorLock;
+                        s_lock = (lk == 2 || lk == 3);
+                }
+                s_sig = VehControls::GetSignal(gtaVeh);
+        }
+
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+
+        // ---- animasiya zamani (sakit, siçrayissiz) ----
+        s_t = Clamp(s_t + (want ? dt / 0.22f : -dt / 0.16f), 0.0f, 1.0f);
+        const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+        s_pageAnim = Clamp(s_pageAnim + dt / 0.22f, 0.0f, 1.0f);
+        s_flash = Clamp(s_flash - dt / 1.4f, 0.0f, 1.0f);
+
+        // ---- olculer ----
+        const float W0 = 880.0f, H0 = 560.0f;
+        float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+        u0 *= s_zoom;
+        u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
+        s_U = u0 * (0.96f + 0.04f * eAnim);
+
+        if (s_cx < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
+
+        auto clampCenter = [&]() {
+                const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+                s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+                s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+        };
+        clampCenter();
+
+        const bool canInput = want && s_t > 0.75f;
+        const MMTouch& tch = g_mmTouch;
+
+        auto panelRect = [&]() { return Rc{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U }; };
+        Rc P = panelRect();
+
+
+
+===== C3) RenderHandlingDialog - TAM =====
+void RenderHandlingDialog()
+{
+        using namespace mm;
+
+        static bool          s_wasOpen = false;
+        static CVehicleGTA*  s_lastVeh = nullptr;
+        static VehTune       s_tune;
+
+        // maşının real veziyyeti (yalniz acıq vaxt oxunur, baglanarkən kohne pointere toxunmuruq)
+        static bool    s_eng = false, s_lig = false, s_lock = false;
+        static uint8_t s_sig = 0;
+
+        static float s_t = 0.0f;                 // acilma/baglanma animasiyasi 0..1
+        static float s_cx = -1.0f, s_cy = -1.0f; // panel merkezi
+        static float s_zoom = 1.0f;              // istifadeci olcusu
+        static int   s_page = 0;
+        static float s_pageAnim = 1.0f;
+        static float s_navRel = 74.0f;           // sidebar gostericisi (u vahidinde)
+        static float s_flash = 0.0f;
+        static float s_dragDx = 0.0f, s_dragDy = 0.0f;
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+
+        // ---- real vaxt ----
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        dt = Clamp(dt, 0.0f, 0.05f);
+
+        const bool want = g_bShowHandlingDlg;
+        if (!want && s_t <= 0.0f) {
+                s_wasOpen = false;
+                s_hndRectValid = false;
+                s_act = 0;
+                return;
+        }
+
+        CVehicleGTA* gtaVeh = s_lastVeh;
+        CVehicle*    pVehW  = nullptr;
+
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
+        if (want)
+        {
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        g_bShowHandlingDlg = false;
+                        s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
+                        return;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        s_hndRectValid = false;
+                        return;
+                }
+
+                pVehW  = pVeh;
+                gtaVeh = pVeh->m_pVehicle;
+
+                // Yeni acilis ve ya basqa masin -> deyerleri masinin real veziyyetinden oxu
+                if (!s_wasOpen || gtaVeh != s_lastVeh) {
+                        s_tune    = VehTuner::Get(gtaVeh);
+                        s_lastVeh = gtaVeh;
+                        s_wasOpen = true;
+                        for (int i = 0; i < 8; ++i) s_frac[i] = 0.0f;
+                        s_pageAnim = 0.0f;
+                        HND_LOG("[HND] dialog opened");
+                }
+
+                // real veziyyet (her kadr)
+                s_eng  = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+                s_lig  = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+                {
+                        const int lk = (int)gtaVeh->m_nDoorLock;
+                        s_lock = (lk == 2 || lk == 3);
+                }
+                s_sig = VehControls::GetSignal(gtaVeh);
+        }
+
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+
+        // ---- animasiya zamani (sakit, siçrayissiz) ----
+        s_t = Clamp(s_t + (want ? dt / 0.22f : -dt / 0.16f), 0.0f, 1.0f);
+        const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+        s_pageAnim = Clamp(s_pageAnim + dt / 0.22f, 0.0f, 1.0f);
+        s_flash = Clamp(s_flash - dt / 1.4f, 0.0f, 1.0f);
+
+        // ---- olculer ----
+        const float W0 = 880.0f, H0 = 560.0f;
+        float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+        u0 *= s_zoom;
+        u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
+        s_U = u0 * (0.96f + 0.04f * eAnim);
+
+        if (s_cx < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
+
+        auto clampCenter = [&]() {
+                const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+                s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+                s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+        };
+        clampCenter();
+
+        const bool canInput = want && s_t > 0.75f;
+        const MMTouch& tch = g_mmTouch;
+
+        auto panelRect = [&]() { return Rc{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U }; };
+        Rc P = panelRect();
+
+        // ---- panel surukleme (basliqdan) ----
+        {
+                const Rc dragRc{ P.x, P.y, P.w - S(168.0f), S(56.0f) };
+                if (canInput) {
+                        if (tch.pressed && s_act == 0 && In(dragRc, tch.x, tch.y)) {
+                                s_act = ID_DRAG;
+                                s_dragDx = tch.x - s_cx;
+                                s_dragDy = tch.y - s_cy;
+                        }
+                        if (s_act == ID_DRAG && tch.down) {
+                                s_cx = tch.x - s_dragDx;
+                                s_cy = tch.y - s_dragDy;
+                                clampCenter();
+                                P = panelRect();
+                        }
+                }
+        }
+
+        s_hndRectValid = (s_t > 0.05f);
+        s_hndPos  = ImVec2(P.x, P.y);
+        s_hndSize = ImVec2(P.w, P.h);
+
+        s_dl = ImGui::GetForegroundDrawList();
+
+        // ======================= CIZGI =======================
+        // kolge
+        for (int k = 0; k < 3; ++k) {
+                const float e = S(3.0f + k * 5.0f);
+                Fill(Rc{ P.x - e, P.y - e + S(5.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 22 - k * 6), S(14.0f) + e);
+        }
+        // panel
+        Fill(P, Col(17, 19, 26, 246), S(14.0f));
+        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
+
+        // --- basliq ---
+        {
+                Fill(Rc{ P.x + S(20.0f), P.y + S(15.0f), S(4.0f), S(26.0f) }, Accent(0.0f), S(2.0f));
+                TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "/MM");
+                Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Maşın menyusu");
+
+                const Rc bClose{ P.x + P.w - S(54.0f),  P.y + S(10.0f), S(36.0f), S(36.0f) };
+                const Rc bZoomP{ P.x + P.w - S(100.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+                const Rc bZoomM{ P.x + P.w - S(146.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+
+                if (Tap(ID_CLOSE, bClose, canInput)) { g_bShowHandlingDlg = false; HND_LOG("[HND] close"); }
+                if (Tap(ID_ZOOMP, bZoomP, canInput)) s_zoom = Clamp(s_zoom + 0.1f, 0.6f, 1.4f);
+                if (Tap(ID_ZOOMM, bZoomM, canInput)) s_zoom = Clamp(s_zoom - 0.1f, 0.6f, 1.4f);
+
+                HeaderBtn(ID_ZOOMM, bZoomM, dt, "A-", false);
+                HeaderBtn(ID_ZOOMP, bZoomP, dt, "A+", false);
+                HeaderBtn(ID_CLOSE, bClose, dt, "", true);
+
+                s_dl->AddLine(ImVec2(P.x + S(1.0f), P.y + S(58.0f)), ImVec2(P.x + P.w - S(1.0f), P.y + S(58.0f)), Col(255, 255, 255, 16), S(1.0f));
+        }
+
+        // --- sidebar ---
+        static const char* kPages[6] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" };
+        static const char* kSubs[6]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" };
+        {
+                s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
+                const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
+                Fill(ind, Col(255, 255, 255, 12), S(10.0f));
+                Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
+
+                for (int i = 0; i < 6; ++i)
+                {
+                        const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
+                        if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
+                                s_page = i;
+                                s_pageAnim = 0.0f;
+                                for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+                        }
+                        Prs(ID_NAV0 + i, dt);
+                        const bool  on = (s_page == i);
+                        const float ty = it.y + (it.h - S(17.0f)) * 0.5f;
+                        if (on) TxtB(S(17.0f), it.x + S(20.0f), ty, Col(240, 243, 250), kPages[i]);
+                        else    Txt (S(17.0f), it.x + S(20.0f), ty, Col(140, 148, 168), kPages[i]);
+                }
+                s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 16), S(1.0f));
+        }
+
+        // --- mezmun ---
+        bool changed = false;
+        {
+                const float pe = EaseOutCubic(s_pageAnim);
+                const float ox = (1.0f - pe) * S(14.0f);
+                const float cx0 = P.x + S(220.0f) + ox;
+                const float cw  = S(636.0f);
+                const float saveA = s_A;
+                s_A = saveA * pe;
+
+                TxtB(S(24.0f), cx0, P.y + S(68.0f), Col(240, 243, 250), kPages[s_page]);
+                Txt(S(14.0f), cx0, P.y + S(98.0f), Col(124, 132, 152), kSubs[s_page]);
+
+                struct Spec { const char* label; float* v; float mn; float mx; };
+
+                if (s_page == 0)          // NEZARET
+                {
+                        const Rc r0{ cx0, P.y + S(124.0f), cw, S(66.0f) };
+                        const Rc r1{ cx0, P.y + S(196.0f), cw, S(66.0f) };
+                        const Rc r2{ cx0, P.y + S(268.0f), cw, S(66.0f) };
+
+                        if (ToggleRow(0, r0, "Mühərrik", s_eng ? "İşləyir" : "Söndürülüb", s_eng, dt, canInput) && pVehW)
+                                pVehW->ApplyEngineState(s_eng ? 0 : 1);
+                        if (ToggleRow(1, r1, "Fara", s_lig ? "Yanır" : "Sönülü", s_lig, dt, canInput) && pVehW)
+                                pVehW->ApplyLightState(s_lig ? 0 : 1);
+                        if (ToggleRow(2, r2, "Qapılar", s_lock ? "Kilidli" : "Açıq", s_lock, dt, canInput) && pVehW)
+                                pVehW->SetDoorState(s_lock ? 0 : 1);
+
+                        SignalBlock(Rc{ cx0, P.y + S(346.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, canInput);
+                }
+                else if (s_page == 4)     // FAR
+                {
+                        char hb[40];
+                        if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far rəngi: Standart");
+                        else                       snprintf(hb, sizeof(hb), "Far rəngi: #%d", (int)s_tune.headlight);
+                        Txt(S(17.0f), cx0, P.y + S(128.0f), Col(214, 220, 232), hb);
+                        Txt(S(13.0f), cx0, P.y + S(152.0f), Col(124, 132, 152), "Hazırda yalnız hazır palitra — sərbəst rəng seçimi üçün VehTuner/Coronas faylları lazımdır.");
+
+                        for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+                        {
+                                uint8_t r, g, b;
+                                VehTuner::GetPaletteColor(i, r, g, b);
+
+                                const int   col = i % 8, rowi = i / 8;
+                                const float cxs = cx0 + S(24.0f) + col * S(58.0f);
+                                const float cys = P.y + S(200.0f) + rowi * S(58.0f);
+                                const Rc    sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+
+                                const int sid = ID_SWATCH + std::min(i, 23);
+                                if (Tap(sid, sq, canInput)) { s_tune.headlight = (uint8_t)i; changed = true; }
+
+                                const float p = Prs(sid, dt);
+                                Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
+                                if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+                        }
+                }
+                else if (s_page == 5)    // KOMANDALAR
+                {
+                        struct CmdInfo { const char* cmd; const char* desc; };
+                        static const CmdInfo kCmds[] = {
+                                { "/mm",      "Maşın menyusunu aç/bağla" },
+                                { "/sinyal",  "sol | sag | avariya | off" },
+                                { "/far N",   "Far rəngi (0-15)" },
+                                { "/suret N", "Maksimum sürət" },
+                                { "/manevr N","Manevr bucağı" },
+                                { "/tormoz N","Tormoz gücü" },
+                                { "/gizle",   "Bütün UI-ı gizlət/geri qaytar" },
+                                { "/yt",      "YouTube paneli" },
+                        };
+                        const int n = (int)(sizeof(kCmds) / sizeof(kCmds[0]));
+                        for (int i = 0; i < n; ++i)
+                        {
+                                const Rc row{ cx0, P.y + S(124.0f + 52.0f * i), cw, S(44.0f) };
+                                Fill(row, Col(27, 30, 40, 255), S(9.0f));
+                                Txt(S(15.0f), row.x + S(16.0f), row.y + (row.h - S(15.0f)) * 0.5f, Accent(0.0f), kCmds[i].cmd);
+                                Txt(S(14.0f), row.x + S(160.0f), row.y + (row.h - S(14.0f)) * 0.5f, Col(200, 204, 216), kCmds[i].desc);
+                        }
+                }
+                else                      // HANDLING SEHIFELERI
+                {
+                        Spec sp[5];
+                        int  n = 0;
+                        if (s_page == 1) {
+                                sp[n++] = { "Yerindən götürmə (təcil)",    &s_tune.accelPct,   30.0f, 400.0f };
+                                sp[n++] = { "Maksimum sürət",              &s_tune.speedPct,   50.0f, 250.0f };
+                                sp[n++] = { "Mühərrik ətaləti (az = tez)", &s_tune.inertiaPct, 20.0f, 300.0f };
+                                sp[n++] = { "Çəki / kütlə",                &s_tune.massPct,    30.0f, 300.0f };
+                                sp[n++] = { "Hava müqaviməti",             &s_tune.dragPct,    20.0f, 300.0f };
+                        } else if (s_page == 2) {
+                                sp[n++] = { "Tormoz gücü",                 &s_tune.brakePct,    30.0f, 300.0f };
+                                sp[n++] = { "Manevr bucağı",               &s_tune.steerPct,    50.0f, 150.0f };
+                                sp[n++] = { "Yol tutuş (traction)",        &s_tune.tractionPct, 50.0f, 200.0f };
+                                sp[n++] = { "Sürüşmə itkisi (az = yaxşı)", &s_tune.tracLossPct, 20.0f, 200.0f };
+                                sp[n++] = { "Fırlanma ətaləti",            &s_tune.turnPct,     30.0f, 300.0f };
+                        } else {
+                                sp[n++] = { "Asma gücü",                   &s_tune.suspForcePct, 30.0f, 300.0f };
+                                sp[n++] = { "Asma amortizatorları",        &s_tune.suspDampPct,  30.0f, 300.0f };
+                                sp[n++] = { "Toqquşma zərəri",             &s_tune.collisionPct, 10.0f, 300.0f };
+                        }
+
+                        for (int i = 0; i < n; ++i) {
+                                const Rc row{ cx0, P.y + S(124.0f + 72.0f * i), cw, S(66.0f) };
+                                if (SliderRow(i, row, sp[i].label, sp[i].v, sp[i].mn, sp[i].mx, dt, canInput)) changed = true;
+                        }
+                }
+
+                // --- alt sira: Sifirla (yalniz handling sehifelerinde) + status ---
+                if (s_page >= 1 && s_page <= 3)
+                {
+                        const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
+                        if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
+                                VehTuner::Reset(gtaVeh);
+                                s_tune = VehTune();
+                                changed = false;
+                                s_flash = 1.0f;
+                                for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Standart dəyərlər qaytarıldı.");
+                        }
+                        const float rp = Prs(ID_RESET, dt);
+                        const Rc rd = Shrink(rb, S(1.5f) * rp);
+                        Fill(rd, Accent(0.0f, 20 + (int)(36.0f * rp)), S(9.0f));
+                        Stroke(rd, Accent(0.0f, 170), S(9.0f), S(1.3f));
+                        TxtC(S(16.0f), rd, Col(232, 238, 250), "Sıfırla", true);
+
+                        if (s_flash > 0.01f) {
+                                Dot(cx0 + S(174.0f), rb.y + rb.h * 0.5f, S(4.5f), Col(90, 205, 140, (int)(255.0f * s_flash)));
+                                Txt(S(15.0f), cx0 + S(188.0f), rb.y + (rb.h - S(15.0f)) * 0.5f, Col(120, 215, 160, (int)(255.0f * s_flash)), "Tətbiq edildi");
+                        }
+                }
+
+                s_A = saveA;
+        }
+
+        // Her deyisiklik canli tetbiq olunur (original-dan hesablandigi ucun yigilmir)
+        if (changed && want && gtaVeh) {
+                VehTuner::Set(gtaVeh, s_tune);
+                s_flash = 1.0f;
+        }
+
+        if (tch.released || !tch.down) s_act = 0;
+
+#if HND_DEBUG
+        // Diaqnostika: qirmizi halqa = oyunun hesab etdiyi barmaq yeri
+        {
+                ImDrawList* d = ImGui::GetForegroundDrawList();
+                if (tch.x >= 0.0f) {
+                        d->AddCircle(ImVec2(tch.x, tch.y), 22.0f, tch.down ? IM_COL32(255, 60, 60, 255) : IM_COL32(255, 220, 60, 160), 24, 3.0f);
+                }
+                char dbg[96];
+                snprintf(dbg, sizeof(dbg), "T %.0f,%.0f d%d ev%u disp %.0fx%.0f act%d", tch.x, tch.y, (int)tch.down, tch.events, disp.x, disp.y, s_act);
+                d->AddText(ImGui::GetFont(), 18.0f, ImVec2(11.0f, disp.y - 29.0f), IM_COL32(0, 0, 0, 255), dbg);
+                d->AddText(ImGui::GetFont(), 18.0f, ImVec2(10.0f, disp.y - 30.0f), IM_COL32(255, 255, 255, 255), dbg);
+        }
+#endif
+}
+
+// ============================================================================
+//  DAİMİ HUD: avtomobildə olarkən hər zaman görünən 3 dairəvi göstərici
+//  (Mühərrik / Fara / Qapı) + kiçik sinyal düymələri. Ekranın alt-sağ
+//  bölgəsində, mərkəzdən bir az sağda — heç nəyə mane olmayacaq şəkildə.
+//  Rəngi dəyişmək üçün göstərici qrupuna basılı tutmaq kifayətdir (uzun basma).
+// ============================================================================
+static int   s_hudColorIdx = 0;

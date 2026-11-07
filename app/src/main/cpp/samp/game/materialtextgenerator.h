@@ -25,6 +25,10 @@ public:
 
     RwTexture* Generate(const char* text, int size, int font_size, bool bold, uint32_t font_color, uint32_t background_color, int alignment);
 
+    // Azerbaycan nomre lovhesi (AzPlate.cpp-de tanimlanir)
+    RwTexture* GeneratePlate(const char* text);
+    void RenderPlate(const char* text, float w, float h);
+
 private:
 	void SetUpScene();
 	void Render(const char* text, const ImVec2& size, int font_size, bool bold,

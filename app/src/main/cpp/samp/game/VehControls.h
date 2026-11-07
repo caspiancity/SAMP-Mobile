@@ -24,4 +24,9 @@ namespace VehControls
 	void    Forget(CVehicleGTA* veh);                       // masin silinende
 	bool    BlinkOn();                                      // yanma fazasi (UI de bunu istifade edir)
 	void    RenderSignals(CVehicleGTA* veh);                // DoVehicleLights hook-undan cagirilir
+	// /sinyalayar ters|korona ile deyisdirilir
+	inline bool g_sigSwapSides = false;   // sol/sag ters olarsa
+	inline bool g_sigCorona    = false;   // kohne ayri narinci corona
+	void    ApplyRenderLightBits(CVehicleGTA* veh);
+	void    ApplyLampArray(CVehicleGTA* veh);
 }

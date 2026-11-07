@@ -1,0 +1,1243 @@
+
+
+===== git =====
+?? collect.sh
+?? collect.txt
+c9d74cd speedo, sinyal, ui gizle
+10416e8 Update LuaBridge.h
+c628b31 Delete LuaBridge.cpp
+1
+
+
+===== chat.cpp 150-275 =====
+
+        if (cmd == "/gizle") {
+                g_bHideAllUI = !g_bHideAllUI;
+                if (!g_bHideAllUI) {
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz aktiv edildi.");
+                }
+                return true;
+        }
+
+        if (cmd == "/mm") {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+                g_bShowHandlingDlg = !g_bShowHandlingDlg;
+                return true;
+        }
+
+        if (cmd == "/sinyal")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string arg;
+                ss >> arg;
+                std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+
+                int mode = -1;
+                if (arg == "sol")                          mode = VEH_SIGNAL_LEFT;
+                else if (arg == "sag")                     mode = VEH_SIGNAL_RIGHT;
+                else if (arg == "avariya")                 mode = VEH_SIGNAL_HAZARD;
+                else if (arg == "off" || arg == "0")       mode = VEH_SIGNAL_OFF;
+
+                if (mode < 0) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyal [sol|sag|avariya|off]");
+                        return true;
+                }
+
+                VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
+                pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
+                return true;
+        }
+
+        if (cmd == "/far" || cmd == "/suret" || cmd == "/manevr" || cmd == "/tormoz")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) {
+                                pVeh = pPool->GetAt(vehID);
+                        }
+                }
+
+                if (!pVeh) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                float val = 0.0f;
+                int intVal = 0;
+
+                if (cmd == "/far") {
+                        if (!(ss >> intVal)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /far [0-15]");
+                                return true;
+                        }
+                        pVeh->SetHeadlightColor((uint8_t)intVal);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Far rengi deyisdirildi: %d", intVal);
+                }
+                else if (cmd == "/suret") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /suret [maks_suret]");
+                                return true;
+                        }
+                        pVeh->SetMaxSpeed(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Maksimum suret deyisdirildi: %.1f", val);
+                }
+                else if (cmd == "/manevr") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /manevr [donme_bucagi]");
+                                return true;
+                        }
+                        pVeh->SetSteeringAngle(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Manevr bucagi deyisdirildi: %.1f", val);
+                }
+                else if (cmd == "/tormoz") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /tormoz [guc]");
+                                return true;
+                        }
+                        pVeh->SetBrakePower(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Tormoz gucu deyisdirildi: %.1f", val);
+                }
+
+                return true;
+        }
+
+        return false;
+}
+
+void Chat::keyboardEvent(const std::string& input)
+{
+        if (input.length() > 0 && pNetGame)
+        {
+
+
+===== app/src/main/cpp/samp/gui/samp_widgets/chat.h =====
+#pragma once
+
+#include <list>
+
+class Chat : public ListBox
+{
+public:
+	Chat();
+
+	void addChatMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
+	void addInfoMessage(const std::string& format, ...);
+	void addDebugMessage(const std::string& format, ...);
+	void addClientMessage(const std::string& message, const ImColor& color);
+
+	virtual void draw(ImGuiRenderer* renderer) override;
+
+	virtual void activateEvent(bool active) override;
+	virtual void touchPopEvent() override;
+	virtual void keyboardEvent(const std::string& input) override;
+
+private:
+	void addMessage(const std::string& messsage, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f));
+	void addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
+
+	class MessageItem : public ListBoxItem
+	{
+	public:
+		MessageItem(const std::string& message, const ImColor& color)
+		{
+			m_text = new Label(message, color, true, UISettings::fontSize() / 2);
+			this->addChild(m_text);
+		}
+
+		void performLayout() override
+		{
+			m_text->performLayout();
+			m_text->setPosition(ImVec2(0.0f, (height() - m_text->height()) / 2));
+		}
+
+	private:
+		Label* m_text;
+	};
+
+	class PlayerMessageItem : public ListBoxItem
+	{
+	public:
+		PlayerMessageItem(const std::string& message, const std::string& nick, const ImColor& nick_color)
+		{
+			m_nick = new Label(nick, nick_color, true, UISettings::fontSize() / 2);
+			m_text = new Label(": " + message, ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+			this->addChild(m_nick);
+			this->addChild(m_text);
+		}
+
+		void performLayout() override
+		{
+			m_nick->performLayout();
+			m_nick->setPosition(ImVec2(0.0f, (height() - m_nick->height()) / 2));
+
+			m_text->performLayout();
+			m_text->setPosition(ImVec2(m_nick->position().x + m_nick->width(), (height() - m_text->height()) / 2));
+		}
+
+	private:
+		Label* m_nick;
+		Label* m_text;
+	};
+};
+
+===== app/src/main/cpp/samp/gui/gui.h =====
+#pragma once
+
+#define DEBUG_GUI 0
+
+#include "../vendor/encoding/encoding.h"
+
+#include "imguiwrapper.h"
+#include "uisettings.h"
+
+#include "widget.h"
+#include "widgets/layout.h"
+#include "widgets/label.h"
+#include "widgets/button.h"
+#include "widgets/image.h"
+#include "widgets/progressbar.h"
+#include "widgets/scrollpanel.h"
+#include "widgets/listbox.h"
+#include "widgets/editbox.h"
+
+#include "samp_widgets/keyboard.h"
+#include "samp_widgets/splashscreen.h"
+#include "samp_widgets/chat.h"
+#include "samp_widgets/spawn.h"
+#include "samp_widgets/buttonpanel.h"
+#include "samp_widgets/playerTabList.h"
+#include "samp_widgets/voicebutton.h"
+
+#include "samp_widgets/dialogs/dialog.h"
+
+#include "..//vendor/raknet/SingleProducerConsumer.h"
+
+#pragma pack(push, 1)
+struct BUFFERED_COMMAND_TEXTDRAW
+{
+    uint16_t textdrawId;
+};
+#pragma pack(pop)
+
+class UI : public Widget, public ImGuiWrapper
+{
+public:
+	UI(const ImVec2& display_size, const std::string& font_path);
+
+	bool initialize() override;
+	void render() override;
+	void shutdown() override;
+
+
+	SplashScreen* splashscreen() const { return m_splashScreen; }
+	Chat* chat() const { return m_chat; }
+	Spawn* spawn() const { return m_spawn; }
+	Keyboard* keyboard() const { return m_keyboard; }
+	Dialog* dialog() const { return m_dialog; }
+	ButtonPanel* buttonpanel() const { return m_buttonPanel; }
+	PlayerTabList* playertablist() const { return m_playerTabList; }
+	VoiceButton* voicebutton() const { return m_voiceButton; }
+
+	static const ImColor fixcolor(uint32_t color) {
+		return ImColor(
+			(int)((color & 0xFF000000) >> 24),
+			(int)((color & 0x00FF0000) >> 16),
+			(int)((color & 0x0000FF00) >> 8));
+	}
+
+	float ScaleX(float x) {
+		return x * displaySize().x * (1.0f / 1920.0f);
+	}
+
+	float ScaleY(float y) {
+		return y * displaySize().y * (1.0f / 1080.0f);
+	}
+
+	float GetFontSize() {
+		return UISettings::fontSize();
+	}
+
+	virtual void touchEvent(const ImVec2& pos, TouchType type) override;
+
+	bool OnTouchEvent(int type, bool multi, int x, int y);
+
+    void renderDebug();
+
+
+    void ProcessPushedTextdraws();
+    void PushToBufferedQueueTextDrawPressed(uint16_t textdrawId);
+
+protected:
+	void drawList() override;
+
+private:
+	Keyboard* m_keyboard;
+	SplashScreen* m_splashScreen;
+	Chat* m_chat;
+	Spawn* m_spawn;
+	Dialog* m_dialog;
+	ButtonPanel* m_buttonPanel;
+	PlayerTabList* m_playerTabList;
+	VoiceButton* m_voiceButton;
+	Label* label;
+    Label* label2;
+    Label* label3;
+    Label* label4;
+
+    float 		m_fFontSize = 0.0f;
+
+	// --- ImGui toxunus v…ôziyy…ôti (qƒ±sa toxunu≈üun itm…ôm…ôsi √º√ß√ºn) ---
+	// Basma+buraxma BIR kadrda ba≈ü ver…ônd…ô ImGui klik g√∂rm√ºrd√º.
+	// Indi buraxma, basma …ôn azƒ± 2 kadr g√∂r√ºn…ôn…ô q…ôd…ôr gecikdirilir.
+	int  m_iDownFrames = 2;          // son basmadan b…ôri ne√ß…ô kadr ke√ßib
+	bool m_bReleasePending = false;  // buraxma g√∂zl…ôyir
+	int  m_iClearMouseFrames = 0;    // 0-dan b√∂y√ºkd√ºrs…ô sonda mouse pos t…ômizl…ôn…ôc…ôk
+
+    DataStructures::SingleProducerConsumer<BUFFERED_COMMAND_TEXTDRAW> m_BufferedCommandTextdraws;
+};
+
+// Handling dialoqu a√ßƒ±qdƒ±rsa v…ô n√∂qt…ô onun i√ßind…ôdirs…ô true (alt widget-l…ôr toxunu≈üu g√∂rm…ôsin).
+bool UI_IsPointInHandlingDlg(const ImVec2& p);
+bool UI_HandlingDlgCapturedEvent();
+
+===== app/src/main/cpp/samp/gui/widget.h =====
+#pragma once
+
+#include <vector>
+#include <string>
+
+enum class TouchType
+{
+	push,
+	move,
+	pop,
+	none
+};
+
+class Widget
+{
+public:
+	Widget();
+
+	/* parent */
+	Widget* parent() const { return m_parent; }
+	void setParent(Widget* parent) { m_parent = parent; }
+
+	/* visible */
+	bool visible() { return m_visible; }
+	void setVisible(bool visible) { m_visible = visible; }
+
+	/* size */
+	const ImVec2& size() const { return m_size; }
+	void setSize(const ImVec2& size);
+	float width() const { return m_size.x; }
+	void setWidth(float width);
+	float height() const { return m_size.y; }
+	void setHeight(float height);
+
+	/* min/max size */
+	const ImVec2& maxSize() const { return m_maxSize; }
+	void setMaxSize(const ImVec2& max_size) { m_maxSize = max_size; }
+	const ImVec2& minSize() const { return m_minSize; }
+	void setMinSize(const ImVec2& min_size) { m_minSize = min_size; }
+	void setFixedSize(const ImVec2& fixed_size) { m_size = m_minSize = m_maxSize = fixed_size; }
+
+	/* position */
+	const ImVec2& position() const { return m_position; }
+	void setPosition(const ImVec2& position);
+	const ImVec2& absolutePosition() const { return m_absolutePosition; }
+
+	/* children */
+	int childCount() { return m_children.size(); }
+	const std::vector<Widget*>& children() { return m_children; }
+	void addChild(int index, Widget* widget);
+	void addChild(Widget* widget);
+	void removeChild(int index);
+	void removeChild(const Widget* widget);
+	Widget* childAt(int index) const { return m_children[index]; }
+	int childIndex(Widget* widget) const;
+
+	bool focused() { return m_focused; }
+	bool active() { return m_active; }
+
+	/* touch */
+	bool contains(const ImVec2& pos) const;
+	virtual void touchEvent(const ImVec2& pos, TouchType type);
+
+	/* draw/perform */
+	virtual void draw(ImGuiRenderer* renderer);
+	virtual void performLayout();
+
+	/* Ì‡Ê‡ÚËÂ Ì‡ ‚Ë‰ÊÂÚ */
+	virtual void touchPushEvent() {}
+	/* ËÁÏÂÌÂÌËÂ ÔÓÁËˆËË ÍÛÒÓ‡ (ÔË ÛÒÎÓ‚ËË ˜ÚÓ ÓÌ ·˚Î Ì‡Ê‡Ú) */
+	virtual void touchMoveEvent(const ImVec2& delta) {}
+	/* ÓÚÊ‡ÚËÂ ‚Ë‰ÊÂÚ‡ (ÔË ÛÒÎÓ‚ËË ˜ÚÓ ÓÌ ·˚Î Ì‡Ê‡Ú) */
+	virtual void touchPopEvent() {}
+
+	/* ‚Ë‰ÊÂÚ ÒÚ‡ÌÓ‚ËÚÒˇ ‡ÍÚË‚Ì˚Ï */
+	virtual void activateEvent(bool active) {}
+	/* ÙÓÍÛÒ Ì‡ ‚Ë‰ÊÂÚÂ */
+	virtual void focuseEvent(bool event) {}
+	/* ‚‚Â‰ÂÌ ÚÂÍÒÚ */
+	virtual void keyboardEvent(const std::string& input) {}
+
+protected:
+	virtual ~Widget();
+
+private:
+	void updateAbsolutePosition();
+
+	void setActive(bool active);
+	void setFocus(bool focus);
+
+private:
+	Widget* m_parent;
+	bool m_visible;
+	ImVec2 m_position;
+	ImVec2 m_size;
+	ImVec2 m_maxSize;
+	ImVec2 m_minSize;
+
+	ImVec2 m_absolutePosition;
+
+	bool m_focused;
+	bool m_active;
+	ImVec2 m_pushAbsolutePos;
+	ImVec2 m_moveDelta;
+
+	std::vector<Widget*> m_children;
+};
+
+===== RenderHandlingDialog =====
+fayl: app/src/main/cpp/samp/gui/gui.cpp
+void RenderHandlingDialog()
+{
+        using namespace mm;
+
+        static bool          s_wasOpen = false;
+        static CVehicleGTA*  s_lastVeh = nullptr;
+        static VehTune       s_tune;
+
+        // ma≈üƒ±nƒ±n real veziyyeti (yalniz acƒ±q vaxt oxunur, baglanark…ôn kohne pointere toxunmuruq)
+        static bool    s_eng = false, s_lig = false, s_lock = false;
+        static uint8_t s_sig = 0;
+
+        static float s_t = 0.0f;                 // acilma/baglanma animasiyasi 0..1
+        static float s_cx = -1.0f, s_cy = -1.0f; // panel merkezi
+        static float s_zoom = 1.0f;              // istifadeci olcusu
+        static int   s_page = 0;
+        static float s_pageAnim = 1.0f;
+        static float s_navRel = 74.0f;           // sidebar gostericisi (u vahidinde)
+        static float s_flash = 0.0f;
+        static float s_dragDx = 0.0f, s_dragDy = 0.0f;
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+
+        // ---- real vaxt ----
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        dt = Clamp(dt, 0.0f, 0.05f);
+
+        const bool want = g_bShowHandlingDlg;
+        if (!want && s_t <= 0.0f) {
+                s_wasOpen = false;
+                s_hndRectValid = false;
+                s_act = 0;
+                return;
+        }
+
+        CVehicleGTA* gtaVeh = s_lastVeh;
+        CVehicle*    pVehW  = nullptr;
+
+        CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+
+        if (want)
+        {
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        g_bShowHandlingDlg = false;
+                        s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
+                        return;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        s_hndRectValid = false;
+                        return;
+                }
+
+                pVehW  = pVeh;
+                gtaVeh = pVeh->m_pVehicle;
+
+                // Yeni acilis ve ya basqa masin -> deyerleri masinin real veziyyetinden oxu
+                if (!s_wasOpen || gtaVeh != s_lastVeh) {
+                        s_tune    = VehTuner::Get(gtaVeh);
+                        s_lastVeh = gtaVeh;
+                        s_wasOpen = true;
+                        for (int i = 0; i < 8; ++i) s_frac[i] = 0.0f;
+                        s_pageAnim = 0.0f;
+                        HND_LOG("[HND] dialog opened");
+                }
+
+                // real veziyyet (her kadr)
+                s_eng  = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+                s_lig  = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+                {
+                        const int lk = (int)gtaVeh->m_nDoorLock;
+                        s_lock = (lk == 2 || lk == 3);
+                }
+                s_sig = VehControls::GetSignal(gtaVeh);
+        }
+
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+
+        // ---- animasiya zamani (sakit, si√ßrayissiz) ----
+        s_t = Clamp(s_t + (want ? dt / 0.22f : -dt / 0.16f), 0.0f, 1.0f);
+        const float eAnim = EaseOutCubic(s_t);
+        s_A = Clamp(s_t * 2.4f, 0.0f, 1.0f);
+        s_pageAnim = Clamp(s_pageAnim + dt / 0.22f, 0.0f, 1.0f);
+        s_flash = Clamp(s_flash - dt / 1.4f, 0.0f, 1.0f);
+
+        // ---- olculer ----
+        const float W0 = 880.0f, H0 = 560.0f;
+        float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+        u0 *= s_zoom;
+        u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
+        s_U = u0 * (0.96f + 0.04f * eAnim);
+
+        if (s_cx < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
+
+        auto clampCenter = [&]() {
+                const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+                s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+                s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+        };
+        clampCenter();
+
+        const bool canInput = want && s_t > 0.75f;
+        const MMTouch& tch = g_mmTouch;
+
+        auto panelRect = [&]() { return Rc{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U }; };
+        Rc P = panelRect();
+
+        // ---- panel surukleme (basliqdan) ----
+        {
+                const Rc dragRc{ P.x, P.y, P.w - S(168.0f), S(56.0f) };
+                if (canInput) {
+                        if (tch.pressed && s_act == 0 && In(dragRc, tch.x, tch.y)) {
+                                s_act = ID_DRAG;
+                                s_dragDx = tch.x - s_cx;
+                                s_dragDy = tch.y - s_cy;
+                        }
+                        if (s_act == ID_DRAG && tch.down) {
+                                s_cx = tch.x - s_dragDx;
+                                s_cy = tch.y - s_dragDy;
+                                clampCenter();
+                                P = panelRect();
+                        }
+                }
+        }
+
+        s_hndRectValid = (s_t > 0.05f);
+        s_hndPos  = ImVec2(P.x, P.y);
+        s_hndSize = ImVec2(P.w, P.h);
+
+        s_dl = ImGui::GetForegroundDrawList();
+
+        // ======================= CIZGI =======================
+        // kolge
+        for (int k = 0; k < 3; ++k) {
+                const float e = S(3.0f + k * 5.0f);
+                Fill(Rc{ P.x - e, P.y - e + S(5.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 22 - k * 6), S(14.0f) + e);
+        }
+        // panel
+        Fill(P, Col(17, 19, 26, 246), S(14.0f));
+        Stroke(P, Col(255, 255, 255, 20), S(14.0f), S(1.0f));
+
+        // --- basliq ---
+        {
+                Fill(Rc{ P.x + S(20.0f), P.y + S(15.0f), S(4.0f), S(26.0f) }, Accent(0.0f), S(2.0f));
+                TxtB(S(20.0f), P.x + S(34.0f), P.y + S(8.0f), Col(238, 241, 248), "/MM");
+                Txt(S(13.0f), P.x + S(34.0f), P.y + S(32.0f), Col(124, 132, 152), "Ma≈üƒ±n menyusu");
+
+                const Rc bClose{ P.x + P.w - S(54.0f),  P.y + S(10.0f), S(36.0f), S(36.0f) };
+                const Rc bZoomP{ P.x + P.w - S(100.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+                const Rc bZoomM{ P.x + P.w - S(146.0f), P.y + S(10.0f), S(40.0f), S(36.0f) };
+
+                if (Tap(ID_CLOSE, bClose, canInput)) { g_bShowHandlingDlg = false; HND_LOG("[HND] close"); }
+                if (Tap(ID_ZOOMP, bZoomP, canInput)) s_zoom = Clamp(s_zoom + 0.1f, 0.6f, 1.4f);
+                if (Tap(ID_ZOOMM, bZoomM, canInput)) s_zoom = Clamp(s_zoom - 0.1f, 0.6f, 1.4f);
+
+                HeaderBtn(ID_ZOOMM, bZoomM, dt, "A-", false);
+                HeaderBtn(ID_ZOOMP, bZoomP, dt, "A+", false);
+                HeaderBtn(ID_CLOSE, bClose, dt, "", true);
+
+                s_dl->AddLine(ImVec2(P.x + S(1.0f), P.y + S(58.0f)), ImVec2(P.x + P.w - S(1.0f), P.y + S(58.0f)), Col(255, 255, 255, 16), S(1.0f));
+        }
+
+        // --- sidebar ---
+        static const char* kPages[6] = { "N…ôzar…ôt", "M√ºh…ôrrik", "S√ºr√ºc√ºl√ºk", "Asma", "Far", "Komandalar" };
+        static const char* kSubs[6]  = { "M√ºh…ôrrik, fara, qapƒ±lar v…ô sinyal", "S√ºr…ôtl…ônm…ô, s√ºr…ôt v…ô √ß…ôki", "Tormoz, manevr v…ô yol tutu≈ü", "Asma v…ô toqqu≈üma", "Far r…ôngi", "B√ºt√ºn komandalarƒ±n siyahƒ±sƒ±" };
+        {
+                s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
+                const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
+                Fill(ind, Col(255, 255, 255, 12), S(10.0f));
+                Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
+
+                for (int i = 0; i < 6; ++i)
+                {
+                        const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
+                        if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
+                                s_page = i;
+                                s_pageAnim = 0.0f;
+                                for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
+                        }
+                        Prs(ID_NAV0 + i, dt);
+                        const bool  on = (s_page == i);
+                        const float ty = it.y + (it.h - S(17.0f)) * 0.5f;
+                        if (on) TxtB(S(17.0f), it.x + S(20.0f), ty, Col(240, 243, 250), kPages[i]);
+                        else    Txt (S(17.0f), it.x + S(20.0f), ty, Col(140, 148, 168), kPages[i]);
+                }
+                s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 16), S(1.0f));
+        }
+
+        // --- mezmun ---
+        bool changed = false;
+        {
+                const float pe = EaseOutCubic(s_pageAnim);
+                const float ox = (1.0f - pe) * S(14.0f);
+                const float cx0 = P.x + S(220.0f) + ox;
+                const float cw  = S(636.0f);
+                const float saveA = s_A;
+                s_A = saveA * pe;
+
+                TxtB(S(24.0f), cx0, P.y + S(68.0f), Col(240, 243, 250), kPages[s_page]);
+                Txt(S(14.0f), cx0, P.y + S(98.0f), Col(124, 132, 152), kSubs[s_page]);
+
+                struct Spec { const char* label; float* v; float mn; float mx; };
+
+                if (s_page == 0)          // NEZARET
+                {
+                        const Rc r0{ cx0, P.y + S(124.0f), cw, S(66.0f) };
+                        const Rc r1{ cx0, P.y + S(196.0f), cw, S(66.0f) };
+                        const Rc r2{ cx0, P.y + S(268.0f), cw, S(66.0f) };
+
+                        if (ToggleRow(0, r0, "M√ºh…ôrrik", s_eng ? "ƒ∞≈ül…ôyir" : "S√∂nd√ºr√ºl√ºb", s_eng, dt, canInput) && pVehW)
+                                pVehW->ApplyEngineState(s_eng ? 0 : 1);
+                        if (ToggleRow(1, r1, "Fara", s_lig ? "Yanƒ±r" : "S√∂n√ºl√º", s_lig, dt, canInput) && pVehW)
+                                pVehW->ApplyLightState(s_lig ? 0 : 1);
+                        if (ToggleRow(2, r2, "Qapƒ±lar", s_lock ? "Kilidli" : "A√ßƒ±q", s_lock, dt, canInput) && pVehW)
+                                pVehW->SetDoorState(s_lock ? 0 : 1);
+
+                        SignalBlock(Rc{ cx0, P.y + S(346.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, canInput);
+                }
+                else if (s_page == 4)     // FAR
+                {
+                        char hb[40];
+                        if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far r…ôngi: Standart");
+                        else                       snprintf(hb, sizeof(hb), "Far r…ôngi: #%d", (int)s_tune.headlight);
+                        Txt(S(17.0f), cx0, P.y + S(128.0f), Col(214, 220, 232), hb);
+                        Txt(S(13.0f), cx0, P.y + S(152.0f), Col(124, 132, 152), "Hazƒ±rda yalnƒ±z hazƒ±r palitra ‚Äî s…ôrb…ôst r…ông se√ßimi √º√ß√ºn VehTuner/Coronas fayllarƒ± lazƒ±mdƒ±r.");
+
+                        for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+                        {
+                                uint8_t r, g, b;
+                                VehTuner::GetPaletteColor(i, r, g, b);
+
+                                const int   col = i % 8, rowi = i / 8;
+                                const float cxs = cx0 + S(24.0f) + col * S(58.0f);
+                                const float cys = P.y + S(200.0f) + rowi * S(58.0f);
+                                const Rc    sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+
+                                const int sid = ID_SWATCH + std::min(i, 23);
+                                if (Tap(sid, sq, canInput)) { s_tune.headlight = (uint8_t)i; changed = true; }
+
+                                const float p = Prs(sid, dt);
+                                Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
+                                if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+                        }
+                }
+                else if (s_page == 5)    // KOMANDALAR
+                {
+                        struct CmdInfo { const char* cmd; const char* desc; };
+                        static const CmdInfo kCmds[] = {
+                                { "/mm",      "Ma≈üƒ±n menyusunu a√ß/baƒüla" },
+                                { "/sinyal",  "sol | sag | avariya | off" },
+                                { "/far N",   "Far r…ôngi (0-15)" },
+                                { "/suret N", "Maksimum s√ºr…ôt" },
+
+
+===== g_mmTouch / PushTouch / UI_IsPointInHandlingDlg =====
+app/src/main/cpp/samp/gui/gui.cpp:64:static MMTouch g_mmTouch;
+app/src/main/cpp/samp/gui/gui.cpp:73:        void PushTouch(int type, float x, float y)
+app/src/main/cpp/samp/gui/gui.cpp:90:                g_mmTouch.pressed  = false;
+app/src/main/cpp/samp/gui/gui.cpp:91:                g_mmTouch.released = false;
+app/src/main/cpp/samp/gui/gui.cpp:98:                        g_mmTouch.x = e.x;
+app/src/main/cpp/samp/gui/gui.cpp:99:                        g_mmTouch.y = e.y;
+app/src/main/cpp/samp/gui/gui.cpp:100:                        g_mmTouch.events++;
+app/src/main/cpp/samp/gui/gui.cpp:102:                        if (e.type == TOUCH_PUSH) { g_mmTouch.down = true;  g_mmTouch.pressed  = true; break; }
+app/src/main/cpp/samp/gui/gui.cpp:103:                        if (e.type == TOUCH_POP)  { g_mmTouch.down = false; g_mmTouch.released = true; break; }
+app/src/main/cpp/samp/gui/gui.cpp:211:bool UI_IsPointInHandlingDlg(const ImVec2& p)
+app/src/main/cpp/samp/gui/gui.cpp:270:                p = Lerp(p, (s_act == id && g_mmTouch.down) ? 1.0f : 0.0f, 1.0f - expf(-dt * 24.0f));
+app/src/main/cpp/samp/gui/gui.cpp:278:                if (g_mmTouch.pressed && s_act == 0 && In(r, g_mmTouch.x, g_mmTouch.y)) s_act = id;
+app/src/main/cpp/samp/gui/gui.cpp:279:                if (g_mmTouch.released && s_act == id) return In(r, g_mmTouch.x, g_mmTouch.y);
+app/src/main/cpp/samp/gui/gui.cpp:311:                        const MMTouch& t = g_mmTouch;
+app/src/main/cpp/samp/gui/gui.cpp:330:                const bool dragging = (s_act == id && g_mmTouch.down);
+app/src/main/cpp/samp/gui/gui.cpp:556:        const MMTouch& tch = g_mmTouch;
+app/src/main/cpp/samp/gui/gui.cpp:862:        const bool inRect = g_mmTouch.x >= c.x - r && g_mmTouch.x <= c.x + r &&
+app/src/main/cpp/samp/gui/gui.cpp:863:                            g_mmTouch.y >= c.y - r && g_mmTouch.y <= c.y + r;
+app/src/main/cpp/samp/gui/gui.cpp:864:        if (g_mmTouch.down && inRect) {
+app/src/main/cpp/samp/gui/gui.cpp:1032:        PushTouch(tt, pos.x, pos.y);
+app/src/main/cpp/samp/gui/gui.cpp:1034:        if (tt == TOUCH_PUSH) s_dlgCapture = UI_IsPointInHandlingDlg(pos);
+app/src/main/cpp/samp/gui/gui.cpp:1039:        if (s_dlgCapturedEvent || UI_IsPointInHandlingDlg(pos))
+app/src/main/cpp/samp/gui/gui.cpp:1080:        PushTouch(type, (float)x, (float)y);
+app/src/main/cpp/samp/gui/gui.h:117:bool UI_IsPointInHandlingDlg(const ImVec2& p);
+
+
+===== app/src/main/cpp/samp/game/Coronas.cpp =====
+//
+// Created by x1y2z on 21.05.2023.
+//
+
+#include "Coronas.h"
+#include "../vendor/armhook/patch.h"
+#include "TxdStore.h"
+
+#if __has_include(<shadowhook.h>)
+#include <shadowhook.h>
+#define CORONAS_HAVE_SHADOWHOOK 1
+#endif
+
+
+// Creates corona by texture
+void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A3AAC + 1 : 0x6C71D0), id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flareType, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
+
+// Creates corona by type
+void CCoronas::RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn, float radius, float farClip, eCoronaType coronaType, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used, float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174), id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flareType, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
+void (*CCoronas__Init)();
+
+// ============================================================================
+//  FAR RENGI HOOK-U
+//
+//  Oyun on farin koronasini (CORONATYPE_HEADLIGHT) DoVehicleLights -> DoHeadLightEffect
+//  icinde RegisterCorona(eCoronaType) ile qeyde alir. Reng bayt-ofsetinde deyil,
+//  mehz bu cagirisin r/g/b parametrlerindedir. Buna gore burada hook qoyub, yalniz
+//  custom reng teyin olunmus masinin on far koronasinin rengini evez edirik.
+//
+//  Mehdudiyyet: yerdeki isiq konusu (DoHeadLightBeam) boyanmir, yalniz koronalar.
+// ============================================================================
+using RegisterCoronaTypeFn = void (*)(uint32, CEntityGTA*, uint8, uint8, uint8, uint8, const CVector*,
+                                      float, float, eCoronaType, eCoronaFlareType, bool, bool, int32,
+                                      float, bool, float, uint8, float, bool, bool);
+
+static RegisterCoronaTypeFn CCoronas__RegisterCorona_Type = nullptr;
+
+static void RegisterCorona_Type_hook(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha,
+                                     const CVector* posn, float radius, float farClip, eCoronaType coronaType,
+                                     eCoronaFlareType flareType, bool enableReflection, bool checkObstacles,
+                                     int32 _param_not_used, float angle, bool longDistance, float nearClip,
+                                     uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+{
+    const auto& ho = CCoronas::s_HeadlightOverride;
+
+    if (ho.active && !ho.inTail
+        && coronaType == eCoronaType::CORONATYPE_HEADLIGHT
+        && attachTo != nullptr
+        && static_cast<const void*>(attachTo) == ho.vehicle)
+    {
+        red   = ho.r;
+        green = ho.g;
+        blue  = ho.b;
+    }
+
+    CCoronas__RegisterCorona_Type(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType,
+                                  flareType, enableReflection, checkObstacles, _param_not_used, angle,
+                                  longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+}
+
+// Unvan il…ô inline hook: CHook-da unvan overload-u varsa onu, yoxdursa shadowhook-u istifade edir.
+// (C++20 `requires` ile derleme zamani secilir -> hansi variant olursa olsun KOMPILYASIYA ugurlu olur.)
+template <typename H, typename O>
+static bool InstallInlineHook(uintptr_t addr, H hook, O* orig)
+{
+    if constexpr (requires { CHook::InlineHook(addr, hook, orig); }) {
+        CHook::InlineHook(addr, hook, orig);
+        return true;
+    } else {
+#ifdef CORONAS_HAVE_SHADOWHOOK
+        void* stub = shadowhook_hook_func_addr(reinterpret_cast<void*>(addr),
+                                               reinterpret_cast<void*>(hook),
+                                               reinterpret_cast<void**>(orig));
+        return stub != nullptr;
+#else
+        return false;
+#endif
+    }
+}
+
+void CCoronas::InjectHooks() {
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679A84 : 0x851528), &CCoronas::SunScreenX);
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679784 : 0x850F20), &CCoronas::SunScreenY);
+
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00679F40 : 0x851E90), &CCoronas::SunBlockedByClouds);
+    CHook::Write(g_libGTASA + (VER_x32 ? 0x00675F6C : 0x849F60), &CCoronas::MoonSize);
+
+    // Far rengi: RegisterCorona(eCoronaType) hook-u.
+    if (!InstallInlineHook(g_libGTASA + (VER_x32 ? 0x005A3A20 + 1 : 0x6C7174),
+                           &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type)) {
+        FLog("CCoronas: RegisterCorona hook qurulmadi, far rengi islemeyecek");
+    }
+
+   // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);
+}
+
+// Initialises coronas
+// 0x6FAA70
+
+void CCoronas::Init() {
+    {
+        CCoronas__Init();
+        FLog("CCoronas::Init()");
+
+        CTxdStore::ScopedTXDSlot txd{"particle"};
+        //for (auto&& [tex, name, maskName] : rng::zip_view{ gpCoronaTexture, aCoronastar, coronaTexturesAlphaMasks }) { // TODO: C++23
+        //    if (!tex) {
+        //        tex = RwTextureRead(name, maskName);
+        //    }
+        //}
+//        for (auto i = 0; i < CORONA_TEXTURES_COUNT; i++) {
+//           gpCoronaTexture[i] = CUtil::LoadTextureFromDB("txd", "coronamoon");
+//
+//        }
+    }
+
+    for (auto & corona : aCoronas) {
+        corona = CRegisteredCorona{}; // reset every corona to its default state
+    }
+}
+
+void CCoronas::Render() {
+    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A23B8 + 1 : 0x6C5CD4) );
+}
+
+
+===== app/src/main/cpp/samp/game/Coronas.h =====
+//
+// Created by x1y2z on 21.05.2023.
+//
+
+#pragma once
+
+#include "common.h"
+#include "RegisteredCorona.h"
+#include "../Entity/CEntityGTA.h"
+
+// vehicle : hazirda isiqlari cekilen masin (yoxdursa nullptr)
+// active  : bu masinda custom far rengi var
+// inTail  : arxa far funksiyasinin icindeyik (onlari boyama!)
+struct CoronaHeadlightOverride {
+    const void* vehicle;
+    bool        active;
+    bool        inTail;
+    uint8       r, g, b;
+};
+
+class CCoronas {
+public:
+    static inline float SunScreenX;
+    static inline float SunScreenY;
+    // are there any obstacles between sun and camera
+    static inline bool SunBlockedByClouds;
+//    // change coronas brightness immediately
+//    static bool& bChangeBrightnessImmediately;
+//    // num of registered coronas in frame
+//    static uint32& NumCoronas;
+//    // coronas intensity multiplier
+//    static float& LightsMult;
+    // this is used to control moon size when you shooting it with sniper
+    static inline uint32 MoonSize = 3;
+    // Coronas array. count: MAX_NUM_CORONAS (default: 64)
+    static constexpr int32 MAX_NUM_CORONAS = 64;
+    static inline CRegisteredCorona aCoronas[MAX_NUM_CORONAS];
+//
+//    static uint16 (&ms_aEntityLightsOffsets)[8];
+//
+//    inline static struct { // NOTSA
+//        bool DisableWetRoadReflections;
+//        bool AlwaysRenderWetRoadReflections; // Ignored if if `DisableReflections == false`
+//    } s_DebugSettings{};
+
+    // FAR RENGI konteksti (struct sinifin XARICINDE tanimlanib, clang ucun vacibdir).
+    // CVehicleGTA.cpp -> DoVehicleLights hook-u doldurur, Coronas.cpp -> RegisterCorona hook-u oxuyur.
+    static inline CoronaHeadlightOverride s_HeadlightOverride{};
+
+public:
+    static void InjectHooks();
+
+    static void Init();
+    static void Shutdown();
+    static void Update();
+    static void Render();
+    static void RenderReflections();
+    static void RenderSunReflection();
+    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn,
+                               float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used,
+                               float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
+    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn,
+                               float radius, float farClip, eCoronaType coronaType, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used,
+                               float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
+
+    static void UpdateCoronaCoors(uint32 id, const CVector& posn, float farClip, float angle);
+    static void DoSunAndMoon();
+};
+
+extern uint32 MAX_CORONAS;
+constexpr int32 CORONA_TEXTURES_COUNT = 10;
+//static inline RwTexture* gpCoronaTexture[CORONA_TEXTURES_COUNT];
+
+static inline const char* aCoronaSpriteNames[] = {
+        "coronastar",
+        "coronamoon",
+        "coronasun",
+        "coronaboom",
+        "coronaplace",
+        "coronaarc",
+        "coronastatus",
+        "coronaright",
+        "coronalef",
+        "corona"
+};
+
+
+=====  =====
+(tapilmadi)
+
+
+=====  =====
+(tapilmadi)
+
+
+===== app/src/main/cpp/samp/game/VehControls.h =====
+#pragma once
+// ============================================================================
+//  VehControls.h  (YENI FAYL -> game/ qovluguna qoy, VehTuner.h-in yanina)
+//  Masin sinyal sistemi (sol / sag / avariya). Hazirda yalniz yerli oyuncuya gorunur.
+//  Realizasiya: CVehicleGTA.cpp icinde (DoVehicleLights hook-u RenderSignals-i cagirir).
+// ============================================================================
+#include <cstdint>
+
+struct CVehicleGTA;
+
+enum
+{
+	VEH_SIGNAL_OFF    = 0,
+	VEH_SIGNAL_LEFT   = 1,
+	VEH_SIGNAL_RIGHT  = 2,
+	VEH_SIGNAL_HAZARD = 3
+};
+
+namespace VehControls
+{
+	uint8_t GetSignal(CVehicleGTA* veh);
+	void    SetSignal(CVehicleGTA* veh, uint8_t mode);
+	void    ToggleSignal(CVehicleGTA* veh, uint8_t mode);   // eyni rejim yeniden -> sondur
+	void    Forget(CVehicleGTA* veh);                       // masin silinende
+	bool    BlinkOn();                                      // yanma fazasi (UI de bunu istifade edir)
+	void    RenderSignals(CVehicleGTA* veh);                // DoVehicleLights hook-undan cagirilir
+}
+
+
+===== hooks.cpp toxunus =====
+fayl: app/src/main/cpp/samp/game/hooks.cpp
+467-				break;
+468-		}
+469-
+470:        if (UI_HandlingDlgCapturedEvent()) {
+471-            return AND_TouchEvent(1, 0, 0, 0);
+472-        }
+473-
+474-        if (pUI->keyboard()->visible() || pUI->dialog()->visible()) {
+475-            AND_TouchEvent(1, 0, 0, 0);
+476-            return;
+477-        }
+478-        else
+479-        {
+480-            if (pNetGame && pNetGame->GetTextDrawPool())
+481-            {
+482-                if (!pNetGame->GetTextDrawPool()->onTouchEvent(type, num, posX, posY)) {
+483-                    return AND_TouchEvent(1, 0, 0, 0);
+484-                }
+485-            }
+486-        }
+487-	}
+488-
+489-	if (pGame->IsGameInputEnabled())
+490-		AND_TouchEvent(type, num, posX, posY);
+491-	else
+492-		AND_TouchEvent(1, 0, 0, 0);
+493-}
+494-
+495-/* =============================================================================== */
+
+
+===== native HUD / radar =====
+app/src/main/cpp/samp/game/game.cpp:340:	// CRadar::DrawAreaOnRadar
+app/src/main/cpp/samp/game/game.cpp:743:    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x0046FF38 + 1 : 0x55C1C8)); // CHud::Initialise();
+app/src/main/cpp/samp/game/hooks.cpp:146:    //((void (*)()) (g_libGTASA + (VER_x32 ? 0x00437B0C + 1 : 0x51CFF0)))(); // CHud::DrawRadar
+app/src/main/cpp/samp/game/hooks.cpp:147:    //CHook::CallFunction<void>("_ZN4CHud14DrawScriptTextEh", true);
+app/src/main/cpp/samp/game/hooks.cpp:148:    CHook::CallFunction<void>("_ZN4CHud4DrawEv");
+app/src/main/cpp/samp/game/hooks.cpp:170:int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char* name);
+app/src/main/cpp/samp/game/hooks.cpp:171:int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char* name)
+app/src/main/cpp/samp/game/hooks.cpp:186:	return CRadar__SetCoordBlip(r0, X, Y, Z, r4, r5, name);
+app/src/main/cpp/samp/game/hooks.cpp:191:void(*CRadar_DrawRadarGangOverlay)(uint32_t unk);
+app/src/main/cpp/samp/game/hooks.cpp:192:void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
+app/src/main/cpp/samp/game/hooks.cpp:425:uint32_t CRadar__GetRadarTraceColor(uint32_t color, uint8_t bright, uint8_t friendly)
+app/src/main/cpp/samp/game/hooks.cpp:431:uint32_t CHudColours__GetIntColour(uint32 colour_id)
+app/src/main/cpp/samp/game/hooks.cpp:436:uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
+app/src/main/cpp/samp/game/hooks.cpp:1193:void (*CRadar_ClearBlip)(uint32_t a2);
+app/src/main/cpp/samp/game/hooks.cpp:1194:void CRadar_ClearBlip_hook(uint32_t a2)
+app/src/main/cpp/samp/game/hooks.cpp:1199:	//LOGI("[CRadar::ClearBlip]: %d called from 0x%X", (uint16_t)a2, dwRetAddr);
+app/src/main/cpp/samp/game/hooks.cpp:1203:		LOGI("[CRadar::ClearBlip]: Invalid blip ID (%d) called from 0x%X", (uint16_t)a2, dwRetAddr);
+app/src/main/cpp/samp/game/hooks.cpp:1207:		CRadar_ClearBlip(a2);
+app/src/main/cpp/samp/game/hooks.cpp:1256:	//CHook::InstallPLT(g_libGTASA + 0x67196C, (uintptr_t)CRadar_DrawRadarGangOverlay_hook, (uintptr_t*)&CRadar_DrawRadarGangOverlay);
+app/src/main/cpp/samp/game/hooks.cpp:1258:	//CHook::InstallPLT(g_libGTASA+0x675914, (uintptr_t)CRadar__SetCoordBlip_hook, (uintptr_t*)&CRadar__SetCoordBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1269:	//CHook::InstallPLT(g_libGTASA + 0x673950, (uintptr_t)CHudColours__GetIntColour_hook, (uintptr_t*)& CHudColours__GetIntColour);
+app/src/main/cpp/samp/game/hooks.cpp:1303:	CHook::InstallPLT(g_libGTASA + 0x66FF0C, (uintptr_t)CRadar_ClearBlip_hook, (uintptr_t*)&CRadar_ClearBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1845:    CHook::Redirect("_ZN11CHudColours12GetIntColourEh", &CHudColours__GetIntColour); // dangerous
+app/src/main/cpp/samp/game/hooks.cpp:1846:    CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
+app/src/main/cpp/samp/game/hooks.cpp:1847:    CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1848:    CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
+app/src/main/cpp/samp/game/hooks.cpp:1866:    CHook::InlineHook("_ZN6CRadar9ClearBlipEi", &CRadar_ClearBlip_hook, &CRadar_ClearBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1906:    CHook::InlineHook("_ZN4CHud14DrawCrossHairsEv", &DrawCrosshair_hook, &DrawCrosshair);
+app/src/main/cpp/samp/game/patches.cpp:252:    CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend
+app/src/main/cpp/samp/game/patches.cpp:253:    CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList
+app/src/main/cpp/samp/game/patches.cpp:265:    CHook::RET("_ZN4CHud23DrawBustedWastedMessageEv"); // CHud::DrawBustedWastedMessage
+app/src/main/cpp/samp/game/patches.cpp:266:    CHook::RET("_ZN4CHud14SetHelpMessageEPKcPtbbbj"); // CHud::SetHelpMessage
+app/src/main/cpp/samp/game/patches.cpp:267:    CHook::RET("_ZN4CHud24SetHelpMessageStatUpdateEhtff"); // CHud::SetHelpMessageStatUpdate
+
+
+===== workflow =====
+--- .github/workflows/android.yml
+name: Build SAMP-Mobile
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      addrs:
+        description: "Crash √ºnvanlarƒ± (m…ôs: 0x16c81c 0x16c818). Bo≈ü qalsa crash.log oxunur"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ---------------------------------------------------------------
+      # Vendor daxilind…ôki b√ºt√ºn .c v…ô .h fayllarƒ±nƒ± sil
+      # ---------------------------------------------------------------
+ 
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK (NDK, CMake, licenses)
+        shell: bash
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+
+          NDK=$(grep -rhoE "ndkVersion\s*=?\s*['\"][0-9.]+['\"]" --include=*.gradle --include=*.kts . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || true)
+          CMK=$(grep -rhoE "version\s*=?\s*['\"][0-9]+\.[0-9]+\.[0-9]+['\"]" --include=*.gradle --include=*.kts . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || true)
+
+          PKGS="platform-tools"
+          [ -n "$NDK" ] && PKGS="$PKGS ndk;$NDK" || PKGS="$PKGS ndk;26.1.10909125"
+          [ -n "$CMK" ] && PKGS="$PKGS cmake;$CMK" || PKGS="$PKGS cmake;3.22.1"
+          echo "Installing: $PKGS"
+          "$SDKM" $PKGS || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Fix case-sensitivity (Windows-style paths)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from collections import defaultdict
+
+          ROOT = os.getcwd()
+          SKIP = {'.git', 'build', '.gradle', '.cxx', 'node_modules'}
+
+          files = []
+          for d, dn, fn in os.walk(ROOT):
+              dn[:] = [x for x in dn if x not in SKIP]
+              for f in fn:
+                  rel = os.path.relpath(os.path.join(d, f), ROOT)
+                  files.append(rel.replace(os.sep, '/'))
+
+          by_name = defaultdict(list)
+          for p in files:
+              by_name[p.rsplit('/', 1)[-1].lower()].append(p)
+
+          def resolve(ref):
+              clean = ref.replace('\\', '/')
+              prefix = ''
+              while True:
+                  if clean.startswith('./'):
+                      prefix += './'; clean = clean[2:]
+                  elif clean.startswith('../'):
+                      prefix += '../'; clean = clean[3:]
+                  elif clean.startswith('/'):
+                      prefix += '/'; clean = clean[1:]
+                  else:
+                      break
+              if not clean:
+                  return None
+              parts = clean.split('/')
+              lc = clean.lower()
+              matches = [c for c in by_name.get(parts[-1].lower(), [])
+                         if c.lower() == lc or c.lower().endswith('/' + lc)]
+              if not matches:
+                  return None
+              if any(m == clean or m.endswith('/' + clean) for m in matches):
+                  return prefix + clean if '\\' in ref else None
+              fixed = {'/'.join(m.split('/')[-len(parts):]) for m in matches}
+              if len(fixed) != 1:
+                  return None
+              return prefix + fixed.pop()
+
+          INC = re.compile(r'(#\s*include\s*)(["<])([^">\n]+)([">])')
+          BLD = re.compile(r'[A-Za-z0-9_\-./]+\.(?:c|cc|cpp|cxx|h|hpp|inc|S|s)(?![A-Za-z0-9_])')
+          SRC_EXT = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.inc', '.mm'}
+
+          def fix_inc(m):
+              ref = m.group(3)
+              if m.group(2) == '<' and '/' not in ref:
+                  return m.group(0)
+              new = resolve(ref)
+              return m.group(1) + m.group(2) + new + m.group(4) if new else m.group(0)
+
+          def fix_bld(m):
+              new = resolve(m.group(0))
+              return new if new else m.group(0)
+
+          changed = 0
+          for p in files:
+              name = os.path.basename(p)
+              ext = os.path.splitext(name)[1].lower()
+              if ext in SRC_EXT:
+                  rx, fn = INC, fix_inc
+              elif name == 'CMakeLists.txt' or ext in {'.cmake', '.mk', '.gradle', '.kts'}:
+                  rx, fn = BLD, fix_bld
+              else:
+                  continue
+              path = os.path.join(ROOT, p)
+              try:
+                  with open(path, 'r', encoding='utf-8', errors='surrogateescape', newline='') as f:
+                      old = f.read()
+              except Exception:
+                  continue
+              new = rx.sub(fn, old)
+              if new != old:
+                  with open(path, 'w', encoding='utf-8', errors='surrogateescape', newline='') as f:
+                      f.write(new)
+                  changed += 1
+                  print('fixed:', p)
+          print('Total files fixed:', changed)
+          PY
+
+      - name: Add JitPack repo (init script)
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/jitpack.gradle <<'EOF'
+          gradle.settingsEvaluated { settings ->
+            try {
+              settings.dependencyResolutionManagement {
+--- .github/workflows/ayble.yaml
+      - name: Symbolize crash
+        run: |
+          SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name libsamp.so | head -1)
+          echo "$SO"
+          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-addr2line -f -C -e "$SO" 0x16c704 0x175bd8 0x16dea8 0x16e50c 0x134f0c--- .github/workflows/log.yml
+      - name: Symbolize crash
+        run: |
+          SO=$(find app/build/intermediates/cxx -path "*arm64-v8a*" -name libsamp.so | head -1)
+          ADDR2LINE=$(find $ANDROID_NDK_HOME -name "llvm-addr2line" | head -1)
+          $ADDR2LINE -f -C -e "$SO" 0x16a0c0 0x16d19c 0x16b61c 0x16bc80 0x131f6c 0x17334c--- .github/workflows/test.yaml
+name: Check Lib Symbols
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and run nm on all libGTASA.so files
+        run: |
+          echo "=== Tapƒ±lan libGTASA.so fayllarƒ± v…ô simvollar ==="
+          
+          # Repoda n…ô q…ôd…ôr libGTASA.so varsa hamƒ±sƒ±nƒ± avtomatik tapƒ±r v…ô yoxlayƒ±r
+          find . -name "libGTASA.so" | while read -r file; do
+            echo ""
+            echo "----------------------------------------"
+            echo "Fayl tapƒ±ldƒ±: $file"
+            echo "----------------------------------------"
+            nm -D "$file" | grep -i -E "plate|CustomCar" || echo "Bu faylda uyƒüun simvol tapƒ±lmadƒ±."
+          done

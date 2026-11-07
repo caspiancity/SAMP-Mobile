@@ -4,6 +4,7 @@
 #include "../game/vehicle.h"
 #include "../game/VehTuner.h"
 #include "../game/VehControls.h"
+#include "../game/AzPlate.h"
 #include "gui.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -188,6 +189,8 @@ bool UI::initialize()
 void UI::render()
 {
         ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
+
+        AzPlate::ProcessPending();   // nomre teksturalari (ImGui kadrindan evvel)
 
         ImGuiWrapper::render();
 
@@ -442,6 +445,24 @@ namespace mm
         }
 }
 
+// ---- AZ nomre lovhesi onizlemesi (/mm -> Nomre) ----
+static void PlatePreview(const mm::Rc& r, const char* text)
+{
+        using namespace mm;
+        Fill(r, Col(14, 14, 14, 255), S(10.0f));
+        const Rc in = Shrink(r, S(3.5f));
+        Fill(in, Col(248, 248, 248, 255), S(8.0f));
+        const float bandW = in.w * 0.14f;
+        Fill(Rc{ in.x, in.y, bandW, in.h }, Col(0, 86, 170, 255), S(8.0f));
+        const float fw = bandW * 0.62f, fh = in.h * 0.085f;
+        const float fx = in.x + (bandW - fw) * 0.5f, fy = in.y + in.h * 0.17f;
+        Fill(Rc{ fx, fy, fw, fh },               Col(0, 174, 239, 255), 0.0f);
+        Fill(Rc{ fx, fy + fh, fw, fh },          Col(224, 60, 49, 255), 0.0f);
+        Fill(Rc{ fx, fy + 2.0f * fh, fw, fh },   Col(0, 150, 63, 255),  0.0f);
+        TxtC(in.h * 0.28f, Rc{ in.x, in.y + in.h * 0.52f, bandW, in.h * 0.36f }, Col(255, 255, 255, 255), "AZ", true);
+        TxtC(in.h * 0.56f, Rc{ in.x + bandW, in.y, in.w - bandW, in.h }, Col(12, 12, 12, 255), text, true);
+}
+
 void RenderHandlingDialog()
 {
         using namespace mm;
@@ -614,15 +635,15 @@ void RenderHandlingDialog()
         }
 
         // --- sidebar ---
-        static const char* kPages[6] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" };
-        static const char* kSubs[6]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" };
+        static const char* kPages[7] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" , "Nömrə" };
+        static const char* kSubs[7]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" , "Azərbaycan nömrə lövhəsi (10-AA-123)" };
         {
                 s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
                 const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
                 Fill(ind, Col(255, 255, 255, 12), S(10.0f));
                 Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
 
-                for (int i = 0; i < 6; ++i)
+                for (int i = 0; i < 7; ++i)
                 {
                         const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
                         if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
@@ -716,6 +737,117 @@ void RenderHandlingDialog()
                                 Txt(S(15.0f), row.x + S(16.0f), row.y + (row.h - S(15.0f)) * 0.5f, Accent(0.0f), kCmds[i].cmd);
                                 Txt(S(14.0f), row.x + S(160.0f), row.y + (row.h - S(14.0f)) * 0.5f, Col(200, 204, 216), kCmds[i].desc);
                         }
+                }
+                else if (s_page == 6)    // NOMRE (Azerbaycan)
+                {
+                        static int  s_plReg = 10, s_plL1 = 0, s_plL2 = 0, s_plNum = 123;
+                        static CVehicleGTA* s_plVeh = nullptr;
+                        static char  s_plMsg[96] = "";
+                        static float s_plMsgT = 0.0f;
+
+                        if (gtaVeh != s_plVeh) {
+                                s_plVeh = gtaVeh;
+                                std::string cur;
+                                if (gtaVeh && AzPlate::Get(gtaVeh, cur) && cur.size() == 9) {
+                                        s_plReg = (cur[0] - '0') * 10 + (cur[1] - '0');
+                                        s_plL1  = cur[3] - 'A';
+                                        s_plL2  = cur[4] - 'A';
+                                        s_plNum = (cur[6] - '0') * 100 + (cur[7] - '0') * 10 + (cur[8] - '0');
+                                }
+                        }
+                        s_plMsgT = Clamp(s_plMsgT - dt / 3.0f, 0.0f, 1.0f);
+
+                        auto wrap = [](int v, int n) { return ((v % n) + n) % n; };
+
+                        // [-10][-1] deyer [+1][+10]  (big)   ve ya   [-] deyer [+]
+                        auto stepper = [&](int idBase, const Rc& row, const char* label, const char* val, bool big) -> int {
+                                Fill(row, Col(27, 30, 40, 255), S(10.0f));
+                                Txt(S(15.0f), row.x + S(14.0f), row.y + (row.h - S(15.0f)) * 0.5f, Col(200, 206, 220), label);
+
+                                const int   side = big ? 2 : 1;
+                                const int   nb = side * 2;
+                                const float bw = S(44.0f), bh = S(34.0f), gap = S(6.0f), valW = S(72.0f);
+                                const float total = nb * bw + nb * gap + valW;
+                                float x = row.x + row.w - S(12.0f) - total;
+                                const float by = row.y + (row.h - bh) * 0.5f;
+                                static const char* lbBig[4]   = { "-10", "-1", "+1", "+10" };
+                                static const char* lbSmall[2] = { "-", "+" };
+                                static const int   dBig[4]    = { -10, -1, 1, 10 };
+                                static const int   dSmall[2]  = { -1, 1 };
+                                int delta = 0;
+                                for (int k = 0; k < nb; ++k) {
+                                        if (k == side) {
+                                                TxtC(S(21.0f), Rc{ x, by, valW, bh }, Accent(0.0f), val, true);
+                                                x += valW + gap;
+                                        }
+                                        const Rc b{ x, by, bw, bh };
+                                        const int id = idBase + k;
+                                        if (Tap(id, b, canInput)) delta = big ? dBig[k] : dSmall[k];
+                                        const float p = Prs(id, dt);
+                                        Fill(Shrink(b, S(1.2f) * p), Col(255, 255, 255, 16 + (int)(34.0f * p)), S(8.0f));
+                                        TxtC(S(15.0f), b, Col(226, 230, 240), big ? lbBig[k] : lbSmall[k], true);
+                                        x += bw + gap;
+                                }
+                                return delta;
+                        };
+
+                        char plate[16];
+                        snprintf(plate, sizeof(plate), "%02d-%c%c-%03d", s_plReg, 'A' + s_plL1, 'A' + s_plL2, s_plNum);
+                        PlatePreview(Rc{ cx0 + (cw - S(420.0f)) * 0.5f, P.y + S(124.0f), S(420.0f), S(105.0f) }, plate);
+
+                        char sReg[8], sL1[4], sL2[4], sNum[8];
+                        snprintf(sReg, sizeof(sReg), "%02d", s_plReg);
+                        snprintf(sL1, sizeof(sL1), "%c", 'A' + s_plL1);
+                        snprintf(sL2, sizeof(sL2), "%c", 'A' + s_plL2);
+                        snprintf(sNum, sizeof(sNum), "%03d", s_plNum);
+
+                        s_plReg = wrap(s_plReg + stepper(80, Rc{ cx0, P.y + S(244.0f), cw, S(46.0f) }, "Region kodu", sReg, false), 100);
+                        s_plL1  = wrap(s_plL1  + stepper(82, Rc{ cx0, P.y + S(296.0f), cw * 0.49f, S(46.0f) }, "Hərf 1", sL1, false), 26);
+                        s_plL2  = wrap(s_plL2  + stepper(84, Rc{ cx0 + cw * 0.51f, P.y + S(296.0f), cw * 0.49f, S(46.0f) }, "Hərf 2", sL2, false), 26);
+                        s_plNum = wrap(s_plNum + stepper(86, Rc{ cx0, P.y + S(348.0f), cw, S(46.0f) }, "Rəqəmlər", sNum, true), 1000);
+
+                        const Rc bApply{ cx0, P.y + S(412.0f), S(190.0f), S(44.0f) };
+                        const Rc bRand { cx0 + S(204.0f), P.y + S(412.0f), S(190.0f), S(44.0f) };
+                        const Rc bOff  { cx0 + S(408.0f), P.y + S(412.0f), S(190.0f), S(44.0f) };
+
+                        if (Tap(90, bApply, canInput) && gtaVeh) {
+                                std::string norm;
+                                AzPlate::Normalize(plate, norm);
+                                if (AzPlate::Set(gtaVeh, norm)) snprintf(s_plMsg, sizeof(s_plMsg), "Tətbiq edildi: %s", plate);
+                                else snprintf(s_plMsg, sizeof(s_plMsg), "Bu maşında nömrə lövhəsi materialı tapılmadı");
+                                s_plMsgT = 1.0f;
+                        }
+                        if (Tap(91, bRand, canInput)) {
+                                static const int kReg[4] = { 10, 90, 99, 77 };
+                                s_plReg = kReg[rand() % 4];
+                                s_plL1 = rand() % 26;
+                                s_plL2 = rand() % 26;
+                                s_plNum = rand() % 1000;
+                        }
+                        if (Tap(92, bOff, canInput) && gtaVeh) {
+                                AzPlate::Clear(gtaVeh);
+                                snprintf(s_plMsg, sizeof(s_plMsg), "Standart nömrəyə qayıdıldı");
+                                s_plMsgT = 1.0f;
+                        }
+
+                        auto btn = [&](int id, const Rc& b, const char* label, bool primary) {
+                                const float p = Prs(id, dt);
+                                const Rc d = Shrink(b, S(1.5f) * p);
+                                if (primary) {
+                                        Fill(d, Accent(0.0f, 190 + (int)(40.0f * p)), S(9.0f));
+                                } else {
+                                        Fill(d, Col(255, 255, 255, 14 + (int)(30.0f * p)), S(9.0f));
+                                        Stroke(d, Col(255, 255, 255, 40), S(9.0f), S(1.2f));
+                                }
+                                TxtC(S(16.0f), d, Col(240, 244, 252), label, true);
+                        };
+                        btn(90, bApply, "Tətbiq et", true);
+                        btn(91, bRand, "Təsadüfi", false);
+                        btn(92, bOff, "Standart", false);
+
+                        if (s_plMsgT > 0.01f)
+                                Txt(S(15.0f), cx0, P.y + S(468.0f), Col(120, 215, 160, (int)(255.0f * s_plMsgT)), s_plMsg);
+                        Txt(S(12.0f), cx0, P.y + S(500.0f), Col(124, 132, 152), "Qeyd: nömrə yalnız sizin ekranınızda görünür.");
                 }
                 else                      // HANDLING SEHIFELERI
                 {

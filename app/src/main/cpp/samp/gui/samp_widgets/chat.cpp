@@ -7,6 +7,7 @@
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/VehControls.h"
+#include "../../game/AzPlate.h"
 #include "../../LuaManager.h"
 
 extern UI* pUI;
@@ -163,6 +164,65 @@ bool ProcessClientCommands(const std::string& input)
                         return true;
                 }
                 g_bShowHandlingDlg = !g_bShowHandlingDlg;
+                return true;
+        }
+
+        if (cmd == "/sinyalayar")
+        {
+                std::string a;
+                ss >> a;
+                std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+                if (a == "ters") {
+                        VehControls::g_sigSwapSides = !VehControls::g_sigSwapSides;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
+                } else if (a == "korona") {
+                        VehControls::g_sigCorona = !VehControls::g_sigCorona;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
+                } else {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona]");
+                }
+                return true;
+        }
+
+        if (cmd == "/nomre")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string arg;
+                ss >> arg;
+                std::string low = arg;
+                std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+
+                if (low == "off" || low == "0") {
+                        AzPlate::Clear(pVeh->m_pVehicle);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Standart nomreye qayidildi.");
+                        return true;
+                }
+
+                std::string norm;
+                if (!AzPlate::Normalize(arg, norm)) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /nomre 10-AA-123  (ve ya /nomre off)");
+                        return true;
+                }
+                if (AzPlate::Set(pVeh->m_pVehicle, norm))
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Nomre: %s", norm.c_str());
+                else
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Bu masinda nomre lovhesi materiali tapilmadi (carplate/nomer).");
                 return true;
         }
 

@@ -1,0 +1,215 @@
+
+
+===== 1) m_renderLights / RenderLightsFlags istifadesi =====
+
+
+===== 2) DoVehicleLights-in TAM govdesi (RenderLightsFlags-in iclerde necə işlədiyini görmək üçün) =====
+fayl: app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp
+void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint32 nLightFlags)
+{
+    uint8_t old = thiz->m_nVehicleFlags.bEngineOn;
+    thiz->m_nVehicleFlags.bEngineOn = 1;
+
+    auto& ho = CCoronas::s_HeadlightOverride;
+    ho.vehicle = thiz;
+    ho.inTail  = false;
+    ho.r = ho.g = ho.b = 255;
+    ho.active  = VehTuner::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
+
+    CVehicle__DoVehicleLights(thiz, matVehicle, nLightFlags);
+
+    ho.vehicle = nullptr;
+    ho.active  = false;
+    ho.inTail  = false;
+
+    thiz->m_nVehicleFlags.bEngineOn = old;
+
+    VehControls::RenderSignals(thiz);
+}
+
+// DUZELDILDI: parametr tipleri oyundaki real imza ile uygunlasdirildi
+// (_ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh -> int, CMatrix&, uchar, uchar, uint, uchar).
+// int ile oxuyanda x64-de yuxari bitlerde zibil ola bilerdi.
+bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMatrix* matVehicle, uint8_t isRight, uint8_t forcedOff, uint32_t nLightFlags, uint8_t lightsOn) {
+
+    constexpr int REVERSE_LIGHT_OFFSET = 5;
+
+    // Arxa far koronalari ON far rengi ile boyanmasin
+    CCoronas::s_HeadlightOverride.inTail = true;
+
+    auto pModelInfoStart = CModelInfo::GetVehicleModelInfo(thisVehicle->m_nModelIndex);
+
+    CVector* m_avDummyPos = pModelInfoStart->m_pVehicleStruct->m_avDummyPos;
+
+    auto v = CVector(m_avDummyPos[1]);
+
+    if (!isRight)
+        v.x = -v.x;
+
+    uint8_t alpha = (thisVehicle->m_fBreakPedal > 0) ? 200 : 96;
+    if (thisVehicle->GetLightsStatus() || (thisVehicle->m_fBreakPedal > 0 && thisVehicle->pDriver)) {
+        CCoronas::RegisterCorona(
+                (uintptr) &thisVehicle->m_placement.m_vPosn.y + 2 * lightId + isRight,
+                thisVehicle,
+                100, 0, 0, alpha,
+                &v,
+                0.65f,
+                /*TheCamera.LODDistMultiplier*/ 70.f,
+                eCoronaType::CORONATYPE_HEADLIGHT,
+                eCoronaFlareType::FLARETYPE_NONE,
+                false,
+                false,
+                0,
+                0.0f,
+                false,
+                0,
+                0,
+                15.0f,
+                false,
+
+
+===== 3) m_pCustomCarPlate istifadesi (CVehicleGTA.h-dan basqa) =====
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp:26://    SetCarCustomPlate();
+app/src/main/cpp/samp/game/Models/VehicleModelInfo.cpp:149:                mat->texture = CCustomPlateManager::GetNoPlateTex();
+app/src/main/cpp/samp/game/patches.cpp:209:    CHook::RET("_ZN17CVehicleModelInfo17SetCarCustomPlateEv"); // default plate
+app/src/main/cpp/samp/game/patches.cpp:257:CHook::RET("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo");
+app/src/main/cpp/samp/game/patches.cpp:259:CHook::RET("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo");
+app/src/main/cpp/samp/net/scriptrpc.cpp:910:void ScrSetVehicleNumberPlate(RPCParameters* rpcParams)
+app/src/main/cpp/samp/net/scriptrpc.cpp:1976:	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrNumberPlate, ScrSetVehicleNumberPlate);
+app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.cpp:109:int RPC_ScrNumberPlate = 123;
+app/src/main/cpp/samp/vendor/raknet/SAMP/SAMPRPC.h:108:extern int RPC_ScrNumberPlate;
+
+
+===== 4) tekstura yaratma alətləri (RwTextureCreate/stb_image ve s.) =====
+app/src/main/cpp/samp/game/Coronas.cpp
+app/src/main/cpp/samp/game/CrossHair.cpp
+app/src/main/cpp/samp/game/RW/RenderWare.cpp
+app/src/main/cpp/samp/game/RW/raster.h
+app/src/main/cpp/samp/game/RW/rwcore.cpp
+app/src/main/cpp/samp/game/RW/rwcore.h
+app/src/main/cpp/samp/game/ShadowCamera.cpp
+app/src/main/cpp/samp/game/Shadows.cpp
+app/src/main/cpp/samp/game/Widgets/WidgetGta.cpp
+app/src/main/cpp/samp/game/game.cpp
+app/src/main/cpp/samp/game/materialtextgenerator.cpp
+app/src/main/cpp/samp/game/snapshothelper.cpp
+app/src/main/cpp/samp/game/textdraw.cpp
+app/src/main/cpp/samp/game/util.cpp
+app/src/main/cpp/samp/gui/imguiwrapper.cpp
+app/src/main/cpp/samp/gui/samp_widgets/voicebutton.h
+app/src/main/cpp/samp/gui/widgets/image.cpp
+app/src/main/cpp/samp/net/netgame.cpp
+app/src/main/cpp/samp/playertags.cpp
+app/src/main/cpp/samp/util/CUtil.cpp
+app/src/main/cpp/samp/util/CUtil.h
+app/src/main/cpp/samp/vendor/imgui/imgui.cpp
+app/src/main/cpp/samp/voice_new/MicroIcon.cpp
+app/src/main/cpp/samp/voice_new/SpeakerList.cpp
+
+
+===== 5) plak teksturu/material ustunde setTexture (plate elave olunan yer) =====
+app/src/main/cpp/samp/game/Enums/eModelID.h:1907:    MODEL_TURN_PLATER_R = 1953,
+app/src/main/cpp/samp/game/Enums/eModelID.h:1910:    MODEL_TURN_PLATERL = 1956,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2766:    MODEL_GB_PLATEDIRTY01 = 2812,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2776:    MODEL_GB_KITCHPLATECLN01 = 2822,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2783:    MODEL_GB_PLATEDIRTY02 = 2829,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2784:    MODEL_GB_PLATEDIRTY04 = 2830,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2785:    MODEL_GB_PLATEDIRTY03 = 2831,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2786:    MODEL_GB_PLATEDIRTY05 = 2832,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2816:    MODEL_GB_KITCHPLATECLN02 = 2862,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2817:    MODEL_GB_KITCHPLATECLN03 = 2863,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2818:    MODEL_GB_KITCHPLATECLN04 = 2864,
+app/src/main/cpp/samp/game/Enums/eModelID.h:2819:    MODEL_GB_KITCHPLATECLN05 = 2865,
+app/src/main/cpp/samp/game/Enums/eSurfaceType.h:63:    SURFACE_THICK_METAL_PLATE = 51,
+app/src/main/cpp/samp/game/RW/RwHelper.cpp:14:    RwFrameForAllObjects(frame, GetFirstObjectCallback, &obj);
+app/src/main/cpp/samp/game/RW/rwcore.cpp:85:RwFrame* RwFrameForAllObjects(RwFrame* frame, RwObjectCallBack callBack, void* data) {
+app/src/main/cpp/samp/game/RW/rwcore.h:973:RwFrame* RwFrameForAllObjects(RwFrame* frame, RwObjectCallBack callBack, void* data);
+app/src/main/cpp/samp/game/RW/types.h:148: * \see RwFrameForAllObjects
+app/src/main/cpp/samp/game/hooks.cpp:297:					RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialCallBack, pObject);
+app/src/main/cpp/samp/game/hooks.cpp:304:                    RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialTextCallBack, pObject);
+app/src/main/cpp/samp/game/patches.cpp:255:    #define ENABLE_CUSTOM_PLATE 0
+app/src/main/cpp/samp/game/patches.cpp:256:#if !ENABLE_CUSTOM_PLATE
+app/src/main/cpp/samp/vendor/SimpleIni/SimpleIni.h:267://							  MAIN TEMPLATE CLASS
+app/src/main/cpp/samp/vendor/raknet/BigTypes.h:610:#if defined(NO_TEMPLATE_INLINE_ASSEMBLY) && defined(ASSEMBLY_INTEL_SYNTAX)
+app/src/main/cpp/samp/vendor/raknet/BigTypes.h:659:#if defined(NO_TEMPLATE_INLINE_ASSEMBLY) && defined(ASSEMBLY_INTEL_SYNTAX)
+app/src/main/cpp/samp/vendor/raknet/BigTypes.h:732:#if defined(NO_TEMPLATE_INLINE_ASSEMBLY) && defined(ASSEMBLY_INTEL_SYNTAX)
+app/src/main/cpp/samp/vendor/raknet/BigTypes.h:781:#if defined(NO_TEMPLATE_INLINE_ASSEMBLY) && defined(ASSEMBLY_INTEL_SYNTAX)
+app/src/main/cpp/samp/vendor/raknet/Types.h:63:/// - NO_TEMPLATE_INLINE_ASSEMBLY
+app/src/main/cpp/samp/vendor/raknet/Types.h:238:# define NO_TEMPLATE_INLINE_ASSEMBLY
+
+
+===== 6) RwTexture/RwRaster strukturlarinin tanimlari (elimizde nə var) =====
+app/src/main/cpp/samp/game/RW/raster.h
+app/src/main/cpp/samp/game/RW/rwcore.h
+app/src/main/cpp/samp/game/RW/rwplcore.h
+app/src/main/cpp/samp/game/RealTimeShadow.h
+--- app/src/main/cpp/samp/game/RW/rwcore.h ---
+#pragma once
+
+#include "rwplcore.h"
+
+
+#define RwFrameGetParentMacro(_f)   ((RwFrame *)rwObjectGetParent(_f))
+#if (! ( defined(RWDEBUG) || defined(RWSUPPRESSINLINE) ))
+#define RwFrameGetParent(_f)    RwFrameGetParentMacro(_f)
+#endif
+
+#define RwFrameGetMatrixMacro(_f)   (&(_f)->modelling)
+#if (! ( defined(RWDEBUG) || defined(RWSUPPRESSINLINE) ))
+#define RwFrameGetMatrix(_f)    RwFrameGetMatrixMacro(_f)
+#endif
+
+#define RwIm3DVertexGetPos(_vert) (&((_vert)->objVertex))
+#define RwIm3DVertexGetNormal(vert) (&((vert)->objNormal))
+
+
+//-----------------------------------------------------------
+
+#define RW_FRAME_NAME_LENGTH      23
+struct RwListEntry
+{
+    RwListEntry* next, * prev;
+};
+
+struct RwList
+{
+    RwListEntry root;
+};
+
+struct RwFrame
+{
+    RwObject        object;                 // 0
+    RwLLLink        inDirtyListLink;
+    RwMatrix        modelling;              // 16
+    RwMatrix        ltm;                    // 32
+    RwLinkList      objects;                // 48
+    struct RwFrame* child;                  // 56
+    struct RwFrame* next;                   // 60
+    struct RwFrame* root;                   // 64
+
+//    // Rockstar Frame extension (0x253F2FE) (24 bytes)
+//    char          pluginData[8];                               // padding
+//    char          szName[RW_FRAME_NAME_LENGTH + 1];            // name (as stored in the frame extension)
+};
+static_assert(sizeof(RwFrame) == (VER_x32 ? 0xA4 : 0xC8));
+
+
+#include "raster.h"
+
+#define RwIm3DVertexSetRGBA(_vert, _r, _g, _b, _a) \
+MACRO_START \
+{ \
+    ((_vert)->color = ((_a) << 24) | \
+                              ((_r) << 16) | \
+                              ((_g) << 8) | \
+                              ((_b))); \
+} \
+
+
+===== 7) freetype/font-png benzeri hazir pixel->tekstura funksiyasi varmi (umumi axtaris) =====
+app/src/main/cpp/samp/game/RW/rwcore.cpp
+app/src/main/cpp/samp/game/RW/rwcore.h
+app/src/main/cpp/samp/game/ShadowCamera.cpp
+app/src/main/cpp/samp/game/materialtextgenerator.cpp
+app/src/main/cpp/samp/game/snapshothelper.cpp
+app/src/main/cpp/samp/vendor/imgui/imgui.cpp

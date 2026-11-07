@@ -262,6 +262,16 @@ bool CVehicle__DoTailLightEffect(CVehicleGTA* thisVehicle, int32_t lightId, CMat
 namespace VehControls
 {
     static std::unordered_map<CVehicleGTA*, uint8_t> s_signals;
+    static std::unordered_map<CVehicleGTA*, uint32_t> s_sigCt;   // AZ_PATCH3: masinin yaranma vaxti
+    // Eyni adresde BASQA masin yaranibsa kohne sinyali at
+    static void Prune(CVehicleGTA* veh)
+    {
+        auto c = s_sigCt.find(veh);
+        if (c != s_sigCt.end() && c->second != (uint32_t)veh->m_nCreationTime) {
+            s_signals.erase(veh);
+            s_sigCt.erase(c);
+        }
+    }
 
     bool BlinkOn()
     {
@@ -270,17 +280,15 @@ namespace VehControls
         return ((ms / 330) & 1) == 0;
     }
 
-    uint8_t GetSignal(CVehicleGTA* veh)
-    {
-        auto it = s_signals.find(veh);
+    uint8_t GetSignal(CVehicleGTA* veh) { if (veh) Prune(veh); auto it = s_signals.find(veh);
         return it == s_signals.end() ? (uint8_t)0 : it->second;
     }
 
     void SetSignal(CVehicleGTA* veh, uint8_t mode)
     {
         if (!veh) return;
-        if (mode == 0) s_signals.erase(veh);
-        else           s_signals[veh] = mode;
+        if (mode == 0) { s_signals.erase(veh); s_sigCt.erase(veh); }
+        else { s_signals[veh] = mode; s_sigCt[veh] = (uint32_t)veh->m_nCreationTime; }
     }
 
     void ToggleSignal(CVehicleGTA* veh, uint8_t mode)
@@ -288,10 +296,7 @@ namespace VehControls
         SetSignal(veh, GetSignal(veh) == mode ? (uint8_t)0 : mode);
     }
 
-    void Forget(CVehicleGTA* veh)
-    {
-        s_signals.erase(veh);
-    }
+    void Forget(CVehicleGTA* veh) { s_signals.erase(veh); s_sigCt.erase(veh); }
 
     // ms_lightsOn / m_renderLights indeksleri: 0 = surucu terefi on, 1 = sernisin terefi on,
     //                                           2 = surucu terefi arxa, 3 = sernisin terefi arxa
@@ -303,9 +308,7 @@ namespace VehControls
     }
 
     // DoVehicleLights hook-undan (PreRender): oyunun oz "bu lampa yanir" bayraqlari
-    void ApplyRenderLightBits(CVehicleGTA* veh)
-    {
-        if (s_signals.empty() || !veh) return;
+    void ApplyRenderLightBits(CVehicleGTA* veh) { if (!veh) return; Prune(veh); if (s_signals.empty()) return;
         auto it = s_signals.find(veh);
         if (it == s_signals.end()) return;
 
@@ -339,9 +342,7 @@ namespace VehControls
 #endif
     }
 
-    void RenderSignals(CVehicleGTA* veh)
-    {
-        if (s_signals.empty() || !veh) return;
+    void RenderSignals(CVehicleGTA* veh) { if (!veh) return; Prune(veh); if (s_signals.empty()) return;
 
         auto it = s_signals.find(veh);
         if (it == s_signals.end()) return;

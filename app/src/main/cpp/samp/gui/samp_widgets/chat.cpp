@@ -18,6 +18,7 @@ extern CSettings* pSettings;
 extern CJavaWrapper *pJavaWrapper;
 
 bool g_bHideAllUI = false;
+void CamCtl_Command(const char* a, const char* b, char* rep, int n);   // AZ_PATCH4 (gui.cpp)
 bool g_bShowHandlingDlg = false;   // /mm (kohne addi: /tuning)
 
 Chat::Chat()
@@ -173,6 +174,15 @@ bool ProcessClientCommands(const std::string& input)
                 size_t p = rest.find_first_not_of(" \t");
                 rest = (p == std::string::npos) ? "" : rest.substr(p);
                 if (pJavaWrapper) pJavaWrapper->YtCommand(rest.c_str());
+                return true;
+        }
+
+        if (cmd == "/cam") {
+                std::string ca, cb;
+                ss >> ca >> cb;
+                char rep[96];
+                CamCtl_Command(ca.c_str(), cb.c_str(), rep, sizeof(rep));
+                pUI->chat()->addDebugMessage("{00FF00}[Client]: %s", rep);
                 return true;
         }
 
@@ -396,3 +406,5 @@ void Chat::keyboardEvent(const std::string& input)
                 else pNetGame->SendChatMessage(input.c_str());
         }
 }
+
+// AZ_PATCH4

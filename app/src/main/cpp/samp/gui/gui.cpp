@@ -5,6 +5,11 @@
 #include "../game/VehTuner.h"
 #include "../game/VehControls.h"
 #include "../game/AzPlate.h"
+#include "../game/Camera.h"
+#include "../game/scripting.h"
+#include <string>
+#include <cstdlib>
+#include <cstring>
 #include "gui.h"
 #include "../playertags.h"
 #include "../net/playerbubblepool.h"
@@ -32,6 +37,128 @@ extern CGame* pGame;
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
 extern UI* pUI;
+
+// ============================================================================
+//  AZ_PATCH4: /cam  --  PC-stili kamera (mouse-look-un mobil versiyasi) + birinci shexs
+//   /cam            : off -> pc -> fps -> off  (novbeli rejim)
+//   /cam pc|fps|off : birbasa secim
+//   /cam sens N     : hessaslig (1..20, standart 5)
+//  Ekranin SAG terefinde (x>35%, y<72%) barmaqla surusdurende kamera donur.
+//  Kamera SA-MP-nin oz script emrleri ile (set_camera_position + point_camera) her kadr yerlesdirilir.
+// ============================================================================
+namespace CamCtl
+{
+        static int   s_mode   = 0;        // 0 = oyunun kamerasi, 1 = PC (3-cu shexs), 2 = birinci shexs
+        static bool  s_active = false;
+        static float s_yaw    = 0.0f;
+        static float s_pitch  = -0.25f;
+        static float s_sens   = 0.0045f;  // radian / piksel
+        static int   s_ptr    = -1;
+        static float s_lx = 0.0f, s_ly = 0.0f;
+        static float s_dist   = 4.5f;
+
+        static void ClampPitch()
+        {
+                const float lo = (s_mode == 2) ? -1.4f : -1.3f;
+                const float hi = (s_mode == 2) ?  1.4f :  0.12f;   // 3-cu shexsde yuxari baxanda kamera yerin altina dusmesin
+                if (s_pitch < lo) s_pitch = lo;
+                if (s_pitch > hi) s_pitch = hi;
+        }
+}
+
+void CamCtl_OnTouch(int type, int num, int x, int y)
+{
+        using namespace CamCtl;
+        if (s_mode == 0) { s_ptr = -1; return; }
+
+        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        const bool inZone = (float)x > d.x * 0.35f && (float)y < d.y * 0.72f;
+
+        if (type == 2) {                         // push
+                if (s_ptr < 0 && inZone) { s_ptr = num; s_lx = (float)x; s_ly = (float)y; }
+        }
+        else if (type == 3) {                    // move
+                if (s_ptr < 0 && inZone) { s_ptr = num; s_lx = (float)x; s_ly = (float)y; return; }
+                if (num == s_ptr) {
+                        const float dx = (float)x - s_lx, dy = (float)y - s_ly;
+                        s_lx = (float)x; s_ly = (float)y;
+                        s_yaw   -= dx * s_sens;   // sağa surusdur -> sağa bax
+                        s_pitch -= dy * s_sens;   // asagi surusdur -> asagi bax (mouse kimi)
+                        ClampPitch();
+                }
+        }
+        else if (type == 1) {                    // pop
+                if (num == s_ptr) s_ptr = -1;
+        }
+}
+
+void CamCtl_Update()
+{
+        using namespace CamCtl;
+
+        if (s_mode == 0) {
+                if (s_active) { s_active = false; s_ptr = -1; CCamera::SetBehindPlayer(); }
+                return;
+        }
+        if (!pGame || !pNetGame || pGame->IsGamePaused()) return;
+
+        CPlayerPed* ped = pGame->FindPlayerPed();
+        if (!ped || !ped->m_pPed) return;
+
+        RwMatrix m = ped->m_pPed->GetMatrix().ToRwMatrix();
+        if (!s_active) {
+                s_active = true;
+                s_yaw = atan2f(m.up.y, m.up.x);               // oyuncunun baxdigi istiqamet
+                s_pitch = (s_mode == 2) ? 0.0f : -0.25f;
+        }
+        ClampPitch();
+
+        const float cp = cosf(s_pitch), sp = sinf(s_pitch);
+        const float dx = cosf(s_yaw) * cp, dy = sinf(s_yaw) * cp, dz = sp;
+        const float px = m.pos.x, py = m.pos.y, pz = m.pos.z;
+
+        float cx, cy, cz, lx, ly, lz;
+        if (s_mode == 2) {                                    // birinci shexs
+                cx = px + cosf(s_yaw) * 0.15f;
+                cy = py + sinf(s_yaw) * 0.15f;
+                cz = pz + 0.68f;
+                lx = cx + dx * 20.0f; ly = cy + dy * 20.0f; lz = cz + dz * 20.0f;
+        } else {                                              // PC / 3-cu shexs
+                const float dist = ped->IsInVehicle() ? 7.0f : s_dist;
+                const float tz = pz + 0.8f;
+                cx = px - dx * dist; cy = py - dy * dist; cz = tz - dz * dist;
+                lx = px; ly = py; lz = tz;
+        }
+
+        ScriptCommand(&set_camera_position, cx, cy, cz, 0.0f, 0.0f, 0.0f);
+        ScriptCommand(&point_camera, lx, ly, lz, 2);
+}
+
+// chat.cpp -> /cam
+void CamCtl_Command(const char* a, const char* b, char* rep, int n)
+{
+        using namespace CamCtl;
+        std::string s = a ? a : "";
+        for (size_t i = 0; i < s.size(); ++i) s[i] = (char)tolower((unsigned char)s[i]);
+
+        if (s.empty())            s_mode = (s_mode + 1) % 3;
+        else if (s == "pc")       s_mode = 1;
+        else if (s == "fps" || s == "1") s_mode = 2;
+        else if (s == "off")      s_mode = 0;
+        else if (s == "sens") {
+                const float v = b ? (float)atof(b) : 0.0f;
+                if (v >= 0.5f && v <= 20.0f) { s_sens = v * 0.0009f; snprintf(rep, n, "Hessaslig: %.1f", v); }
+                else snprintf(rep, n, "Istifade: /cam sens 1..20");
+                return;
+        }
+        else { snprintf(rep, n, "Istifade: /cam [pc|fps|off|sens N]"); return; }
+
+        s_active = false;   // novbeti kadrda yeniden baslat
+        ClampPitch();
+        const char* names[3] = { "oyunun kamerasi (off)", "PC rejimi (sag terefde surusdur)", "birinci shexs" };
+        snprintf(rep, n, "Kamera: %s", names[s_mode]);
+}
+
 
 extern bool g_bHideAllUI;
 extern bool g_bShowHandlingDlg;   // /mm (kohne addi: /tuning) ile acilir/baglanir
@@ -190,7 +317,8 @@ void UI::render()
 {
         ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
 
-        AzPlate::ProcessPending();   // nomre teksturalari (ImGui kadrindan evvel)
+        AzPlate::ProcessPending();
+        CamCtl_Update();            // AZ_PATCH4: /cam   // nomre teksturalari (ImGui kadrindan evvel)
 
         ImGuiWrapper::render();
 
@@ -1557,3 +1685,5 @@ void UI::ProcessPushedTextdraws()
                 m_BufferedCommandTextdraws.ReadUnlock();
         }
 }
+
+// AZ_PATCH4

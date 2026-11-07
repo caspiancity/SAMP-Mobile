@@ -442,6 +442,7 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 
 /* =============================================================================== */
 
+void CamCtl_OnTouch(int type, int num, int x, int y);   // AZ_PATCH4 (gui.cpp)
 void (*AND_TouchEvent)(int type, int num, int posX, int posY);
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
@@ -487,6 +488,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
         }
 	}
 
+	CamCtl_OnTouch(type, num, posX, posY);   // AZ_PATCH4: UI qebul etmeyen toxunuslar
 	if (pGame->IsGameInputEnabled())
 		AND_TouchEvent(type, num, posX, posY);
 	else
@@ -1931,3 +1933,4 @@ void InstallHooks()
 
     HookCPad();
 }
+// AZ_PATCH4

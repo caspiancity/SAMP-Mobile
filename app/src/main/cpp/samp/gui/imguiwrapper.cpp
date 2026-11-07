@@ -2,6 +2,10 @@
 #include "imguiwrapper.h"
 #include "uisettings.h"
 #include <unistd.h>
+#include <dirent.h>
+#include <vector>
+#include <string>
+#include <algorithm>
 
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -70,35 +74,58 @@ bool ImGuiWrapper::initialize()
 		return false;
 	}
 
-	// ---- AZ_FALLBACK_FONT: Ə (U+018F) / ə (U+0259) ----
-	// Esas fontda bu 2 herf yoxdursa ekranda '?' cixir. Sistem fontundan YALNIZ bu 2 glyph birlesdirilir.
+	// ---- AZ_FALLBACK_FONT v2 (AZ_PATCH3) ----
+	// Ə (U+018F) / ə (U+0259): sistem fontlarinin HAMISINDAN (4-e qeder) birlesdirilir.
+	// Glyph olmayan font sadece kecilir, oldugu font ise doldurur.
 	{
-		static const char* kAzFallbacks[] = {
-			"/system/fonts/Roboto-Regular.ttf",
-			"/system/fonts/RobotoStatic-Regular.ttf",
-			"/system/fonts/NotoSans-Regular.ttf",
-			"/system/fonts/DroidSans.ttf",
-			"/system/fonts/Arial.ttf",
-			nullptr
-		};
 		static const ImWchar azRanges[] = { 0x018F, 0x018F, 0x0259, 0x0259, 0 };
+		std::vector<std::string> cands;
+		static const char* kFixed[] = {
+			"/system/fonts/Roboto-Regular.ttf", "/system/fonts/RobotoStatic-Regular.ttf",
+			"/system/fonts/NotoSans-Regular.ttf", "/system/fonts/DroidSans.ttf",
+			"/system/fonts/DejaVuSans.ttf", "/system/fonts/Arial.ttf", nullptr
+		};
+		for (int i = 0; kFixed[i]; i++) cands.push_back(kFixed[i]);
 
-		for (int i = 0; kAzFallbacks[i]; i++)
+		if (DIR* d = opendir("/system/fonts"))
 		{
-			if (access(kAzFallbacks[i], R_OK) != 0) continue;
+			while (dirent* e = readdir(d))
+			{
+				std::string n = e->d_name;
+				if (n.size() < 5) continue;
+				std::string ext = n.substr(n.size() - 4);
+				if (ext != ".ttf" && ext != ".otf") continue;
+				if (n.find("Roboto") == std::string::npos && n.find("NotoSans-") == std::string::npos &&
+					n.find("DejaVu") == std::string::npos) continue;
+				if (n.find("Mono") != std::string::npos || n.find("Condensed") != std::string::npos ||
+					n.find("Italic") != std::string::npos) continue;
+				cands.push_back("/system/fonts/" + n);
+			}
+			closedir(d);
+		}
+
+		std::vector<std::string> done;
+		int merged = 0;
+		for (const std::string& path : cands)
+		{
+			if (merged >= 4) break;
+			if (std::find(done.begin(), done.end(), path) != done.end()) continue;
+			done.push_back(path);
+			if (access(path.c_str(), R_OK) != 0) continue;
 
 			ImFontConfig azCfg;
 			azCfg.MergeMode = true;
 			azCfg.PixelSnapH = true;
 			azCfg.GlyphExtraSpacing.x = UISettings::outlineSize();
 
-			if (io.Fonts->AddFontFromFileTTF(kAzFallbacks[i], UISettings::fontSize(), &azCfg, azRanges))
+			if (io.Fonts->AddFontFromFileTTF(path.c_str(), UISettings::fontSize(), &azCfg, azRanges))
 			{
-				Log::addParameter("AZ fallback font: %s", kAzFallbacks[i]);
-				break;
+				Log::addParameter("AZ fallback font: %s", path.c_str());
+				merged++;
 			}
 		}
 	}
+
 
 	createFontTexture();
 

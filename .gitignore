@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+.patchbak4/
+c6_*.txt
+collect5*

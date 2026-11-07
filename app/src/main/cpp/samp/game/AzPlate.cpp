@@ -13,6 +13,9 @@
 #include "AzPlate.h"
 
 #include <cctype>
+#include <algorithm>
+#include <unistd.h>
+#include <sys/uio.h>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -115,19 +118,63 @@ namespace
 
     std::vector<RpMaterial*>* g_collect = nullptr;
 
-    bool IsPlateName(const char* n)
+    // PLATE_MULTI_STRATEGY: 0 = deqiq adlar, 1 = ehtiyat adlar, 2 = en/hundurluk nisbeti (3:1 .. 8.5:1)
+    int g_plateLevel = 0;
+
+    bool SafeRead(uintptr_t addr, void* out, size_t n)
     {
-        if (!n) return false;
-        char b[16];
-        size_t i = 0;
-        for (; n[i] && i < 15; ++i) b[i] = (char)tolower((unsigned char)n[i]);
-        b[i] = 0;
-        return strncmp(b, "nomer", 5) == 0 || strncmp(b, "carplate", 8) == 0;
+        if (addr < 0x10000) return false;
+        iovec l{ out, n };
+        iovec r{ (void*)addr, n };
+        return process_vm_readv(getpid(), &l, 1, &r, 1, 0) == (ssize_t)n;
     }
+
+    void LowerCopy(const char* n, char* b, size_t cap)
+    {
+        size_t i = 0;
+        if (n) for (; n[i] && i < cap - 1; ++i) b[i] = (char)tolower((unsigned char)n[i]);
+        b[i] = 0;
+    }
+
+    bool IsPlateName(const char* n, int level)
+    {
+        if (!n || !n[0]) return false;
+        char b[40];
+        LowerCopy(n, b, sizeof(b));
+        static const char* kStrict[] = { "nomer", "nomre", "carplate", "numberplate", nullptr };
+        static const char* kLoose[]  = { "plate", "number", "licen", nullptr };
+        const char** keys = (level == 0) ? kStrict : kLoose;
+        for (int k = 0; keys[k]; ++k)
+            if (strstr(b, keys[k])) return true;
+        return false;
+    }
+
+    bool LooksLikePlateTexture(RwTexture* t)
+    {
+        if (!t || !t->raster) return false;
+        const int w = (int)RwRasterGetWidth(t->raster);
+        const int h = (int)RwRasterGetHeight(t->raster);
+        if (w < 32 || h < 4) return false;
+        const float ar = (float)w / (float)h;
+        if (ar < 3.0f || ar > 8.5f) return false;
+
+        char b[40];
+        LowerCopy(t->name, b, sizeof(b));
+        static const char* kBad[] = { "light", "lamp", "glass", "window", "chrome", "grill", "vent",
+                                      "sticker", "decal", "wheel", "tire", nullptr };
+        for (int k = 0; kBad[k]; ++k)
+            if (strstr(b, kBad[k])) return false;
+        return true;
+    }
+
 
     RpMaterial* MatCB(RpMaterial* mat, void*)
     {
-        if (mat && mat->texture && g_collect && IsPlateName(mat->texture->name))
+        if (!mat || !mat->texture || !g_collect) return mat;
+
+        const bool ok = (g_plateLevel < 2) ? IsPlateName(mat->texture->name, g_plateLevel)
+                                           : LooksLikePlateTexture(mat->texture);
+        if (ok && std::find(g_collect->begin(), g_collect->end(), mat) == g_collect->end())
             g_collect->push_back(mat);
         return mat;
     }
@@ -143,9 +190,34 @@ namespace
     {
         out.clear();
         if (!veh || !veh->m_pRwClump) return;
-        g_collect = &out;
-        RpClumpForAllAtomics(veh->m_pRwClump, AtomCB, nullptr);
-        g_collect = nullptr;
+
+        // 0) oyunun oz lovhe materiali: modelin m_pPlateMaterial gostericisi (yaddasa tehlukesiz baxilir)
+        {
+            auto* mi = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+            if (mi)
+            {
+                RpMaterial* pm = mi->m_pPlateMaterial;
+                const uintptr_t a = (uintptr_t)pm;
+                RwTexture* tx = nullptr;
+                uint32_t probe = 0;
+                if (pm && (a & 3) == 0 &&
+                    SafeRead(a, &tx, sizeof(tx)) && tx &&
+                    SafeRead((uintptr_t)tx, &probe, sizeof(probe)))
+                {
+                    out.push_back(pm);
+                    return;
+                }
+            }
+        }
+
+        // 1-3) clump icinde ad / nisbet ile axtaris
+        for (g_plateLevel = 0; g_plateLevel <= 2 && out.empty(); ++g_plateLevel)
+        {
+            g_collect = &out;
+            RpClumpForAllAtomics(veh->m_pRwClump, AtomCB, nullptr);
+            g_collect = nullptr;
+        }
+        g_plateLevel = 0;
     }
 
     std::vector<std::pair<RpMaterial*, RwTexture*>> s_saved;

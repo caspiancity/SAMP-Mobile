@@ -1,6 +1,7 @@
 #include "../main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
+#include <unistd.h>
 
 #include "../game/game.h"
 #include "../net/netgame.h"
@@ -67,6 +68,36 @@ bool ImGuiWrapper::initialize()
 	{
 		Log::addParameter("font", font);
 		return false;
+	}
+
+	// ---- AZ_FALLBACK_FONT: Ə (U+018F) / ə (U+0259) ----
+	// Esas fontda bu 2 herf yoxdursa ekranda '?' cixir. Sistem fontundan YALNIZ bu 2 glyph birlesdirilir.
+	{
+		static const char* kAzFallbacks[] = {
+			"/system/fonts/Roboto-Regular.ttf",
+			"/system/fonts/RobotoStatic-Regular.ttf",
+			"/system/fonts/NotoSans-Regular.ttf",
+			"/system/fonts/DroidSans.ttf",
+			"/system/fonts/Arial.ttf",
+			nullptr
+		};
+		static const ImWchar azRanges[] = { 0x018F, 0x018F, 0x0259, 0x0259, 0 };
+
+		for (int i = 0; kAzFallbacks[i]; i++)
+		{
+			if (access(kAzFallbacks[i], R_OK) != 0) continue;
+
+			ImFontConfig azCfg;
+			azCfg.MergeMode = true;
+			azCfg.PixelSnapH = true;
+			azCfg.GlyphExtraSpacing.x = UISettings::outlineSize();
+
+			if (io.Fonts->AddFontFromFileTTF(kAzFallbacks[i], UISettings::fontSize(), &azCfg, azRanges))
+			{
+				Log::addParameter("AZ fallback font: %s", kAzFallbacks[i]);
+				break;
+			}
+		}
 	}
 
 	createFontTexture();

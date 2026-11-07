@@ -463,6 +463,9 @@ static void PlatePreview(const mm::Rc& r, const char* text)
         TxtC(in.h * 0.56f, Rc{ in.x + bandW, in.y, in.w - bandW, in.h }, Col(12, 12, 12, 255), text, true);
 }
 
+// SPEEDO_STYLES_PATCH: /mm -> Spidometr sehifesi (asagida, HUD bolmesinde teyin olunur)
+static void MM_SpeedoPage(float cx0, float cw, const mm::Rc& P, float dt, bool canInput);
+
 void RenderHandlingDialog()
 {
         using namespace mm;
@@ -635,15 +638,15 @@ void RenderHandlingDialog()
         }
 
         // --- sidebar ---
-        static const char* kPages[7] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" , "Nömrə" };
-        static const char* kSubs[7]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" , "Azərbaycan nömrə lövhəsi (10-AA-123)" };
+        static const char* kPages[8] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" , "Nömrə", "Spidometr" };
+        static const char* kSubs[8]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" , "Azərbaycan nömrə lövhəsi (10-AA-123)", "Spidometr stilini və rəngini seç" };
         {
                 s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
                 const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
                 Fill(ind, Col(255, 255, 255, 12), S(10.0f));
                 Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
 
-                for (int i = 0; i < 7; ++i)
+                for (int i = 0; i < 8; ++i)
                 {
                         const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
                         if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
@@ -814,7 +817,11 @@ void RenderHandlingDialog()
                                 std::string norm;
                                 AzPlate::Normalize(plate, norm);
                                 if (AzPlate::Set(gtaVeh, norm)) snprintf(s_plMsg, sizeof(s_plMsg), "Tətbiq edildi: %s", plate);
-                                else snprintf(s_plMsg, sizeof(s_plMsg), "Bu maşında nömrə lövhəsi materialı tapılmadı");
+                                else {
+                                    std::string dumpPath;
+                                    AzPlate::Dump(gtaVeh, dumpPath);   // diaqnostika: vehdump.txt
+                                    snprintf(s_plMsg, sizeof(s_plMsg), "Material tapılmadı (vehdump.txt yazıldı)");
+                                }
                                 s_plMsgT = 1.0f;
                         }
                         if (Tap(91, bRand, canInput)) {
@@ -848,6 +855,10 @@ void RenderHandlingDialog()
                         if (s_plMsgT > 0.01f)
                                 Txt(S(15.0f), cx0, P.y + S(468.0f), Col(120, 215, 160, (int)(255.0f * s_plMsgT)), s_plMsg);
                         Txt(S(12.0f), cx0, P.y + S(500.0f), Col(124, 132, 152), "Qeyd: nömrə yalnız sizin ekranınızda görünür.");
+                }
+                else if (s_page == 7)    // SPIDOMETR
+                {
+                        MM_SpeedoPage(cx0, cw, P, dt, canInput);
                 }
                 else                      // HANDLING SEHIFELERI
                 {
@@ -939,6 +950,289 @@ static const ImU32 kHudPalette[5] = { IM_COL32(78,142,235,255), IM_COL32(78,235,
 static float s_hudHoldT = 0.0f;
 static bool  s_hudHolding = false;
 
+// ============================================================================
+//  SPEEDO_STYLES_PATCH: spidometr stilleri (0 = Klassik, 1 = Sport zolaq, 2 = Neon qovs)
+//  Secim ve reng <storage>/hudstyle.txt faylinda saxlanir.
+// ============================================================================
+extern char* g_pszStorage;
+
+static int s_hudStyle = 0;
+
+static inline ImU32 HudA(ImU32 c, int a)
+{
+        if (a < 0) a = 0;
+        if (a > 255) a = 255;
+        return (c & 0x00FFFFFFu) | ((ImU32)a << 24);
+}
+
+static void HudCfgLoad()
+{
+        static bool s_done = false;
+        if (s_done) return;
+        s_done = true;
+        if (!g_pszStorage) return;
+
+        char path[512];
+        snprintf(path, sizeof(path), "%s/hudstyle.txt", g_pszStorage);
+        FILE* f = fopen(path, "r");
+        if (!f) return;
+        int a = 0, b = 0;
+        if (fscanf(f, "%d %d", &a, &b) == 2) {
+                if (a >= 0 && a < 3) s_hudStyle = a;
+                if (b >= 0 && b < 5) s_hudColorIdx = b;
+        }
+        fclose(f);
+}
+
+static void HudCfgSave()
+{
+        if (!g_pszStorage) return;
+        char path[512];
+        snprintf(path, sizeof(path), "%s/hudstyle.txt", g_pszStorage);
+        FILE* f = fopen(path, "w");
+        if (!f) return;
+        fprintf(f, "%d %d\n", s_hudStyle, s_hudColorIdx);
+        fclose(f);
+}
+
+static void HudText(ImDrawList* dl, ImFont* font, float size, float x, float y, ImU32 col, const char* s, int align)
+{
+        const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, s);
+        if (align == 1) x -= sz.x * 0.5f;
+        else if (align == 2) x -= sz.x;
+        dl->AddText(font, size, ImVec2(x, y), col, s);
+}
+
+// ox: dir = -1 sola, +1 saga
+static void HudArrow(ImDrawList* dl, float cx, float cy, float s, float dir, ImU32 col)
+{
+        const float tail = cx - dir * s;
+        const float neck = cx - dir * s * 0.1f;
+        dl->AddTriangleFilled(ImVec2(cx + dir * s, cy), ImVec2(neck, cy - s * 0.85f), ImVec2(neck, cy + s * 0.85f), col);
+        dl->AddRectFilled(ImVec2(std::min(tail, neck), cy - s * 0.32f), ImVec2(std::max(tail, neck), cy + s * 0.32f), col);
+}
+
+static void HudChip(ImDrawList* dl, ImFont* font, float x, float y, float rad, bool on, const char* t, ImU32 accent)
+{
+        dl->AddCircleFilled(ImVec2(x, y), rad, on ? accent : IM_COL32(60, 64, 76, 210), 20);
+        HudText(dl, font, rad * 1.15f, x, y - rad * 0.58f, on ? IM_COL32(10, 12, 18, 255) : IM_COL32(170, 174, 186, 255), t, 1);
+}
+
+// ---- Stil 1: SPORT ZOLAQ ----
+static void HudSport(ImDrawList* dl, ImFont* font, const ImVec2& disp, float u, float kmh, const char* gear,
+                     bool eng, bool lig, bool unlocked, ImU32 accent, float frac, const char* odo, uint8_t sig)
+{
+        const float r  = 92.0f * u;
+        const float pw = r * 2.8f, ph = r * 1.10f;
+        const float px = disp.x * 0.66f - pw * 0.5f;
+        const float py = disp.y - 14.0f * u - ph;
+        const float rr = 14.0f * u;
+        const bool  blink = VehControls::BlinkOn();
+        const ImU32 sigOn  = IM_COL32(255, 160, 30, 255);
+        const ImU32 sigOff = IM_COL32(64, 68, 80, 210);
+        const ImU32 white  = IM_COL32(255, 255, 255, 255);
+
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(8, 10, 16, 205), rr);
+        dl->AddRect(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(255, 255, 255, 30), rr, mm::kAllCorners, 1.4f * u);
+
+        // seqmentli zolaq
+        const int   n   = 30;
+        const float gap = 2.5f * u;
+        const float bx0 = px + pw * 0.05f, bw = pw * 0.90f;
+        const float by  = py + ph * 0.12f, bh = ph * 0.13f;
+        const float sw  = (bw - gap * (n - 1)) / (float)n;
+        for (int i = 0; i < n; ++i)
+        {
+                const float t = (float)i / (float)(n - 1);
+                const bool  lit = ((float)i + 0.5f) / (float)n <= frac;
+                ImU32 col = IM_COL32(48, 52, 64, 220);
+                if (lit) col = (t > 0.78f) ? IM_COL32(235, 60, 80, 255) : accent;
+                const float x = bx0 + (float)i * (sw + gap);
+                dl->AddRectFilled(ImVec2(x, by), ImVec2(x + sw, by + bh), col, 2.0f * u);
+        }
+
+        // suret
+        char sp[8];
+        snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+        HudText(dl, font, ph * 0.50f, px + pw * 0.62f, py + ph * 0.34f, white, sp, 2);
+        HudText(dl, font, ph * 0.15f, px + pw * 0.645f, py + ph * 0.56f, accent, "KM/H", 0);
+        HudText(dl, font, ph * 0.11f, px + pw * 0.645f, py + ph * 0.76f, IM_COL32(190, 194, 208, 220), odo, 0);
+
+        // vites qutusu
+        const float gx0 = px + pw * 0.80f, gx1 = px + pw * 0.95f, gy0 = py + ph * 0.40f, gy1 = py + ph * 0.90f;
+        dl->AddRectFilled(ImVec2(gx0, gy0), ImVec2(gx1, gy1), IM_COL32(14, 16, 24, 240), 8.0f * u);
+        dl->AddRect(ImVec2(gx0, gy0), ImVec2(gx1, gy1), accent, 8.0f * u, mm::kAllCorners, 1.8f * u);
+        HudText(dl, font, ph * 0.34f, (gx0 + gx1) * 0.5f, gy0 + ((gy1 - gy0) - ph * 0.34f) * 0.5f, white, gear, 1);
+
+        // sinyal oxlari
+        const bool lOn = (sig == VEH_SIGNAL_LEFT  || sig == VEH_SIGNAL_HAZARD) && blink;
+        const bool rOn = (sig == VEH_SIGNAL_RIGHT || sig == VEH_SIGNAL_HAZARD) && blink;
+        const float ay = py + ph * 0.50f;
+        HudArrow(dl, px + pw * 0.08f, ay, ph * 0.12f, -1.0f, lOn ? sigOn : sigOff);
+        HudArrow(dl, px + pw * 0.30f, ay, ph * 0.12f, +1.0f, rOn ? sigOn : sigOff);
+
+        // M / F / Q
+        const float cy = py + ph * 0.80f, cr = ph * 0.085f;
+        HudChip(dl, font, px + pw * 0.08f, cy, cr, eng,      "M", accent);
+        HudChip(dl, font, px + pw * 0.19f, cy, cr, lig,      "F", accent);
+        HudChip(dl, font, px + pw * 0.30f, cy, cr, unlocked, "Q", accent);
+}
+
+// ---- Stil 2: NEON QOVS (yarimdaire) ----
+static void HudNeon(ImDrawList* dl, ImFont* font, const ImVec2& disp, float u, float kmh, const char* gear,
+                    bool eng, bool lig, bool unlocked, ImU32 accent, float frac, const char* odo, uint8_t sig)
+{
+        const float PI = 3.14159265f;
+        const float r  = 92.0f * u;
+        const float R  = r * 1.10f;
+        const ImVec2 c(disp.x * 0.66f, disp.y - 14.0f * u - r * 0.34f);
+        const float th = 8.0f * u;
+        const bool  blink = VehControls::BlinkOn();
+        const ImU32 sigOn  = IM_COL32(255, 160, 30, 255);
+        const ImU32 sigOff = IM_COL32(64, 68, 80, 210);
+        const ImU32 white  = IM_COL32(255, 255, 255, 255);
+        const ImU32 bg     = IM_COL32(8, 10, 16, 175);
+
+        // zemin: yarimdaire + alt zolaq
+        dl->PathClear();
+        dl->PathArcTo(c, R * 1.10f, PI, 2.0f * PI, 40);
+        dl->PathLineTo(c);
+        dl->PathFillConvex(bg);
+        dl->AddRectFilled(ImVec2(c.x - R * 1.10f, c.y), ImVec2(c.x + R * 1.10f, c.y + r * 0.34f + 2.0f * u), bg);
+
+        // yol
+        dl->PathArcTo(c, R * 0.92f, PI, 2.0f * PI, 48);
+        dl->PathStroke(IM_COL32(60, 66, 82, 200), 0, th);
+        // qirmizi zona
+        dl->PathArcTo(c, R * 0.92f, PI + PI * 0.8f, 2.0f * PI, 12);
+        dl->PathStroke(IM_COL32(235, 60, 80, 150), 0, th * 0.5f);
+
+        if (frac > 0.004f)
+        {
+                for (int k = 3; k >= 1; --k) {
+                        dl->PathArcTo(c, R * 0.92f, PI, PI + PI * frac, 48);
+                        dl->PathStroke(HudA(accent, 16 * (4 - k)), 0, th + (float)k * 5.0f * u);
+                }
+                dl->PathArcTo(c, R * 0.92f, PI, PI + PI * frac, 48);
+                dl->PathStroke(accent, 0, th);
+
+                const float a = PI + PI * frac;
+                dl->AddCircleFilled(ImVec2(c.x + cosf(a) * R * 0.92f, c.y + sinf(a) * R * 0.92f), th * 0.85f, white, 16);
+        }
+
+        // xetler
+        for (int i = 0; i <= 9; ++i) {
+                const float a = PI + PI * ((float)i / 9.0f);
+                dl->AddLine(ImVec2(c.x + cosf(a) * R * 0.74f, c.y + sinf(a) * R * 0.74f),
+                            ImVec2(c.x + cosf(a) * R * 0.80f, c.y + sinf(a) * R * 0.80f),
+                            IM_COL32(190, 194, 208, 170), 1.4f * u);
+        }
+
+        // suret
+        char sp[8];
+        snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+        HudText(dl, font, R * 0.52f, c.x, c.y - R * 0.66f, white, sp, 1);
+        HudText(dl, font, R * 0.14f, c.x, c.y - R * 0.13f, accent, "KM/H", 1);
+
+        // vites (sol) ve yol sayaci (sag)
+        HudText(dl, font, R * 0.26f, c.x - R * 0.55f, c.y - R * 0.32f, white, gear, 1);
+        HudText(dl, font, R * 0.12f, c.x + R * 0.55f, c.y - R * 0.20f, IM_COL32(190, 194, 208, 220), odo, 1);
+
+        // alt zolaq: sinyal oxlari + M F Q
+        const bool lOn = (sig == VEH_SIGNAL_LEFT  || sig == VEH_SIGNAL_HAZARD) && blink;
+        const bool rOn = (sig == VEH_SIGNAL_RIGHT || sig == VEH_SIGNAL_HAZARD) && blink;
+        const float by = c.y + r * 0.17f;
+        HudArrow(dl, c.x - R * 0.55f, by, r * 0.11f, -1.0f, lOn ? sigOn : sigOff);
+        HudArrow(dl, c.x + R * 0.55f, by, r * 0.11f, +1.0f, rOn ? sigOn : sigOff);
+        HudChip(dl, font, c.x - R * 0.24f, by, r * 0.085f, eng,      "M", accent);
+        HudChip(dl, font, c.x,             by, r * 0.085f, lig,      "F", accent);
+        HudChip(dl, font, c.x + R * 0.24f, by, r * 0.085f, unlocked, "Q", accent);
+}
+
+// ---- /mm -> Spidometr sehifesi ----
+static void HudPreview(int style, const mm::Rc& pv)
+{
+        using namespace mm;
+        const float PI = 3.14159265f;
+        const ImU32 white = Col(255, 255, 255, 235);
+
+        if (style == 0)
+        {
+                const float cx = pv.x + pv.w * 0.5f, cy = pv.y + pv.h * 0.52f, rad = std::min(pv.w, pv.h) * 0.40f;
+                const float a0 = PI * 0.75f, sw = PI * 1.5f;
+                s_dl->PathArcTo(ImVec2(cx, cy), rad, a0, a0 + sw, 28);
+                s_dl->PathStroke(Col(70, 76, 92, 220), 0, S(3.0f));
+                s_dl->PathArcTo(ImVec2(cx, cy), rad, a0, a0 + sw * 0.62f, 28);
+                s_dl->PathStroke(Accent(0.0f), 0, S(3.0f));
+                s_dl->AddLine(ImVec2(cx, cy), ImVec2(cx + cosf(a0 + sw * 0.62f) * rad * 0.8f, cy + sinf(a0 + sw * 0.62f) * rad * 0.8f), white, S(1.6f));
+        }
+        else if (style == 1)
+        {
+                const int   n = 14;
+                const float gap = S(2.0f), bx = pv.x + pv.w * 0.1f, bw = pv.w * 0.8f, by = pv.y + pv.h * 0.18f, bh = pv.h * 0.12f;
+                const float sw = (bw - gap * (n - 1)) / (float)n;
+                for (int k = 0; k < n; ++k)
+                        Fill(Rc{ bx + (float)k * (sw + gap), by, sw, bh }, k < 9 ? Accent(0.0f) : Col(50, 54, 66, 220), S(1.5f));
+                TxtC(pv.h * 0.38f, Rc{ pv.x, pv.y + pv.h * 0.38f, pv.w * 0.72f, pv.h * 0.5f }, white, "128", true);
+                Fill(Rc{ pv.x + pv.w * 0.76f, pv.y + pv.h * 0.50f, pv.w * 0.16f, pv.h * 0.32f }, Col(255, 255, 255, 18), S(4.0f));
+        }
+        else
+        {
+                const float cx = pv.x + pv.w * 0.5f, cy = pv.y + pv.h * 0.80f, rad = std::min(pv.w * 0.38f, pv.h * 0.62f);
+                s_dl->PathArcTo(ImVec2(cx, cy), rad, PI, 2.0f * PI, 28);
+                s_dl->PathStroke(Col(70, 76, 92, 220), 0, S(3.5f));
+                s_dl->PathArcTo(ImVec2(cx, cy), rad, PI, PI + PI * 0.6f, 28);
+                s_dl->PathStroke(Accent(0.0f), 0, S(3.5f));
+                TxtC(pv.h * 0.30f, Rc{ pv.x, cy - pv.h * 0.42f, pv.w, pv.h * 0.30f }, white, "128", true);
+        }
+}
+
+static void MM_SpeedoPage(float cx0, float cw, const mm::Rc& P, float dt, bool canInput)
+{
+        using namespace mm;
+        HudCfgLoad();
+
+        static const char* kNames[3] = { "Klassik dairə", "Sport zolaq", "Neon qövs" };
+        static const char* kDescs[3] = { "MTA üslubunda dairəvi ibrə və rəqəmlər",
+                                         "Seqmentli işıq zolağı, iri rəqəm və dişli qutusu",
+                                         "Yarımdairə neon qövs, sadə və müasir" };
+
+        for (int i = 0; i < 3; ++i)
+        {
+                const Rc row{ cx0, P.y + S(124.0f + 112.0f * (float)i), cw, S(100.0f) };
+                const int id = 93 + i;
+                if (Tap(id, row, canInput) && s_hudStyle != i) { s_hudStyle = i; HudCfgSave(); }
+
+                const float p = Prs(id, dt);
+                const bool on = (s_hudStyle == i);
+                const Rc d = Shrink(row, S(1.5f) * p);
+                Fill(d, Col(27, 30, 40, 255), S(10.0f));
+                if (on) Stroke(d, Accent(0.0f, 200), S(10.0f), S(1.6f));
+
+                const Rc pv{ d.x + S(14.0f), d.y + S(12.0f), S(170.0f), d.h - S(24.0f) };
+                Fill(pv, Col(10, 12, 18, 255), S(8.0f));
+                HudPreview(i, pv);
+
+                TxtB(S(19.0f), d.x + S(204.0f), d.y + S(24.0f), Col(238, 241, 248), kNames[i]);
+                Txt(S(13.0f), d.x + S(204.0f), d.y + S(54.0f), Col(124, 132, 152), kDescs[i]);
+                if (on) Txt(S(13.0f), d.x + S(204.0f), d.y + S(74.0f), Accent(0.0f), "Seçilib");
+        }
+
+        Txt(S(16.0f), cx0, P.y + S(470.0f), Col(214, 220, 232), "Rəng");
+        for (int i = 0; i < 5; ++i)
+        {
+                const float cxs = cx0 + S(120.0f) + (float)i * S(54.0f), cys = P.y + S(480.0f);
+                const Rc sq{ cxs - S(22.0f), cys - S(22.0f), S(44.0f), S(44.0f) };
+                const int sid = ID_SWATCH + i;
+                if (Tap(sid, sq, canInput)) { s_hudColorIdx = i; HudCfgSave(); }
+
+                const float p = Prs(sid, dt);
+                Dot(cxs, cys, S(18.0f) - S(2.0f) * p, HudA(kHudPalette[i], (int)(255.0f * s_A)));
+                if (s_hudColorIdx == i) s_dl->AddCircle(ImVec2(cxs, cys), S(23.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+        }
+        Txt(S(12.0f), cx0, P.y + S(524.0f), Col(124, 132, 152), "İpucu: sürət göstəricisinə uzun basaraq da rəngi dəyişə bilərsiniz.");
+}
+
 static void DrawGauge(ImDrawList* dl, float cx, float cy, float r, bool on, const char* label, ImU32 accent, float u)
 {
         const ImU32 bg = IM_COL32(20, 22, 30, 190);
@@ -967,6 +1261,7 @@ static void DrawGauge(ImDrawList* dl, float cx, float cy, float r, bool on, cons
 // ============================================================================
 void RenderVehicleHud()
 {
+        HudCfgLoad();
         if (g_bHideAllUI || g_bShowHandlingDlg) return;
 
         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
@@ -1037,6 +1332,13 @@ void RenderVehicleHud()
         };
 
         // ---- cizim ----
+        {
+                static int s_savedClr = -1;
+                if (s_savedClr != s_hudColorIdx) { if (s_savedClr != -1) HudCfgSave(); s_savedClr = s_hudColorIdx; }
+        }
+        if (s_hudStyle == 1) { HudSport(dl, font, disp, u, kmh, gear, eng, lig, !locked, accent, s_dialShown, odo, VehControls::GetSignal(gtaVeh)); return; }
+        if (s_hudStyle == 2) { HudNeon (dl, font, disp, u, kmh, gear, eng, lig, !locked, accent, s_dialShown, odo, VehControls::GetSignal(gtaVeh)); return; }
+
         const float a0 = 3.14159265f * 0.75f;
         const float sweep = 3.14159265f * 1.5f;
 

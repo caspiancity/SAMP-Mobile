@@ -202,6 +202,19 @@ void ApplyPatches_level0()
     CHook::RET("_ZN4Fx_c13AddWheelSprayEP8CVehicle7CVectorhhf"); // Fx_c::AddWheelSpray
 }
 
+// MINIMAP_OFF_PATCH: minimap gizlidir. /radar ile acib-bagla.
+bool g_bHideMinimap = true;
+
+static void (*CHud__DrawRadar_orig)() = nullptr;
+
+static void CHud__DrawRadar_hook()
+{
+    if (g_bHideMinimap)
+        return;
+
+    CHud__DrawRadar_orig();
+}
+
 void ApplyGlobalPatches()
 {
     FLog("Installing patches..");
@@ -249,7 +262,8 @@ void ApplyGlobalPatches()
     CHook::RET("_ZN30CWidgetRegionSteeringSelection4DrawEv"); // CWidgetRegionSteeringSelection::Draw
     CHook::RET("_ZN23CTaskSimplePlayerOnFoot18PlayIdleAnimationsEP10CPlayerPed");        // CTaskSimplePlayerOnFoot::PlayIdleAnimations
     CHook::RET("_ZN13CCarEnterExit17SetPedInCarDirectEP4CPedP8CVehicleib");        // CCarEnterExit::SetPedInCarDirect
-    CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend
+    CHook::RET("_ZN6CRadar10DrawLegendEiii");
+    CHook::InlineHook("_ZN4CHud9DrawRadarEv", &CHud__DrawRadar_hook, &CHud__DrawRadar_orig); // MINIMAP_OFF_PATCH // CRadar::DrawLgegend
     CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList
 
     #define ENABLE_CUSTOM_PLATE 1

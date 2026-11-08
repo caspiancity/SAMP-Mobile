@@ -38,8 +38,8 @@ ImVec2 UISettings::m_splashScreenPBarSize = ImVec2(440.0f, 10.0f);
 int UISettings::m_chatDispMesssages = 9;
 int UISettings::m_chatMaxMessages = 30;
 ImVec2 UISettings::m_chatPos = ImVec2(100.0f, 10.0f);
-ImVec2 UISettings::m_chatSize = ImVec2(400.0f, 0.0f);
-ImVec2 UISettings::m_chatItemSize = ImVec2(400.0f, 13.0f);
+ImVec2 UISettings::m_chatSize = ImVec2(330.0f, 0.0f);
+ImVec2 UISettings::m_chatItemSize = ImVec2(330.0f, 13.0f);
 
 /* spawn */
 ImVec2 UISettings::m_spawnPos = ImVec2(200.0f, 420.0f);
@@ -100,7 +100,8 @@ void UISettings::Initialize(const ImVec2& display_size)
 	m_splashScreenPBarSize = m_splashScreenPBarSize * m_scaleFactor;
 
 	/* chat */
-	m_chatPos = m_chatPos * m_scaleFactor;
+	// CHAT_CORNER_PATCH: yuxari-sol kunc, sol ve yuxari bosluq pikselde EYNIDIR
+	m_chatPos = ImVec2(16.0f * m_scaleFactor.y, 16.0f * m_scaleFactor.y);
 	m_chatSize.y = m_chatItemSize.y * m_chatDispMesssages;
 	m_chatSize = m_chatSize * m_scaleFactor;
 	m_chatItemSize = m_chatItemSize * m_scaleFactor;

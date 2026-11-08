@@ -47,6 +47,12 @@ public:
     // CVehicleGTA.cpp -> DoVehicleLights hook-u doldurur, Coronas.cpp -> RegisterCorona hook-u oxuyur.
     static inline CoronaHeadlightOverride s_HeadlightOverride{};
 
+    // HEADLIGHT_RGB_PATCH: masin ucun serbest far rengi
+    // (CCoronas::Set... UI ve /far istifade edir)
+    static void SetHeadlightRGB(const void* veh, uint8 r, uint8 g, uint8 b);
+    static void ClearHeadlightRGB(const void* veh);
+    static bool GetHeadlightRGB(const void* veh, uint8& r, uint8& g, uint8& b);
+
 public:
     static void InjectHooks();
 

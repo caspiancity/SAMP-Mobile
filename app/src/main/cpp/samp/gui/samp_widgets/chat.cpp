@@ -4,11 +4,15 @@
 #include "../../net/netgame.h"
 #include <algorithm>
 #include <sstream>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
 #include <chrono>
 #include "../settings.h"
 #include "java/jniutil.h"
 #include "../../game/VehControls.h"
 #include "../../game/AzPlate.h"
+#include "../../game/Coronas.h"
 #include "../../LuaManager.h"
 
 extern UI* pUI;
@@ -18,6 +22,7 @@ extern CSettings* pSettings;
 extern CJavaWrapper *pJavaWrapper;
 
 bool g_bHideAllUI = false;
+extern bool g_bHideMinimap; // FAR_RGB_PATCH (patches.cpp)
 void CamCtl_Command(const char* a, const char* b, char* rep, int n);   // AZ_PATCH4 (gui.cpp)
 bool g_bShowHandlingDlg = false;   // /mm (kohne addi: /tuning)
 
@@ -186,6 +191,15 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
+        if (cmd == "/radar") {   // FAR_RGB_PATCH
+                g_bHideMinimap = !g_bHideMinimap;
+                pUI->chat()->addDebugMessage(
+                    "{00FF00}[Client]: Minimap: %s",
+                    g_bHideMinimap ? "gizli" : "aciq"
+                );
+                return true;
+        }
+
         if (cmd == "/gizle") {
                 g_bHideAllUI = !g_bHideAllUI;
                 if (!g_bHideAllUI) {
@@ -194,12 +208,7 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
-        if (cmd == "/mm") {
-                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
-                        return true;
-                }
+        if (cmd == "/mm") {   // MM_NO_VEHICLE_PATCH: artiq masinsiz da acilir
                 g_bShowHandlingDlg = !g_bShowHandlingDlg;
                 return true;
         }
@@ -225,7 +234,59 @@ bool ProcessClientCommands(const std::string& input)
 
                 std::string path;
                 if (AzPlate::Dump(pVeh->m_pVehicle, path))
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Yazildi: %s", path.c_str());
+                        {
+                        pUI->chat()->addDebugMessage(
+                            "{00FF00}[Client]: Yazildi: %s",
+                            path.c_str()
+                        );
+
+                        // son setirleri chata da yaz
+                        FILE* df = fopen(path.c_str(), "rb");
+
+                        if (df) {
+                                fseek(df, 0, SEEK_END);
+
+                                const long dsz = ftell(df);
+                                const long doff =
+                                    dsz > 1400 ? dsz - 1400 : 0;
+
+                                fseek(df, doff, SEEK_SET);
+
+                                char tb[1500];
+
+                                const size_t dn =
+                                    fread(tb, 1, sizeof(tb) - 1, df);
+
+                                tb[dn] = 0;
+
+                                fclose(df);
+
+                                char* dp = tb;
+
+                                if (doff > 0) {
+                                        char* nl = strchr(tb, '\n');
+                                        if (nl) dp = nl + 1;
+                                }
+
+                                while (*dp) {
+                                        char* de = strchr(dp, '\n');
+
+                                        if (de)
+                                            *de = 0;
+
+                                        if (*dp) {
+                                                pUI->chat()->addDebugMessage(
+                                                    "{B9C9BF}%s", dp
+                                                );
+                                        }
+
+                                        if (!de)
+                                            break;
+
+                                        dp = de + 1;
+                                }
+                        }
+                }
                 else
                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Dump yazila bilmedi.");
                 return true;
@@ -329,6 +390,110 @@ bool ProcessClientCommands(const std::string& input)
 
                 VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
                 pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
+                return true;
+        }
+
+        if (cmd == "/far")
+        {
+                CPlayerPed* pLocalPlayer =
+                    pGame ? pGame->FindPlayerPed() : nullptr;
+
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage(
+                            "{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!"
+                        );
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+
+                if (pNetGame &&
+                    pNetGame->GetVehiclePool() &&
+                    pLocalPlayer->m_pPed) {
+
+                        CVehiclePool* pPool =
+                            pNetGame->GetVehiclePool();
+
+                        VEHICLEID vehID =
+                            pPool->FindIDFromGtaPtr(
+                                pLocalPlayer->m_pPed->pVehicle
+                            );
+
+                        if (vehID != INVALID_VEHICLE_ID)
+                            pVeh = pPool->GetAt(vehID);
+                }
+
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage(
+                            "{FF0000}[Client]: Avtomobil tapilmadi!"
+                        );
+                        return true;
+                }
+
+                std::string a1;
+                ss >> a1;
+
+                std::transform(
+                    a1.begin(), a1.end(),
+                    a1.begin(), ::tolower
+                );
+
+                if (a1 == "off" || a1 == "0" || a1 == "standart") {
+                        CCoronas::ClearHeadlightRGB(pVeh->m_pVehicle);
+
+                        pUI->chat()->addDebugMessage(
+                            "{00FF00}[Client]: Far rengi standarta qaytarildi."
+                        );
+
+                        return true;
+                }
+
+                int fr = -1, fg = -1, fb = -1;
+
+                if (a1.size() == 7 && a1[0] == '#') {
+                        const unsigned long hv =
+                            strtoul(a1.c_str() + 1, nullptr, 16);
+
+                        fr = (int)((hv >> 16) & 255);
+                        fg = (int)((hv >> 8) & 255);
+                        fb = (int)(hv & 255);
+
+                } else if (!a1.empty()) {
+                        std::string a2, a3;
+
+                        ss >> a2 >> a3;
+
+                        if (!a2.empty() && !a3.empty()) {
+                                fr = atoi(a1.c_str());
+                                fg = atoi(a2.c_str());
+                                fb = atoi(a3.c_str());
+                        }
+                }
+
+                if (fr < 0 || fg < 0 || fb < 0 ||
+                    fr > 255 || fg > 255 || fb > 255) {
+
+                        pUI->chat()->addDebugMessage(
+                            "{FF0000}[Client]: Istifade: "
+                            "/far R G B (0-255) ve ya "
+                            "/far #RRGGBB ve ya /far off"
+                        );
+
+                        return true;
+                }
+
+                CCoronas::SetHeadlightRGB(
+                    pVeh->m_pVehicle,
+                    (uint8_t)fr,
+                    (uint8_t)fg,
+                    (uint8_t)fb
+                );
+
+                pUI->chat()->addDebugMessage(
+                    "{00FF00}[Client]: Far rengi: #%02X%02X%02X",
+                    fr, fg, fb
+                );
+
                 return true;
         }
 

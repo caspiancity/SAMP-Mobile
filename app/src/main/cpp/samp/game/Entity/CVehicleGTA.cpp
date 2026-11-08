@@ -171,7 +171,8 @@ void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint
     ho.vehicle = thiz;
     ho.inTail  = false;
     ho.r = ho.g = ho.b = 255;
-    ho.active  = VehTuner::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
+    ho.active = CCoronas::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b) ||
+                VehTuner::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
 
     CVehicle__DoVehicleLights(thiz, matVehicle, nLightFlags);
 

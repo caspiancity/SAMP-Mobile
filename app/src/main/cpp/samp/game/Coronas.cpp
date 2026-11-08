@@ -5,6 +5,9 @@
 #include "Coronas.h"
 #include "../vendor/armhook/patch.h"
 #include "TxdStore.h"
+#include "Entity/CVehicleGTA.h"
+#include <unordered_map>
+#include <algorithm>
 
 #if __has_include(<shadowhook.h>)
 #include <shadowhook.h>
@@ -48,7 +51,7 @@ static void RegisterCorona_Type_hook(uint32 id, CEntityGTA* attachTo, uint8 red,
     const auto& ho = CCoronas::s_HeadlightOverride;
 
     if (ho.active && !ho.inTail
-        && coronaType == eCoronaType::CORONATYPE_HEADLIGHT
+        && (coronaType == eCoronaType::CORONATYPE_HEADLIGHT || coronaType == eCoronaType::CORONATYPE_HEADLIGHTLINE)
         && attachTo != nullptr
         && static_cast<const void*>(attachTo) == ho.vehicle)
     {
@@ -82,6 +85,134 @@ static bool InstallInlineHook(uintptr_t addr, H hook, O* orig)
     }
 }
 
+// HEADLIGHT_RGB_PATCH ------------------------------------------------------
+namespace {
+    struct HlEntry {
+        uint32_t ct;
+        uint8 r, g, b;
+    };
+
+    std::unordered_map<const void*, HlEntry> g_hlColors;
+}
+
+void CCoronas::SetHeadlightRGB(
+    const void* veh,
+    uint8 r,
+    uint8 g,
+    uint8 b
+) {
+    if (!veh) return;
+
+    g_hlColors[veh] = HlEntry{
+        (uint32_t)static_cast<const CVehicleGTA*>(veh)->m_nCreationTime,
+        r, g, b
+    };
+}
+
+void CCoronas::ClearHeadlightRGB(const void* veh) {
+    g_hlColors.erase(veh);
+}
+
+bool CCoronas::GetHeadlightRGB(
+    const void* veh,
+    uint8& r,
+    uint8& g,
+    uint8& b
+) {
+    if (!veh || g_hlColors.empty())
+        return false;
+
+    auto it = g_hlColors.find(veh);
+
+    if (it == g_hlColors.end())
+        return false;
+
+    if (it->second.ct !=
+        (uint32_t)static_cast<const CVehicleGTA*>(veh)->m_nCreationTime) {
+
+        // masina yeniden yaranib
+        g_hlColors.erase(it);
+        return false;
+    }
+
+    r = it->second.r;
+    g = it->second.g;
+    b = it->second.b;
+
+    return true;
+}
+
+
+// Yerdeki far isigi: CShadows::StoreCarLightShadow.
+// Qirmizi (arxa) kolgelere toxunulmur.
+
+using StoreCarLightShadowFn = void (*)(
+    void*, int, RwTexture*, CVector*,
+    float, float, float, float,
+    uint8, uint8, uint8, float
+);
+
+static StoreCarLightShadowFn CShadows__StoreCarLightShadow = nullptr;
+
+
+static void StoreCarLightShadow_hook(
+    void* veh,
+    int id,
+    RwTexture* tex,
+    CVector* posn,
+    float a,
+    float b,
+    float c,
+    float d,
+    uint8 r,
+    uint8 g,
+    uint8 bl,
+    float maxViewAngle
+) {
+    const bool redDominant =
+        (r > g * 2 + 10) &&
+        (r > bl * 2 + 10);
+
+    if (veh && !redDominant) {
+        uint8 cr = 0, cg = 0, cb = 0;
+
+        bool have =
+            CCoronas::GetHeadlightRGB(veh, cr, cg, cb);
+
+        if (!have) {
+            const auto& ho = CCoronas::s_HeadlightOverride;
+
+            if (ho.active && !ho.inTail && ho.vehicle == veh) {
+                cr = ho.r;
+                cg = ho.g;
+                cb = ho.b;
+                have = true;
+            }
+        }
+
+        if (have) {
+            const int mx = std::max(
+                (int)r,
+                std::max((int)g, (int)bl)
+            );
+
+            const float k = (float)mx / 255.0f;
+
+            r  = (uint8)((float)cr * k);
+            g  = (uint8)((float)cg * k);
+            bl = (uint8)((float)cb * k);
+        }
+    }
+
+    CShadows__StoreCarLightShadow(
+        veh, id, tex, posn,
+        a, b, c, d,
+        r, g, bl,
+        maxViewAngle
+    );
+}
+
+
 void CCoronas::InjectHooks() {
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00679A84 : 0x851528), &CCoronas::SunScreenX);
     CHook::Write(g_libGTASA + (VER_x32 ? 0x00679784 : 0x850F20), &CCoronas::SunScreenY);
@@ -94,6 +225,13 @@ void CCoronas::InjectHooks() {
                            &RegisterCorona_Type_hook, &CCoronas__RegisterCorona_Type)) {
         FLog("CCoronas: RegisterCorona hook qurulmadi, far rengi islemeyecek");
     }
+
+   // Yer isigi (kolge) rengi
+    CHook::InlineHook(
+        "_ZN8CShadows19StoreCarLightShadowEP8CVehicleiP9RwTextureP7CVectorffffhhhf",
+        &StoreCarLightShadow_hook,
+        &CShadows__StoreCarLightShadow
+    );
 
    // CHook::InlineHook("_ZN8CCoronas4InitEv", &CCoronas::Init, &CCoronas__Init);
 }

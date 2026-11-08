@@ -1,0 +1,890 @@
+
+===== git: kamera ile bagli kecmis deyisikliker =====
+
+===== app/src/main/cpp/samp/gui/samp_widgets/chat.cpp =====
+#include "../gui.h"
+#include "../../main.h"
+#include "../../game/game.h"
+#include "../../net/netgame.h"
+#include <algorithm>
+#include <sstream>
+#include <chrono>
+#include "../settings.h"
+#include "java/jniutil.h"
+#include "../../game/VehControls.h"
+#include "../../game/AzPlate.h"
+#include "../../LuaManager.h"
+
+extern UI* pUI;
+extern CGame* pGame;
+extern CNetGame* pNetGame;
+extern CSettings* pSettings;
+extern CJavaWrapper *pJavaWrapper;
+
+bool g_bHideAllUI = false;
+void CamCtl_Command(const char* a, const char* b, char* rep, int n);   // AZ_PATCH4 (gui.cpp)
+bool g_bShowHandlingDlg = false;   // /mm (kohne addi: /tuning)
+
+Chat::Chat()
+        : ListBox()
+{
+
+}
+
+void Chat::addChatMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
+{
+        addPlayerMessage(message, nick, nick_color);
+}
+
+void Chat::addInfoMessage(const std::string& format, ...)
+{
+        char tmp_buf[512];
+
+        va_list args;
+        va_start(args, format);
+        vsprintf(tmp_buf, format.c_str(), args);
+        va_end(args);
+
+        addMessage(std::string(tmp_buf), ImColor(0x00, 0xc8, 0xc8));
+}
+
+void Chat::addDebugMessage(const std::string& format, ...)
+{
+        char tmp_buf[512];
+
+        va_list args;
+        va_start(args, format);
+        vsprintf(tmp_buf, format.c_str(), args);
+        va_end(args);
+
+        addMessage(std::string(tmp_buf), ImColor(0xbe, 0xbe, 0xbe));
+}
+
+void Chat::addClientMessage(const std::string& message, const ImColor& color)
+{
+        addMessage(message, color);
+}
+
+void Chat::addMessage(const std::string& message, const ImColor& color)
+{
+        if (this->itemsCount() > UISettings::chatMaxMessages())
+        {
+                this->removeItem(0);
+        }
+
+        MessageItem* item = new MessageItem(message, color);
+        this->addItem(item);
+        /*if(!active())*/ this->setScrollY(1.0f);
+        m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
+}
+
+void Chat::addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
+{
+        if (this->itemsCount() > UISettings::chatMaxMessages())
+        {
+                this->removeItem(0);
+        }
+
+        PlayerMessageItem* item = new PlayerMessageItem(message, nick, nick_color);
+        this->addItem(item);
+        /*if(!active())*/ this->setScrollY(1.0f);
+        m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
+}
+
+void Chat::draw(ImGuiRenderer* renderer)
+{
+        // yeni mesajlar altdan yavas-yavas yuxari suruslenir
+        static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_last).count();
+        s_last = now;
+        if (dt > 0.1f) dt = 0.1f;
+
+        if (m_slide > 0.0f)
+        {
+                m_slide -= (m_slide * 7.0f + 10.0f) * dt;      // yumsaq basla, sona dogru yavasla
+                if (m_slide < 0.5f) m_slide = 0.0f;
+        }
+
+        if (m_slide > 0.0f && !children().empty())
+        {
+                Widget* panel = children()[0];
+                const ImVec2 pos = panel->position();
+                panel->setPosition(ImVec2(pos.x, pos.y + m_slide));
+                ListBox::draw(renderer);
+                panel->setPosition(pos);
+        }
+        else
+        {
+                ListBox::draw(renderer);
+        }
+}
+
+void Chat::activateEvent(bool active)
+{
+        if (active)
+        {
+                this->setScrollable(true);
+        }
+        else
+        {
+                this->setScrollable(false);
+        }
+}
+
+void Chat::touchPopEvent()
+{
+        if (pUI->playertablist()->visible()) return;
+
+        pUI->keyboard()->show(this);
+}
+
+bool ProcessClientCommands(const std::string& input)
+{
+        if (input.empty() || input[0] != '/') return false;
+
+        std::stringstream ss(input);
+        std::string cmd;
+        ss >> cmd;
+
+        std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+
+        // ===== Lua =====
+        if (cmd == "/luareload") {
+                bool ok = LuaManager::Init();
+                pUI->chat()->addDebugMessage(ok ? "{00FF00}[Lua]: yuklendi" : "{FF0000}[Lua]: xeta");
+                return true;
+        }
+
+        {
+                std::string luaArgs;
+                std::getline(ss, luaArgs);
+                size_t lp = luaArgs.find_first_not_of(" \t");
+                luaArgs = (lp == std::string::npos) ? "" : luaArgs.substr(lp);
+
+                if (LuaManager::OnCommand(cmd, luaArgs)) return true;
+
+                // stream-i basa qaytar ki, asagidaki C++ komandalari duzgun isleye
+                ss.clear();
+                ss.str(input);
+                ss >> cmd;
+                std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+        }
+        // ===============
+
+        if (cmd == "/yt") {
+                std::string rest;
+                std::getline(ss, rest);
+                size_t p = rest.find_first_not_of(" \t");
+                rest = (p == std::string::npos) ? "" : rest.substr(p);
+                if (pJavaWrapper) pJavaWrapper->YtCommand(rest.c_str());
+                return true;
+        }
+
+        if (cmd == "/cam") {
+                std::string ca, cb;
+                ss >> ca >> cb;
+                char rep[96];
+                CamCtl_Command(ca.c_str(), cb.c_str(), rep, sizeof(rep));
+                pUI->chat()->addDebugMessage("{00FF00}[Client]: %s", rep);
+                return true;
+        }
+
+        if (cmd == "/gizle") {
+                g_bHideAllUI = !g_bHideAllUI;
+                if (!g_bHideAllUI) {
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz aktiv edildi.");
+                }
+                return true;
+        }
+
+        if (cmd == "/mm") {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+                g_bShowHandlingDlg = !g_bShowHandlingDlg;
+                return true;
+        }
+
+        if (cmd == "/dump")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string path;
+                if (AzPlate::Dump(pVeh->m_pVehicle, path))
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Yazildi: %s", path.c_str());
+                else
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Dump yazila bilmedi.");
+                return true;
+        }
+
+        if (cmd == "/sinyalayar")
+        {
+                std::string a;
+                ss >> a;
+                std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+                if (a == "ters") {
+                        VehControls::g_sigSwapSides = !VehControls::g_sigSwapSides;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
+                } else if (a == "lampa") {
+                        VehControls::g_sigLamp = !VehControls::g_sigLamp;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal lampa parildamasi: %s", VehControls::g_sigLamp ? "aciq" : "bagli");
+                } else if (a == "korona") {
+                        VehControls::g_sigCorona = !VehControls::g_sigCorona;
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
+                } else {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona|lampa]");
+                }
+                return true;
+        }
+
+        if (cmd == "/nomre")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string arg;
+                ss >> arg;
+                std::string low = arg;
+                std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+
+                if (low == "off" || low == "0") {
+                        AzPlate::Clear(pVeh->m_pVehicle);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Standart nomreye qayidildi.");
+                        return true;
+                }
+
+                std::string norm;
+                if (!AzPlate::Normalize(arg, norm)) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /nomre 10-AA-123  (ve ya /nomre off)");
+                        return true;
+                }
+                if (AzPlate::Set(pVeh->m_pVehicle, norm))
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Nomre: %s", norm.c_str());
+                else
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Bu masinda nomre lovhesi materiali tapilmadi (carplate/nomer).");
+                return true;
+        }
+
+        if (cmd == "/sinyal")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+                }
+                if (!pVeh || !pVeh->m_pVehicle) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                std::string arg;
+                ss >> arg;
+                std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+
+                int mode = -1;
+                if (arg == "sol")                          mode = VEH_SIGNAL_LEFT;
+                else if (arg == "sag")                     mode = VEH_SIGNAL_RIGHT;
+                else if (arg == "avariya")                 mode = VEH_SIGNAL_HAZARD;
+                else if (arg == "off" || arg == "0")       mode = VEH_SIGNAL_OFF;
+
+                if (mode < 0) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyal [sol|sag|avariya|off]");
+                        return true;
+                }
+
+                VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
+                pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
+                return true;
+        }
+
+        if (cmd == "/far" || cmd == "/suret" || cmd == "/manevr" || cmd == "/tormoz")
+        {
+                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        return true;
+                }
+
+                CVehicle* pVeh = nullptr;
+                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
+                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+                        if (vehID != INVALID_VEHICLE_ID) {
+                                pVeh = pPool->GetAt(vehID);
+                        }
+                }
+
+                if (!pVeh) {
+                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        return true;
+                }
+
+                float val = 0.0f;
+                int intVal = 0;
+
+                if (cmd == "/far") {
+                        if (!(ss >> intVal)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /far [0-15]");
+                                return true;
+                        }
+                        pVeh->SetHeadlightColor((uint8_t)intVal);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Far rengi deyisdirildi: %d", intVal);
+                }
+                else if (cmd == "/suret") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /suret [maks_suret]");
+                                return true;
+                        }
+                        pVeh->SetMaxSpeed(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Maksimum suret deyisdirildi: %.1f", val);
+                }
+                else if (cmd == "/manevr") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /manevr [donme_bucagi]");
+                                return true;
+                        }
+                        pVeh->SetSteeringAngle(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Manevr bucagi deyisdirildi: %.1f", val);
+                }
+                else if (cmd == "/tormoz") {
+                        if (!(ss >> val)) {
+                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /tormoz [guc]");
+                                return true;
+                        }
+                        pVeh->SetBrakePower(val);
+                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Tormoz gucu deyisdirildi: %.1f", val);
+                }
+
+                return true;
+        }
+
+        return false;
+}
+
+void Chat::keyboardEvent(const std::string& input)
+{
+        if (input.length() > 0 && pNetGame)
+        {
+                if (ProcessClientCommands(input)) return;
+
+                if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
+                else pNetGame->SendChatMessage(input.c_str());
+        }
+}
+
+// AZ_PATCH4
+
+===== app/src/main/cpp/samp/gui/samp_widgets/chat.h =====
+#pragma once
+
+#include <list>
+
+class Chat : public ListBox
+{
+public:
+	Chat();
+
+	void addChatMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
+	void addInfoMessage(const std::string& format, ...);
+	void addDebugMessage(const std::string& format, ...);
+	void addClientMessage(const std::string& message, const ImColor& color);
+
+	virtual void draw(ImGuiRenderer* renderer) override;
+
+	virtual void activateEvent(bool active) override;
+	virtual void touchPopEvent() override;
+	virtual void keyboardEvent(const std::string& input) override;
+
+private:
+	float m_slide = 0.0f;   // yeni mesaj gelende alt-ustu suruşme (piksel)
+	void addMessage(const std::string& messsage, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f));
+	void addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color);
+
+	class MessageItem : public ListBoxItem
+	{
+	public:
+		MessageItem(const std::string& message, const ImColor& color)
+		{
+			m_text = new Label(message, color, true, UISettings::fontSize() / 2);
+			this->addChild(m_text);
+		}
+
+		void performLayout() override
+		{
+			m_text->performLayout();
+			m_text->setPosition(ImVec2(0.0f, (height() - m_text->height()) / 2));
+		}
+
+	private:
+		Label* m_text;
+	};
+
+	class PlayerMessageItem : public ListBoxItem
+	{
+	public:
+		PlayerMessageItem(const std::string& message, const std::string& nick, const ImColor& nick_color)
+		{
+			m_nick = new Label(nick, nick_color, true, UISettings::fontSize() / 2);
+			m_text = new Label(": " + message, ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+			this->addChild(m_nick);
+			this->addChild(m_text);
+		}
+
+		void performLayout() override
+		{
+			m_nick->performLayout();
+			m_nick->setPosition(ImVec2(0.0f, (height() - m_nick->height()) / 2));
+
+			m_text->performLayout();
+			m_text->setPosition(ImVec2(m_nick->position().x + m_nick->width(), (height() - m_text->height()) / 2));
+		}
+
+	private:
+		Label* m_nick;
+		Label* m_text;
+	};
+};
+===== kamera ikonu / widgetler =====
+app/src/main/cpp/samp/game/Widgets/TouchInterface.h:187:    WIDGET_CAM_TOGGLE = 0x12,
+app/src/main/cpp/samp/game/Widgets/TouchInterface.h:344:    WIDGET_LOOK = 0xAF,
+app/src/main/cpp/samp/game/hooks.cpp:93:    CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+app/src/main/cpp/samp/game/hooks.cpp:95:    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x00363DF0 + 1 : 0x433F54), &g_fx, TheCamera.m_pRwCamera, false);
+app/src/main/cpp/samp/game/hooks.cpp:900:	float save1 = CCamera::m_f3rdPersonCHairMultX;
+app/src/main/cpp/samp/game/hooks.cpp:901:	CCamera::m_f3rdPersonCHairMultX = 0.530f - (*ms_fAspectRatio - ar43) * 0.01125f;
+app/src/main/cpp/samp/game/hooks.cpp:903:	float save2 = CCamera::m_f3rdPersonCHairMultY;
+app/src/main/cpp/samp/game/hooks.cpp:904:	CCamera::m_f3rdPersonCHairMultY = 0.400f + (*ms_fAspectRatio - ar43) * 0.03600f;
+app/src/main/cpp/samp/game/hooks.cpp:908:	CCamera::m_f3rdPersonCHairMultX = save1;
+app/src/main/cpp/samp/game/hooks.cpp:909:	CCamera::m_f3rdPersonCHairMultY = save2;
+app/src/main/cpp/samp/game/hooks.cpp:1061:void (*CCamera__Process)(uintptr_t thiz);
+app/src/main/cpp/samp/game/hooks.cpp:1062:void CCamera__Process_hook(uintptr_t thiz)
+app/src/main/cpp/samp/game/hooks.cpp:1064:	//if(pGame->GetCamera())
+app/src/main/cpp/samp/game/hooks.cpp:1065:		//pGame->GetCamera()->Update();
+app/src/main/cpp/samp/game/hooks.cpp:1067:	CCamera__Process(thiz);
+app/src/main/cpp/samp/game/hooks.cpp:1292:	// interpolate camera fix
+app/src/main/cpp/samp/game/hooks.cpp:1293:	CHook::InstallPLT(g_libGTASA + 0x6717BC, (uintptr_t)CCamera__Process_hook, (uintptr_t*)&CCamera__Process);
+app/src/main/cpp/samp/game/hooks.cpp:1737:    CCamera::InjectHooks(); //
+app/src/main/cpp/samp/game/hooks.cpp:1903:    CHook::InlineHook("_ZN13FxEmitterBP_c6RenderEP8RwCamerajfh", &FxEmitterBP_c__Render_hook, &FxEmitterBP_c__Render);
+
+===== app/src/main/cpp/samp/game/Widgets/TouchInterface.cpp =====
+//
+// Created by x1y2z on 01.05.2023.
+//
+
+#include "../common.h"
+#include "TouchInterface.h"
+#include "game/RW/RenderWare.h"
+#include "game/Enums/OSDeviceForm.h"
+#include "../../vendor/armhook/patch.h"
+
+CWidgetGta** CTouchInterface::m_pWidgets;
+
+void CTouchInterface::LoadDefaultConfigFile()
+{
+    int v0; // r5
+    int v1; // r6
+
+    v0 = 2;
+    v1 = 0;
+    if ( (RsGlobal->maximumWidth / RsGlobal->maximumHeight) >= 1.5 )
+    {
+        v0 = 3;
+        v1 = 1;
+    }
+    const char* v5[] = {"TouchDefaultTablet4x3.cfg",
+                        "TouchDefaultTabletWidescreen.cfg",
+                        "TouchDefaultPhone3x2.cfg",
+                        "TouchDefaultPhoneWidescreen.cfg",
+                        "360Default1280x720.cfg",
+                        "360Default960x720.cfg"
+    };
+
+    if ( CHook::CallFunction<OSDeviceForm>(g_libGTASA + (VER_x32 ? 0x0026BAD4 + 1 : 0x32155C)) == OSDF_Phone )
+        v1 = v0;
+
+    CTouchInterface::LoadFromFile(v5[v1], true);
+}
+
+void __fastcall CTouchInterface::LoadFromFile(const char *pszFilename, bool bFullLoad) {
+    assert("f");
+}
+
+void CTouchInterface::InjectHooks() {
+    SET_TO(m_pWidgets, *(void**)(g_libGTASA + (VER_x32 ? 0x00679474 : 0x850910)));
+}
+
+===== app/src/main/cpp/samp/game/Widgets/TouchInterface.h =====
+//
+// Created by x1y2z on 01.05.2023.
+//
+
+#pragma once
+
+#include <cstdint>
+#include "WidgetGta.h"
+
+class CTouchInterface {
+
+public:
+    static CWidgetGta** m_pWidgets;
+    static inline int   lastPosX;
+    static inline int   lastPosY;
+
+    enum WidgetPositionIDs : int32
+    {
+        WIDGET_POSITION_ENTER_CAR = 0x0,
+        WIDGET_POSITION_CAR_SHOOT = 0x1,
+        WIDGET_POSITION_ACCELERATE = 0x2,
+        WIDGET_POSITION_BUTTON_SPRINT_AND_SWIM = 0x3,
+        WIDGET_POSITION_BRAKE = 0x4,
+        WIDGET_POSITION_VEHICLE_STEER_LEFT = 0x5,
+        WIDGET_POSITION_VEHICLE_STEER_RIGHT = 0x6,
+        WIDGET_POSITION_HORN = 0x7,
+        WIDGET_POSITION_HORN_ALT = 0x8,
+        WIDGET_POSITION_PHONE = 0x9,
+        WIDGET_POSITION_VEHICLE_SHOOT_LEFT = 0xA,
+        WIDGET_POSITION_VEHICLE_SHOOT_RIGHT = 0xB,
+        WIDGET_POSITION_HANDBRAKE_AND_AIR_SHOOT = 0xC,
+        WIDGET_POSITION_CAM_TOGGLE = 0xD,
+        WIDGET_POSITION_TARGETING_AND_ATTACK = 0xE,
+        WIDGET_POSITION_VC_SHOOT = 0xF,
+        WIDGET_POSITION_VC_SHOOT_ALT = 0x10,
+        WIDGET_POSITION_SWAP_WEAPONS = 0x11,
+        WIDGET_POSITION_PLACE_BET = 0x12,
+        WIDGET_POSITION_REMOVE_BET = 0x13,
+        WIDGET_POSITION_NEGATIVE = 0x14,
+        WIDGET_POSITION_POSITIVE = 0x15,
+        WIDGET_POSITION_POOL_ENGLISH = 0x16,
+        WIDGET_POSITION_ARCADE_BUTTON = 0x17,
+        WIDGET_POSITION_ARCADE_POWER_OFF = 0x18,
+        WIDGET_POSITION_ARCADE_RESET = 0x19,
+        WIDGET_POSITION_ARCADE_JOYSTICK = 0x1A,
+        WIDGET_POSITION_SKIP_CUTSCENE = 0x1B,
+        WIDGET_POSITION_RACE_LEFT = 0x1C,
+        WIDGET_POSITION_RACE_RIGHT = 0x1D,
+        WIDGET_POSITION_STORE_ACCEPT = 0x1E,
+        WIDGET_POSITION_STORE_CANCEL = 0x1F,
+        WIDGET_POSITION_STORE_BUY = 0x20,
+        WIDGET_POSITION_STEERING_SELECTION = 0x21,
+        WIDGET_POSITION_TOUCH_LAYOUT_SELECTION = 0x22,
+        WIDGET_POSITION_THUMB_CIRCLE = 0x23,
+        WIDGET_POSITION_TAP_METER = 0x24,
+        WIDGET_POSITION_TAP_METER_BUTTON = 0x25,
+        WIDGET_POSITION_MISSION_START_AND_MISSION_CANCEL = 0x26,
+        WIDGET_POSITION_MISSION_CANCEL_ALT = 0x27,
+        WIDGET_POSITION_SCHOOL_EXIT = 0x28,
+        WIDGET_POSITION_SCHOOL_LEFT = 0x29,
+        WIDGET_POSITION_SCHOOL_RIGHT = 0x2A,
+        WIDGET_POSITION_SCHOOL_START = 0x2B,
+        WIDGET_POSITION_SCHOOL_CONTINUE = 0x2C,
+        WIDGET_POSITION_SCHOOL_TITLE_BACKGROUND = 0x2D,
+        WIDGET_POSITION_SCHOOL_AWARD = 0x2E,
+        WIDGET_POSITION_SCHOOL_RESULTS = 0x2F,
+        WIDGET_POSITION_SCHOOL_FRAME_ONE = 0x30,
+        WIDGET_POSITION_SCHOOL_FRAME_TWO = 0x31,
+        WIDGET_POSITION_SCHOOL_FRAME_THREE = 0x32,
+        WIDGET_POSITION_SCHOOL_FRAME_FOUR = 0x33,
+        WIDGET_POSITION_BASKETBALL_SHOOT = 0x34,
+        WIDGET_POSITION_BASKETBALL_TRICK = 0x35,
+        WIDGET_POSITION_GAMBLING_QUIT = 0x36,
+        WIDGET_POSITION_GAMBLING_CONTINUE = 0x37,
+        WIDGET_POSITION_BLACK_JACK_SPLIT = 0x38,
+        WIDGET_POSITION_BLACK_JACK_DOUBLE = 0x39,
+        WIDGET_POSITION_BLACK_JACK_HIT = 0x3A,
+        WIDGET_POSITION_BLACK_JACK_STAND = 0x3B,
+        WIDGET_POSITION_BLACK_JACK_REGION = 0x3C,
+        WIDGET_POSITION_BLACK_JACK_SLIDER = 0x3D,
+        WIDGET_POSITION_RHYTHM_UP = 0x3E,
+        WIDGET_POSITION_RHYTHM_DOWN = 0x3F,
+        WIDGET_POSITION_RHYTHM_LEFT = 0x40,
+        WIDGET_POSITION_RHYTHM_RIGHT = 0x41,
+        WIDGET_POSITION_RHYTHM_SELECT = 0x42,
+        WIDGET_POSITION_RHYTHM_EXIT = 0x43,
+        WIDGET_POSITION_PLAYER_SCORE = 0x44,
+        WIDGET_POSITION_OPPOSITION_SCORE = 0x45,
+        WIDGET_POSITION_GANG_REGION = 0x46,
+        WIDGET_POSITION_COLOR_PICKER = 0x47,
+        WIDGET_POSITION_COLOR_PICKER_PHONES = 0x48,
+        WIDGET_POSITION_WOF_FIRST_BET = 0x49,
+        WIDGET_POSITION_WOF_SECOND_BET = 0x4A,
+        WIDGET_POSITION_WOF_THIRD_BET = 0x4B,
+        WIDGET_POSITION_WOF_FOURTH_BET = 0x4C,
+        WIDGET_POSITION_WOF_FIFTH_BET = 0x4D,
+        WIDGET_POSITION_WOF_SIXTH_BET = 0x4E,
+        WIDGET_POSITION_VIDEO_POKER_ADD_COIN = 0x4F,
+        WIDGET_POSITION_VIDEO_POKER_REMOVE_COIN = 0x50,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FIRST_CARD = 0x51,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_SECOND_CARD = 0x52,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_THIRD_CARD = 0x53,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FOURTH_CARD = 0x54,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FIFTH_CARD = 0x55,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FIRST_CARD_REGION = 0x56,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_SECOND_CARD_REGION = 0x57,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_THIRD_CARD_REGION = 0x58,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FOURTH_CARD_REGION = 0x59,
+        WIDGET_POSITION_VIDEO_POKER_HOLD_FIFTH_CARD_REGION = 0x5A,
+        WIDGET_POSITION_VIDEO_POKER_EXIT = 0x5B,
+        WIDGET_POSITION_VIDEO_POKER_DEAL = 0x5C,
+        WIDGET_POSITION_ITB_FIRST_HORSE = 0x5D,
+        WIDGET_POSITION_ITB_SECOND_HORSE = 0x5E,
+        WIDGET_POSITION_ITB_THIRD_HORSE = 0x5F,
+        WIDGET_POSITION_ITB_FOURTH_HORSE = 0x60,
+        WIDGET_POSITION_ITB_FIFTH_HORSE = 0x61,
+        WIDGET_POSITION_ITB_FIRST_BET = 0x62,
+        WIDGET_POSITION_ITB_SECOND_BET = 0x63,
+        WIDGET_POSITION_ITB_THIRD_BET = 0x64,
+        WIDGET_POSITION_ITB_FOURTH_BET = 0x65,
+        WIDGET_POSITION_ITB_FIFTH_BET = 0x66,
+        WIDGET_POSITION_ITB_SIXTH_BET = 0x67,
+        WIDGET_POSITION_ITB_SEVENTH_BET = 0x68,
+        WIDGET_POSITION_ITB_EIGHTH_BET = 0x69,
+        WIDGET_POSITION_ITB_PLACE_BET = 0x6A,
+        WIDGET_POSITION_ITB_EXIT = 0x6B,
+        WIDGET_POSITION_MAP = 0x6C,
+        WIDGET_POSITION_RESPONSE = 0x6D,
+        WIDGET_POSITION_HYDRAULICS = 0x6E,
+        WIDGET_POSITION_DRIVE = 0x6F,
+        WIDGET_POSITION_PLAYER_INFO = 0x70,
+        WIDGET_POSITION_RADAR = 0x71,
+        WIDGET_POSITION_HELP_TEXT = 0x72,
+        WIDGET_POSITION_HELP_TEXT_ALT = 0x73,
+        WIDGET_POSITION_HELP_TEXT_ALT_SHOPS = 0x74,
+        WIDGET_POSITION_SWIPE_RADIO = 0x75,
+        WIDGET_POSITION_PED_MOVE = 0x76,
+        WIDGET_POSITION_SPRINT_AND_BASKETBALL_JUMP = 0x77,
+        WIDGET_POSITION_SHOOT_LOOK = 0x78,
+        WIDGET_POSITION_VEHICLE_STEER_ANALOG = 0x79,
+        WIDGET_POSITION_VEHICLE_FLICK = 0x7A,
+        WIDGET_POSITION_LOOK = 0x7B,
+        WIDGET_POSITION_MISSION_TIMERS = 0x7C,
+        WIDGET_POSITION_RACING = 0x7D,
+        WIDGET_POSITION_RACE_RESULTS = 0x7E,
+        WIDGET_POSITION_HORSE_RESULTS = 0x7F,
+        WIDGET_POSITION_WAGER = 0x80,
+        WIDGET_POSITION_POOL = 0x81,
+        WIDGET_POSITION_POKER_PAYOUT = 0x82,
+        WIDGET_POSITION_VITAL_STATS = 0x83,
+        WIDGET_POSITION_MINIGAME_CANCEL = 0x84,
+        WIDGET_POSITION_AIRPORT_LEFT = 0x85,
+        WIDGET_POSITION_AIRPORT_RIGHT = 0x86,
+        WIDGET_POSITION_TATTOO_PREVIEW = 0x87,
+        WIDGET_POSITION_SAVE_NOTIFICATION = 0x88,
+        WIDGET_POSITION_REPLAY = 0x89,
+        NUM_WIDGET_POSITIONS = 0x8A,
+    };
+
+
+public:
+    static void LoadDefaultConfigFile();
+    static void LoadFromFile(const char *pszFilename, bool bFullLoad);
+    static void InjectHooks();
+};
+
+enum WidgetIDs : int32_t
+{
+    WIDGET_ENTER_CAR = 0x0,
+    WIDGET_ATTACK = 0x1,
+    WIDGET_ACCELERATE = 0x2,
+    WIDGET_BRAKE = 0x3,
+    WIDGET_HANDBRAKE = 0x4,
+    WIDGET_VEHICLE_STEER_LEFT = 0x5,
+    WIDGET_VEHICLE_STEER_RIGHT = 0x6,
+    WIDGET_HORN = 0x7,
+    WIDGET_PHONE = 0x8,
+    WIDGET_GIFT = 0x9,
+    WIDGET_KISS = 0xA,
+    WIDGET_CAR_SHOOT = 0xB,
+    WIDGET_HYDRAULICS = 0xC,
+    WIDGET_AUTO_HYDRAULICS = 0xD,
+    WIDGET_DROP_CRANE = 0xE,
+    WIDGET_DROP_ITEM = 0xF,
+    WIDGET_VEHICLE_SHOOT_LEFT = 0x10,
+    WIDGET_VEHICLE_SHOOT_RIGHT = 0x11,
+    WIDGET_CAM_TOGGLE = 0x12,
+    WIDGET_ENTER_TARGETING = 0x13,
+    WIDGET_EXIT_TARGETING = 0x14,
+    WIDGET_VC_SHOOT = 0x15,
+    WIDGET_VC_SHOOT_ALT = 0x16,
+    WIDGET_AIR_GUN = 0x17,
+    WIDGET_ROCKET = 0x18,
+    WIDGET_VEHICLE_BOMB = 0x19,
+    WIDGET_VEHICLE_TURRET_LEFT = 0x1A,
+    WIDGET_VEHICLE_TURRET_RIGHT = 0x1B,
+    WIDGET_PURCHASE = 0x1C,
+    WIDGET_SWAP_WEAPONS = 0x1D,
+    WIDGET_NITRO = 0x1E,
+    WIDGET_BUTTON_SPRI
+===== ESC / geri duymesi =====
+app/src/main/java/com/nvidia/devtech/CustomEditText.java:25:        if (keyCode == KeyEvent.KEYCODE_BACK) {
+app/src/main/java/com/nvidia/devtech/NvEventQueueActivity.java:606:    public boolean onKeyDown(int keyCode, KeyEvent event)
+app/src/main/java/com/nvidia/devtech/NvEventQueueActivity.java:611:            return super.onKeyDown(keyCode, event);
+app/src/main/java/com/nvidia/devtech/NvEventQueueActivity.java:617:            ret = super.onKeyDown(keyCode, event);
+app/src/main/java/com/samp/mobile/game/GTASA.java:118:    public boolean onKeyDown(int i, KeyEvent keyEvent)
+app/src/main/java/com/samp/mobile/game/GTASA.java:120:        return super.onKeyDown(i, keyEvent);
+app/src/main/java/com/samp/mobile/game/SAMP.java:345:    public void onBackPressed() {
+app/src/main/java/com/samp/mobile/game/SAMP.java:346:        super.onBackPressed();
+app/src/main/java/com/samp/mobile/game/SAMP.java:351:    public boolean onKeyDown(int keyCode, KeyEvent event) {
+app/src/main/java/com/samp/mobile/game/SAMP.java:352:        if(keyCode == KeyEvent.KEYCODE_BACK)
+app/src/main/java/com/samp/mobile/game/SAMP.java:356:        return super.onKeyDown(keyCode, event);
+app/src/main/java/com/samp/mobile/launcher/MainActivity.java:337:    public void onBackPressed() {
+app/src/main/java/com/samp/mobile/launcher/MainActivity.java:338:        super.onBackPressed();
+app/src/main/java/com/samp/mobile/launcher/util/CustomEditText.java:27:        if (keyCode == KeyEvent.KEYCODE_BACK) {
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3204:void ImGuiInputTextState::OnKeyPressed(int key)
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3550:            state->OnKeyPressed(STB_TEXTEDIT_K_WORDLEFT);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3551:            state->OnKeyPressed(STB_TEXTEDIT_K_WORDRIGHT | STB_TEXTEDIT_K_SHIFT);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3578:                    state->OnKeyPressed((int)c);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3593:                        state->OnKeyPressed((int)c);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3621:        if (IsKeyPressedMap(ImGuiKey_LeftArrow))                        { state->OnKeyPressed((is_startend_key_down ? STB_TEXTEDIT_K_LINESTART : is_wordmove_key_down ? STB_TEXTEDIT_K_WORDLEFT : STB_TEXTEDIT_K_LEFT) | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3622:        else if (IsKeyPressedMap(ImGuiKey_RightArrow))                  { state->OnKeyPressed((is_startend_key_down ? STB_TEXTEDIT_K_LINEEND : is_wordmove_key_down ? STB_TEXTEDIT_K_WORDRIGHT : STB_TEXTEDIT_K_RIGHT) | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3623:        else if (IsKeyPressedMap(ImGuiKey_UpArrow) && is_multiline)     { if (io.KeyCtrl) SetWindowScrollY(draw_window, ImMax(draw_window->Scroll.y - g.FontSize, 0.0f)); else state->OnKeyPressed((is_startend_key_down ? STB_TEXTEDIT_K_TEXTSTART : STB_TEXTEDIT_K_UP) | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3624:        else if (IsKeyPressedMap(ImGuiKey_DownArrow) && is_multiline)   { if (io.KeyCtrl) SetWindowScrollY(draw_window, ImMin(draw_window->Scroll.y + g.FontSize, GetScrollMaxY())); else state->OnKeyPressed((is_startend_key_down ? STB_TEXTEDIT_K_TEXTEND : STB_TEXTEDIT_K_DOWN) | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3625:        else if (IsKeyPressedMap(ImGuiKey_Home))                        { state->OnKeyPressed(io.KeyCtrl ? STB_TEXTEDIT_K_TEXTSTART | k_mask : STB_TEXTEDIT_K_LINESTART | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3626:        else if (IsKeyPressedMap(ImGuiKey_End))                         { state->OnKeyPressed(io.KeyCtrl ? STB_TEXTEDIT_K_TEXTEND | k_mask : STB_TEXTEDIT_K_LINEEND | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3627:        else if (IsKeyPressedMap(ImGuiKey_Delete) && !is_readonly)      { state->OnKeyPressed(STB_TEXTEDIT_K_DELETE | k_mask); }
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3633:                    state->OnKeyPressed(STB_TEXTEDIT_K_WORDLEFT|STB_TEXTEDIT_K_SHIFT);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3635:                    state->OnKeyPressed(STB_TEXTEDIT_K_LINESTART|STB_TEXTEDIT_K_SHIFT);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3637:            state->OnKeyPressed(STB_TEXTEDIT_K_BACKSPACE | k_mask);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3650:                    state->OnKeyPressed((int)c);
+app/src/main/cpp/samp/vendor/imgui/imgui_widgets.cpp:3659:            state->OnKeyPressed(is_undo ? STB_TEXTEDIT_K_UNDO : STB_TEXTEDIT_K_REDO);
+
+===== xerite / radar =====
+app/src/main/cpp/samp/game/hooks.cpp:147:    //((void (*)()) (g_libGTASA + (VER_x32 ? 0x00437B0C + 1 : 0x51CFF0)))(); // CHud::DrawRadar
+app/src/main/cpp/samp/game/hooks.cpp:171:int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char* name);
+app/src/main/cpp/samp/game/hooks.cpp:172:int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char* name)
+app/src/main/cpp/samp/game/hooks.cpp:187:	return CRadar__SetCoordBlip(r0, X, Y, Z, r4, r5, name);
+app/src/main/cpp/samp/game/hooks.cpp:192:void(*CRadar_DrawRadarGangOverlay)(uint32_t unk);
+app/src/main/cpp/samp/game/hooks.cpp:193:void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
+app/src/main/cpp/samp/game/hooks.cpp:426:uint32_t CRadar__GetRadarTraceColor(uint32_t color, uint8_t bright, uint8_t friendly)
+app/src/main/cpp/samp/game/hooks.cpp:1196:void (*CRadar_ClearBlip)(uint32_t a2);
+app/src/main/cpp/samp/game/hooks.cpp:1197:void CRadar_ClearBlip_hook(uint32_t a2)
+app/src/main/cpp/samp/game/hooks.cpp:1202:	//LOGI("[CRadar::ClearBlip]: %d called from 0x%X", (uint16_t)a2, dwRetAddr);
+app/src/main/cpp/samp/game/hooks.cpp:1206:		LOGI("[CRadar::ClearBlip]: Invalid blip ID (%d) called from 0x%X", (uint16_t)a2, dwRetAddr);
+app/src/main/cpp/samp/game/hooks.cpp:1210:		CRadar_ClearBlip(a2);
+app/src/main/cpp/samp/game/hooks.cpp:1259:	//CHook::InstallPLT(g_libGTASA + 0x67196C, (uintptr_t)CRadar_DrawRadarGangOverlay_hook, (uintptr_t*)&CRadar_DrawRadarGangOverlay);
+app/src/main/cpp/samp/game/hooks.cpp:1261:	//CHook::InstallPLT(g_libGTASA+0x675914, (uintptr_t)CRadar__SetCoordBlip_hook, (uintptr_t*)&CRadar__SetCoordBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1306:	CHook::InstallPLT(g_libGTASA + 0x66FF0C, (uintptr_t)CRadar_ClearBlip_hook, (uintptr_t*)&CRadar_ClearBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1791:    //CWidgetRadar::InjectHooks();
+app/src/main/cpp/samp/game/hooks.cpp:1849:    CHook::Redirect("_ZN6CRadar19GetRadarTraceColourEjhh", &CRadar__GetRadarTraceColor); // dangerous
+app/src/main/cpp/samp/game/hooks.cpp:1850:    CHook::InlineHook("_ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc", &CRadar__SetCoordBlip_hook, &CRadar__SetCoordBlip);
+app/src/main/cpp/samp/game/hooks.cpp:1851:    CHook::InlineHook("_ZN6CRadar20DrawRadarGangOverlayEb", &CRadar_DrawRadarGangOverlay_hook, &CRadar_DrawRadarGangOverlay);
+app/src/main/cpp/samp/game/hooks.cpp:1869:    CHook::InlineHook("_ZN6CRadar9ClearBlipEi", &CRadar_ClearBlip_hook, &CRadar_ClearBlip);
+app/src/main/cpp/samp/game/patches.cpp:252:    CHook::RET("_ZN6CRadar10DrawLegendEiii"); // CRadar::DrawLgegend
+app/src/main/cpp/samp/game/patches.cpp:253:    CHook::RET("_ZN6CRadar19AddBlipToLegendListEhi"); // CRadar::AddBlipToLegendList
+000000000051ad3c T _ZN12CMenuManager10CheckHoverEiiii
+0000000000517e08 T _ZN12CMenuManager10DrawWindowERK5CRectPch5CRGBAhh
+00000000005138ec T _ZN12CMenuManager10InitialiseEv
+00000000005168e4 T _ZN12CMenuManager10PrintBriefEv
+00000000005168e0 T _ZN12CMenuManager10PrintStatsEv
+00000000005140b8 T _ZN12CMenuManager12DrawFrontEndEv
+000000000051ad78 T _ZN12CMenuManager12LoadSettingsEv
+00000000005199f8 T _ZN12CMenuManager12SaveSettingsEv
+00000000005164dc T _ZN12CMenuManager13DisplaySliderEffffffi
+00000000005163d8 T _ZN12CMenuManager13MessageScreenEPcbb
+000000000051b410 T _ZN12CMenuManager13SetHelperTextEi
+0000000000516b74 T _ZN12CMenuManager14ChangeLanguageEa
+000000000051417c T _ZN12CMenuManager14DrawBackgroundEv
+00000000005137b8 T _ZN12CMenuManager14UnloadTexturesEv
+0000000000513990 T _ZN12CMenuManager15LoadAllTexturesEv
+000000000051b420 T _ZN12CMenuManager15ResetHelperTextEv
+000000000051ad7c T _ZN12CMenuManager15SaveStatsToFileEv
+0000000000517f50 T _ZN12CMenuManager16DrawWindowedTextEfffPcS0_h
+0000000000517e04 T _ZN12CMenuManager16ProcessStreamingEh
+0000000000517030 T _ZN12CMenuManager16ProcessUserInputEhhhha
+000000000051a728 T _ZN12CMenuManager17DisplayHelperTextEPc
+0000000000514674 T _ZN12CMenuManager17DrawStandardMenusEh
+0000000000513cac T _ZN12CMenuManager17SwapTexturesRoundEh
+00000000005169a4 T _ZN12CMenuManager17SwitchToNewScreenEa
+000000000051ad74 T _ZN12CMenuManager18CentreMousePointerEv
+0000000000519988 T _ZN12CMenuManager18DrawQuitGameScreenEv
+0000000000517de0 T _ZN12CMenuManager18HasLanguageChangedEv
+0000000000516bd8 T _ZN12CMenuManager18ProcessFileActionsEv
+0000000000517504 T _ZN12CMenuManager18ProcessMenuOptionsEaPhh
+00000000005182f0 T _ZN12CMenuManager18SmallMessageScreenEPKc
+0000000000517b30 T _ZN12CMenuManager18SwitchMenuOnAndOffEv
+00000000005179d8 T _ZN12CMenuManager19CheckSliderMovementEa
+00000000005191c4 T _ZN12CMenuManager19DrawControllerBoundEtb
+0000000000517b38 T _ZN12CMenuManager19ScrollRadioStationsEa
+0000000000517bb0 T _ZN12CMenuManager20CheckFrontEndUpInputEv
+000000000051b430 T _ZN12CMenuManager20ProcessPCMenuOptionsEah
+0000000000517d00 T _ZN12CMenuManager21AdditionalOptionInputEPhS0_
+000000000051aa3c T _ZN12CMenuManager21CheckCodesForControlsEi
+00000000005166bc T _ZN12CMenuManager21PrintRadioStationListEv
+0000000000513580 T _ZN12CMenuManager21SetDefaultPreferencesEa
+0000000000517c04 T _ZN12CMenuManager22CheckFrontEndDownInputEv
+0000000000517c58 T _ZN12CMenuManager22CheckFrontEndLeftInputEv
+00000000005172c0 T _ZN12CMenuManager22GetNumberOfMenuOptionsEv
+0000000000517cac T _ZN12CMenuManager23CheckFrontEndRightInputEv
+0000000000518e10 T _ZN12CMenuManager23RedefineScreenUserInputEPhS0_
+0000000000514178 T _ZN12CMenuManager23SetFrontEndRenderStatesEv
+000000000051bd88 T _ZN12CMenuManager25CheckMissionPackValidMenuEv
+000000000051b8d4 T _ZN12CMenuManager25CheckRedefineControlInputEv
+00000000005199fc T _ZN12CMenuManager25DrawControllerSetupScreenEv
+000000000051baf0 T _ZN12CMenuManager25ProcessMissionPackNewGameEv
+00000000005168e8 T _ZN12CMenuManager26JumpToGenericMessageScreenEaPKcS1_
+000000000051a46c T _ZN12CMenuManager28DrawContollerScreenExtraTextEi
+0000000000517b34 T _ZN12CMenuManager29DoSettingsBeforeStartingAGameEv
+0000000000513f7c T _ZN12CMenuManager33InitialiseChangedLanguageSettingsEb
+000000000051acec T _ZN12CMenuManager34SaveLoadFileError_SetUpErrorScreenEv
+0000000000516b84 T _ZN12CMenuManager7ProcessEv
+0000000000514670 T _ZN12CMenuManager8PrintMapEv
+0000000000514618 T _ZN12CMenuManager8StretchXEf
+0000000000514644 T _ZN12CMenuManager8StretchYEf
+00000000005185c8 T _ZN12CMenuManager9UserInputEv
+00000000005132bc T _ZN12CMenuManagerC1Ev
+00000000005132bc T _ZN12CMenuManagerC2Ev
+00000000005136d0 T _ZN12CMenuManagerD1Ev
+00000000005136d0 T _ZN12CMenuManagerD2Ev
+0000000000526e78 T _ZN6CRadar10DrawLegendEiii
+0000000000523118 T _ZN6CRadar10InitialiseEv
+00000000005277ec T _ZN6CRadar10LimitToMapEPfS0_
+0000000000527eb0 T _ZN6CRadar11SetBlipFadeEih
+0000000000c24614 B _ZN6CRadar11m_radarRectE
+00000000005239c8 T _ZN6CRadar12DrawRadarMapEv
+0000000000523480 T _ZN6CRadar12LoadTexturesEv
+0000000000527a04 T _ZN6CRadar12SetCoordBlipE9eBlipType7CVectorj12eBlipDisplayPc
+0000000000c24610 B _ZN6CRadar12m_radarRangeE
+00000000005286d0 T _ZN6CRadar13ClipRadarPolyEP9CVector2DPKS0_
+00000000005272dc T _ZN6CRadar13Draw3dMarkersEv
+0000000000524e04 T _ZN6CRadar13DrawCoordBlipEihif
+00000000005293f8 T _ZN6CRadar13DrawRadarMaskEv
+0000000000c21518 B _ZN6CRadar13MapLegendListE
+0000000000527e1c T _ZN6CRadar13SetBlipSpriteEii
+0000000000527b68 T _ZN6CRadar13SetEntityBlipE9eBlipTypeij12eBlipDisplayPc

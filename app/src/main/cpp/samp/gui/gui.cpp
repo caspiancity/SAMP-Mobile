@@ -5,6 +5,7 @@
 #include "../game/VehTuner.h"
 #include "../game/VehControls.h"
 #include "../game/AzPlate.h"
+#include "../game/Coronas.h"
 #include "../game/Camera.h"
 #include "../game/scripting.h"
 #include <string>
@@ -426,7 +427,7 @@ namespace mm
         }
 
         // bir slider satiri; deyer deyisibse true
-        static bool SliderRow(int idx, const Rc& row, const char* label, float* v, float mn, float mx, float dt, bool canInput)
+        static bool SliderRow(int idx, const Rc& row, const char* label, float* v, float mn, float mx, float dt, bool canInput, const char* unit = "%", float step = 5.0f)
         {
                 const int id = ID_SLIDER + idx * 4;
                 bool changed = false;
@@ -452,8 +453,8 @@ namespace mm
                         }
                         if (t.released) {
                                 float nv = *v;
-                                if (s_act == id + 1 && In(minus, t.x, t.y)) nv = Clamp(*v - 5.0f, mn, mx);
-                                if (s_act == id + 2 && In(plus,  t.x, t.y)) nv = Clamp(*v + 5.0f, mn, mx);
+                                if (s_act == id + 1 && In(minus, t.x, t.y)) nv = Clamp(*v - step, mn, mx);
+                                if (s_act == id + 2 && In(plus,  t.x, t.y)) nv = Clamp(*v + step, mn, mx);
                                 if (nv != *v) { *v = nv; changed = true; }
                         }
                 }
@@ -469,7 +470,7 @@ namespace mm
 
                 Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(214, 220, 232), label);
                 char buf[16];
-                snprintf(buf, sizeof(buf), "%.0f%%", *v);
+                snprintf(buf, sizeof(buf), "%.0f%s", *v, unit);
                 Txt(S(18.0f), row.x + row.w - S(16.0f) - TW(S(18.0f), buf), row.y + S(7.0f), Accent(0.0f), buf);
 
                 // - / + duymeleri
@@ -490,7 +491,7 @@ namespace mm
                 if (kx - tx0 > 1.0f) Fill(Rc{ tx0, ty, kx - tx0, th }, Accent(0.0f), S(3.0f));
 
                 // "standart (100%)" ish
-                if (mn < 100.0f && mx > 100.0f) {
+                if (mn < 100.0f && mx > 100.0f && unit[0] == '%') {
                         const float sx = tx0 + (tx1 - tx0) * ((100.0f - mn) / (mx - mn));
                         s_dl->AddLine(ImVec2(sx, ty - S(6.0f)), ImVec2(sx, ty + th + S(6.0f)), Col(255, 255, 255, 60), S(1.4f));
                 }
@@ -632,16 +633,18 @@ void RenderHandlingDialog()
 
         CVehicleGTA* gtaVeh = s_lastVeh;
         CVehicle*    pVehW  = nullptr;
+        bool         noVeh  = false;   // MM_NO_VEHICLE_PATCH
 
         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
 
         if (want)
         {
-                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        g_bShowHandlingDlg = false;
-                        s_t = 0.0f; s_wasOpen = false; s_hndRectValid = false; s_act = 0;
-                        return;
-                }
+                noVeh = !pLocalPlayer || !pLocalPlayer->IsInVehicle();
+                if (noVeh) {
+                        gtaVeh = nullptr; s_lastVeh = nullptr;
+                        s_eng = s_lig = s_lock = false; s_sig = 0;
+                        s_wasOpen = true;
+                } else {
 
                 CVehicle* pVeh = nullptr;
                 if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
@@ -676,6 +679,7 @@ void RenderHandlingDialog()
                         s_lock = (lk == 2 || lk == 3);
                 }
                 s_sig = VehControls::GetSignal(gtaVeh);
+                }
         }
 
         ImGuiIO& io = ImGui::GetIO();
@@ -704,7 +708,7 @@ void RenderHandlingDialog()
         };
         clampCenter();
 
-        const bool canInput = want && s_t > 0.75f;
+        bool canInput = want && s_t > 0.75f;
         const MMTouch& tch = g_mmTouch;
 
         auto panelRect = [&]() { return Rc{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U }; };
@@ -791,6 +795,9 @@ void RenderHandlingDialog()
                 s_dl->AddLine(ImVec2(P.x + S(198.0f), P.y + S(76.0f)), ImVec2(P.x + S(198.0f), P.y + P.h - S(20.0f)), Col(255, 255, 255, 16), S(1.0f));
         }
 
+        const bool canInputAll = canInput;
+        if (noVeh && (s_page <= 4 || s_page == 6)) canInput = false;   // masina bolmelerinde toxunus yoxdur
+
         // --- mezmun ---
         bool changed = false;
         {
@@ -821,30 +828,207 @@ void RenderHandlingDialog()
 
                         SignalBlock(Rc{ cx0, P.y + S(346.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, canInput);
                 }
-                else if (s_page == 4)     // FAR
+                else if (s_page == 4)     // FAR (serbest RGB) FAR_RGB_PATCH
                 {
-                        char hb[40];
-                        if (s_tune.headlight == 0) snprintf(hb, sizeof(hb), "Far rəngi: Standart");
-                        else                       snprintf(hb, sizeof(hb), "Far rəngi: #%d", (int)s_tune.headlight);
-                        Txt(S(17.0f), cx0, P.y + S(128.0f), Col(214, 220, 232), hb);
-                        Txt(S(13.0f), cx0, P.y + S(152.0f), Col(124, 132, 152), "Hazırda yalnız hazır palitra — sərbəst rəng seçimi üçün VehTuner/Coronas faylları lazımdır.");
+                        static CVehicleGTA* s_hlVeh = nullptr;
+                        static float s_hl[3] = {
+                            255.0f, 255.0f, 255.0f
+                        };
 
-                        for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i)
+                        if (gtaVeh != s_hlVeh) {
+                                s_hlVeh = gtaVeh;
+
+                                uint8_t r8 = 255, g8 = 255, b8 = 255;
+
+                                if (gtaVeh &&
+                                    CCoronas::GetHeadlightRGB(
+                                        gtaVeh, r8, g8, b8
+                                    )) {
+
+                                        s_hl[0] = r8;
+                                        s_hl[1] = g8;
+                                        s_hl[2] = b8;
+
+                                } else {
+                                        s_hl[0] =
+                                        s_hl[1] =
+                                        s_hl[2] = 255.0f;
+                                }
+                        }
+
+                        static const char* kRGB[3] = {
+                            "Qirmizi (R)",
+                            "Yasil (G)",
+                            "Mavi (B)"
+                        };
+
+                        bool hlChanged = false;
+
+                        for (int i = 0; i < 3; ++i) {
+                                const Rc row{
+                                    cx0,
+                                    P.y + S(124.0f + 72.0f * (float)i),
+                                    cw,
+                                    S(66.0f)
+                                };
+
+                                if (SliderRow(
+                                    i, row, kRGB[i],
+                                    &s_hl[i],
+                                    0.0f, 255.0f,
+                                    dt, canInput,
+                                    "", 5.0f
+                                )) {
+                                        hlChanged = true;
+                                }
+                        }
+
+                        // onizleme + HEX + standart
+                        const Rc pvr{
+                            cx0,
+                            P.y + S(346.0f),
+                            S(150.0f),
+                            S(44.0f)
+                        };
+
+                        Fill(
+                            pvr,
+                            Col(
+                                (int)s_hl[0],
+                                (int)s_hl[1],
+                                (int)s_hl[2],
+                                255
+                            ),
+                            S(10.0f)
+                        );
+
+                        Stroke(
+                            pvr,
+                            Col(255, 255, 255, 50),
+                            S(10.0f),
+                            S(1.2f)
+                        );
+
+                        char hx[24];
+
+                        snprintf(
+                            hx, sizeof(hx),
+                            "#%02X%02X%02X",
+                            (int)s_hl[0],
+                            (int)s_hl[1],
+                            (int)s_hl[2]
+                        );
+
+                        Txt(
+                            S(18.0f),
+                            cx0 + S(166.0f),
+                            P.y + S(356.0f),
+                            Col(214, 220, 232),
+                            hx
+                        );
+
+                        const Rc bStd{
+                            cx0 + S(300.0f),
+                            P.y + S(346.0f),
+                            S(150.0f),
+                            S(44.0f)
+                        };
+
+                        if (Tap(90, bStd, canInput) && gtaVeh) {
+                                CCoronas::ClearHeadlightRGB(gtaVeh);
+
+                                s_tune.headlight = 0;
+                                changed = true;
+
+                                s_hl[0] =
+                                s_hl[1] =
+                                s_hl[2] = 255.0f;
+                        }
+
                         {
+                                const float p = Prs(90, dt);
+                                const Rc d = Shrink(
+                                    bStd, S(1.5f) * p
+                                );
+
+                                Fill(
+                                    d,
+                                    Col(255, 255, 255,
+                                        14 + (int)(30.0f * p)),
+                                    S(9.0f)
+                                );
+
+                                Stroke(
+                                    d,
+                                    Col(255, 255, 255, 40),
+                                    S(9.0f),
+                                    S(1.2f)
+                                );
+
+                                TxtC(
+                                    S(16.0f),
+                                    d,
+                                    Col(240, 244, 252),
+                                    "Standart",
+                                    true
+                                );
+                        }
+
+                        // hazir rengler
+                        for (int i = 0;
+                             i < VEHTUNER_COLOR_COUNT;
+                             ++i) {
+
                                 uint8_t r, g, b;
-                                VehTuner::GetPaletteColor(i, r, g, b);
 
-                                const int   col = i % 8, rowi = i / 8;
-                                const float cxs = cx0 + S(24.0f) + col * S(58.0f);
-                                const float cys = P.y + S(200.0f) + rowi * S(58.0f);
-                                const Rc    sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+                                VehTuner::GetPaletteColor(
+                                    i, r, g, b
+                                );
 
-                                const int sid = ID_SWATCH + std::min(i, 23);
-                                if (Tap(sid, sq, canInput)) { s_tune.headlight = (uint8_t)i; changed = true; }
+                                const int col = i % 8;
+                                const int rowi = i / 8;
+
+                                const float cxs =
+                                    cx0 + S(24.0f) +
+                                    (float)col * S(58.0f);
+
+                                const float cys =
+                                    P.y + S(436.0f) +
+                                    (float)rowi * S(54.0f);
+
+                                const Rc sq{
+                                    cxs - S(24.0f),
+                                    cys - S(24.0f),
+                                    S(48.0f),
+                                    S(48.0f)
+                                };
+
+                                const int sid =
+                                    ID_SWATCH + std::min(i, 23);
+
+                                if (Tap(sid, sq, canInput) && gtaVeh) {
+                                        s_hl[0] = r;
+                                        s_hl[1] = g;
+                                        s_hl[2] = b;
+                                        hlChanged = true;
+                                }
 
                                 const float p = Prs(sid, dt);
-                                Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
-                                if (s_tune.headlight == i) s_dl->AddCircle(ImVec2(cxs, cys), S(25.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+
+                                Dot(
+                                    cxs, cys,
+                                    S(20.0f) - S(2.0f) * p,
+                                    Col(r, g, b, 255)
+                                );
+                        }
+
+                        if (hlChanged && gtaVeh) {
+                                CCoronas::SetHeadlightRGB(
+                                    gtaVeh,
+                                    (uint8_t)s_hl[0],
+                                    (uint8_t)s_hl[1],
+                                    (uint8_t)s_hl[2]
+                                );
                         }
                 }
                 else if (s_page == 5)    // KOMANDALAR
@@ -1039,6 +1223,16 @@ void RenderHandlingDialog()
                                 Txt(S(15.0f), cx0 + S(188.0f), rb.y + (rb.h - S(15.0f)) * 0.5f, Col(120, 215, 160, (int)(255.0f * s_flash)), "Tətbiq edildi");
                         }
                 }
+
+                if (noVeh && (s_page <= 4 || s_page == 6))
+                {
+                        // masina yoxdur: bu bolme sondurulub
+                        const Rc ov{ cx0 - S(8.0f), P.y + S(112.0f), cw + S(16.0f), P.h - S(128.0f) };
+                        Fill(ov, Col(17, 19, 26, 205), S(12.0f));
+                        TxtC(S(18.0f), Rc{ ov.x, ov.y + ov.h * 0.5f - S(30.0f), ov.w, S(26.0f) }, Col(238, 241, 248), "Masinda deyilsiniz", true);
+                        TxtC(S(14.0f), Rc{ ov.x, ov.y + ov.h * 0.5f + S(2.0f), ov.w, S(22.0f) }, Col(124, 132, 152), "Bu bolme yalniz masinda isleyir", false);
+                }
+                canInput = canInputAll;
 
                 s_A = saveA;
         }

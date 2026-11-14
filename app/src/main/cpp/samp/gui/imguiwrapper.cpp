@@ -127,6 +127,33 @@ bool ImGuiWrapper::initialize()
 	}
 
 
+	// ---- EMOJI_SYMBOLS_PATCH11: Misc Symbols + Dingbats (U+2600..U+27BF), :smile: kimi kodlar ucun ----
+	{
+		static const ImWchar symRanges[] = { 0x2600, 0x27BF, 0 };
+		static const char* kSym[] = {
+			"/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf",
+			"/system/fonts/NotoSansSymbols-Regular.ttf",
+			"/system/fonts/NotoSansSymbols2-Regular.ttf",
+			"/system/fonts/DejaVuSans.ttf",
+			"/system/fonts/DroidSansFallback.ttf",
+			"/system/fonts/DroidSansFallbackFull.ttf", nullptr
+		};
+		int mergedSym = 0;
+		for (int i = 0; kSym[i] && mergedSym < 3; i++)
+		{
+			if (access(kSym[i], R_OK) != 0) continue;
+			ImFontConfig symCfg;
+			symCfg.MergeMode = true;
+			symCfg.PixelSnapH = true;
+			symCfg.GlyphExtraSpacing.x = UISettings::outlineSize();
+			if (io.Fonts->AddFontFromFileTTF(kSym[i], UISettings::fontSize(), &symCfg, symRanges))
+			{
+				Log::addParameter("Symbol font: %s", kSym[i]);
+				mergedSym++;
+			}
+		}
+	}
+
 	createFontTexture();
 
 	m_renderer = new ImGuiRenderer(ImGui::GetBackgroundDrawList(), font);

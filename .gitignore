@@ -17,3 +17,6 @@ local.properties
 c6_*.txt
 collect5*
 .patchbak56/
+
+*.bak*
+txt/

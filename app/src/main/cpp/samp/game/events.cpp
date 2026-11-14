@@ -42,8 +42,10 @@ void ProcessIncommingEvent(PLAYERID playerId, int iEventType,
         iVehicleID = pNetGame->GetVehiclePool()->FindGtaIDFromID(dwParam1);
         iComponent = (int)dwParam2;
 
-       // if(CStreaming::TryLoadModel(iComponent))
-          //  ScriptCommand(&add_car_component, iVehicleID, iComponent, &v);
+       pVehicle = pNetGame->GetVehiclePool()->GetAt(dwParam1);
+        if (pVehicle) {
+            try { pVehicle->AddComponent(iComponent); } catch (...) {}
+        }
 		break;
 
 	case EVENT_TYPE_CARCOLOR:

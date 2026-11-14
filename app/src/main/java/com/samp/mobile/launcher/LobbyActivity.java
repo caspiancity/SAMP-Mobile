@@ -176,9 +176,65 @@ public class LobbyActivity extends Activity {
         }
     }
 
+
+    // ===== LOBBY_MUSIC_PATCH8: arxa fon musiqisi (res/raw/bg_music1, bg_music2, bg_music3) =====
+    private android.media.MediaPlayer bgMusic;
+
+    private void startBgMusic() {
+        try {
+            if (bgMusic != null) {
+                if (!bgMusic.isPlaying()) bgMusic.start();
+                return;
+            }
+            int[] ids = new int[3];
+            int n = 0;
+            for (int i = 1; i <= 3; i++) {
+                int id = getResources().getIdentifier("bg_music" + i, "raw", getPackageName());
+                if (id != 0) ids[n++] = id;
+            }
+            if (n == 0) return;
+            int pick = ids[new java.util.Random().nextInt(n)];
+            bgMusic = android.media.MediaPlayer.create(this, pick);
+            if (bgMusic == null) return;
+            bgMusic.setVolume(0.6f, 0.6f);
+            bgMusic.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                @Override public void onCompletion(android.media.MediaPlayer mp) {
+                    releaseBgMusic();
+                    startBgMusic();   // novbeti tesaduf mahni
+                }
+            });
+            bgMusic.start();
+        } catch (Throwable t) {
+            bgMusic = null;
+        }
+    }
+
+    private void pauseBgMusic() {
+        try { if (bgMusic != null && bgMusic.isPlaying()) bgMusic.pause(); } catch (Throwable ignored) {}
+    }
+
+    private void releaseBgMusic() {
+        try { if (bgMusic != null) { bgMusic.release(); } } catch (Throwable ignored) {}
+        bgMusic = null;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        pauseBgMusic();
+    }
+
+    @Override
+    protected void onDestroy() {
+        releaseBgMusic();
+        super.onDestroy();
+    }
+    // ===== /LOBBY_MUSIC_PATCH8 =====
+
     @Override
     protected void onResume() {
         super.onResume();
+        startBgMusic();
         starting = false;
         if (startBtn != null) startBtn.setBusy(false);
         scanData();

@@ -42,8 +42,7 @@ protected:
 		LANG_AZE,
 		LANG_ENG,
 		SPACE,
-		SEND,
-		EMOJI
+		SEND
 	};
 
 public:
@@ -53,8 +52,7 @@ public:
 		ENG_UPPER,
 		AZE_LOWER,
 		AZE_UPPER,
-		NUM,
-		EMOJI
+		NUM
 	};
 
 	enum class KeyCase
@@ -86,7 +84,6 @@ public:
 			char m_value;
 			std::string m_valueStr;
 			bool m_isStringValue;
-			float m_pressAnim = 0.0f;
 		};
 
 		KeyboardLayout::Row::Key* addKey(const std::string& caption, char value);
@@ -137,14 +134,6 @@ public:
 	virtual void performLayout() override;
 };
 
-// EMOJI_PATCH11
-class KeyboardLayoutEmoji : public KeyboardLayout
-{
-public:
-	KeyboardLayoutEmoji();
-	virtual void performLayout() override;
-};
-
 #define KEYBOARD_MAX_HISTORY_MESSAGES	10
 class KeyboardHistory
 {
@@ -191,7 +180,6 @@ private:
 	KeyboardLayoutLowerAZE* m_layoutLowerAZE;
 	KeyboardLayoutUpperAZE* m_layoutUpperAZE;
 	KeyboardLayoutNUM* m_layoutNUM;
-	KeyboardLayoutEmoji* m_layoutEmoji;
 	Widget* m_caller;
 
 	KeyboardHistory* m_history;

@@ -7,7 +7,6 @@
 //  ISTIFADE OLUNMUR (silmek olar, amma silmek mecburi deyil).
 // ============================================================================
 #include <cstdint>
-#include <string>   // TG_PATCH10
 
 struct CVehicleGTA;
 
@@ -31,14 +30,6 @@ struct VehTune
     float   suspForcePct = 100.0f;  // asma gucu                      (30 .. 300)
     float   suspDampPct  = 100.0f;  // asma sonduruculeri             (30 .. 300)
     float   collisionPct = 100.0f;  // toqquşma zererı                (10 .. 300)
-    // --- Asma / balans (TG_PATCH10) ---
-    float   suspUpperPct = 100.0f;  // asma yuxari hedd               (30 .. 300)
-    float   suspLowerPct = 100.0f;  // asma asagi hedd                (30 .. 300)
-    float   suspBiasPct  = 100.0f;  // asma on/arxa balansi           (50 .. 150)
-    float   antiDivePct  = 100.0f;  // anti-dive                      (0 .. 300)
-    float   tractBiasPct = 100.0f;  // yol tutus on/arxa balansi      (50 .. 150)
-    float   brakeBiasPct = 100.0f;  // tormoz on/arxa balansi         (50 .. 150)
-    float   comZOffset   = 0.0f;    // agirliq merkezi hundurluyu, sm (-50 .. 50), 0 = standart
     // --- Far ---
     uint8_t headlight   = 0;        // 0 = standart, 1..15 = palitra rengi
 };
@@ -61,13 +52,4 @@ namespace VehTuner
 
     // UI ucun palitra rengi (0 = "standart" ucun boz numune).
     void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b);
-
-    // ---- TG_PATCH10: slotlar ve handling kodu ----
-    constexpr int VEHTUNER_SLOTS = 5;
-    bool        SaveSlot(int slot, const VehTune& t);          // slot 1..5
-    bool        LoadSlot(int slot, VehTune& t);                // bos slotda false
-    bool        SlotUsed(int slot);
-    std::string ExportCode(const VehTune& t);                  // kodu qaytarir + SAMP/vehtune_code.txt-ye yazir
-    bool        ParseCode(const std::string& code, VehTune& t);
-    bool        ImportCodeFile(VehTune& t);                    // SAMP/vehtune_code.txt-den oxuyur
 }

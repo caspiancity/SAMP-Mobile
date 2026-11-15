@@ -2,6 +2,7 @@ package com.samp.mobile.game;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -17,20 +18,23 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.TypedValue;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.PathInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
@@ -46,12 +50,31 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * /yt  -  oyunun ustunde "planset" seklinde YouTube penceresi.
- *  - bashliqdan surukle, sag-alt kuncden olcunu deyis, cut toxunus (bashliq) = boyut/geri
- *  - axtaris sahesi, geri / ireli / ana sehife
- *  - not duymesi: mini-pleyer (WebView yerinden TOXUNULMUR, ona gore ses dayanmir)
- *  - mini-pleyer kenara yapisir (snap), preview-ya toxun = geri boyut
- *  - X: baglayir ve oynatmani dayandirir
+ * /yt - oyunun ustunde iOS usulunda "planset" YouTube penceresi.
+ *
+ * DUZELISLER (kohne versiya ile muqayise):
+ *  1) MINI REJIMDE MAHNI DAYANMIR:
+ *     - WebView-nin layout olcusu mini-ye kecende HECH deyismir (kohne kod 480x270-e deyisirdi,
+ *       bu resize YouTube-u dayandirirdi). Yalniz scale + klip istifade olunur.
+ *     - Gizlilik API-lari (visibility/blur/pagehide/hasFocus) tam saxtalashdirilir.
+ *     - Mini rejimde "istenilen veziyyet" (wantPlay) izlenir: audio focus ve ya basqa sebebe gore
+ *       pauza olsa, avtomatik davam etdirilir. Yalniz istifadeci ozu pauza etse dayanir.
+ *     - WebView.onResume()/resumeTimers() cagrilir.
+ *  2) MENTIQ SEHVLERI:
+ *     - Animasiya yarimciq dayananda (toxunus) pencere sonuna "tullanirdi" -> indi cari veziyyet qalir.
+ *     - Kicik ekranda min olcu ekrandan boyuk ola bilirdi -> clamp duzeldildi.
+ *     - Baglama animasiyasi zamani yeni /yt komandasi itirdi -> indi novbeye alinir.
+ *     - about:blank tarixce girisi qalirdi (Geri duymesi bosh sehifeye aparirdi) -> tarixce temizlenir.
+ *     - Ekran olcusu deyisende pencere ekrandan cixa bilirdi -> avtomatik refit.
+ *     - Maximize rejiminde surukleme/movqe qarisirdi -> maximize-da surukleme bagli.
+ *     - Mini-den qayidanda WebView resize edilirdi -> indi resize animasiyadan EVVEL bir defe olur.
+ *     - Geri/Ireli duymeleri SPA navigasiyada yenilenmirdi -> doUpdateVisitedHistory.
+ *     - Yukleme xetti 100%-de ilisib qalirdi -> hamar animasiya + solma.
+ *  3) iOS ANIMASIYALARI: real "spring" (sonuk salinim) interpolyator, acilis/baglanma, maximize,
+ *     mini kecidi (layout-driven crossfade), surukleme + atma (fling) ile kenara yapisma,
+ *     duymelerde press-scale, suruklemede "lift" (kolge + seffaflig).
+ *  4) YUKSEK FPS: pencere acilanda ekranin en yuksek yenilenme tezliyi (90/120Hz) secilir,
+ *     baglananda evvelki rejim berpa olunur. FLIP texnikasi ile WebView her kadrda yeniden olculmur.
  */
 public final class YoutubeTablet {
 
@@ -66,20 +89,35 @@ public final class YoutubeTablet {
     private static final int C_ACC   = 0xFFE53935;
     private static final int C_ICON  = 0xFFD5D9E3;
 
-    private static final int MINI_W = 316, MINI_H = 85;          // dp (card)
-    private static final int PREV_W = 112, PREV_H = 63;          // dp (mini-de video penceresi)
-    private static final int VIRT_W = 480, VIRT_H = 270;         // dp (mini rejimde sehife bu olcude qurulur)
-    private static final int CHROME_H = 72;                      // dp (bashliq 26 + panel 44 + xett 2)
+    private static final int MINI_W = 316, MINI_H = 85;   // dp (kart)
+    private static final int PREV_W = 112, PREV_H = 63;   // dp (mini-de video penceresi)
+    private static final int CHROME_H = 72;               // dp (bashliq 26 + panel 44 + xett 2)
+    private static final int PAD = 5;                     // dp (kart padding)
 
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
 
-    /** sehife "gizli" olanda YouTube oynatmani dayandirmasin deye */
+    /** Sehife "gizli/fokussuz" olanda YouTube oynatmani dayandirmasin */
     private static final String KEEPALIVE =
             "(function(){try{if(window.__ytk)return;window.__ytk=1;"
-          + "Object.defineProperty(document,'hidden',{get:function(){return false;}});"
-          + "Object.defineProperty(document,'visibilityState',{get:function(){return 'visible';}});"
-          + "document.addEventListener('visibilitychange',function(e){e.stopImmediatePropagation();},true);"
+          + "function d(o,k,v){try{Object.defineProperty(o,k,{get:v,configurable:true});}catch(e){}}"
+          + "d(document,'hidden',function(){return false;});"
+          + "d(document,'webkitHidden',function(){return false;});"
+          + "d(document,'visibilityState',function(){return 'visible';});"
+          + "d(document,'webkitVisibilityState',function(){return 'visible';});"
+          + "try{document.hasFocus=function(){return true;};}catch(e){}"
+          + "var s=function(e){if(e.target===window||e.target===document)e.stopImmediatePropagation();};"
+          + "['visibilitychange','webkitvisibilitychange','pagehide','freeze','blur'].forEach(function(n){"
+          + "window.addEventListener(n,s,true);document.addEventListener(n,s,true);});"
           + "}catch(e){}})();";
+
+    private static final String STATE_JS =
+            "(function(){var v=document.querySelector('video');return v?(v.ended?'e':(v.paused?'0':'1')):'x';})()";
+    private static final String PLAY_JS =
+            "(function(){var v=document.querySelector('video');if(v){var p=v.play();if(p&&p.catch)p.catch(function(){});}})()";
+    private static final String PAUSE_JS =
+            "(function(){var v=document.querySelector('video');if(v)v.pause();})()";
+    private static final String PAUSE_ALL_JS =
+            "(function(){var a=document.querySelectorAll('video,audio');for(var i=0;i<a.length;i++){try{a[i].pause();}catch(e){}}})()";
 
     // ------------------------------------------------------------------ statik giris
     private static YoutubeTablet sInst;
@@ -117,16 +155,20 @@ public final class YoutubeTablet {
     private Ic icBack, icFwd, icMax, icPlay, icGrip;
     private TextView miniTitle;
 
-    private boolean built, attached, closing, mini, maximized, playing;
-    private int oldSoftMode = -1;
+    private boolean built, attached, closing, mini, maximized, playing, wantPlay, busy, histReset, fpsBoost;
+    private int oldSoftMode = -1, savedMode;
+    private String pending;
+    private String lastTitle = "";
+    private long toggleAt;
 
     private int nx, ny, nw, nh;          // normal pencere (px)
     private int mx = -1, my = -1;        // mini movqe (px)
-    private int pmx, pmy, pmw, pmh;      // boyutmeden evvel
+    private int webW0, webH0;            // mini rejimde WebView-nin SABIT layout olcusu (px)
+    private float holderRadius;          // webHolder kunc radiusu (px)
 
     private View customView;
     private WebChromeClient.CustomViewCallback customCb;
-    private ValueAnimator rectAnim;
+    private ValueAnimator rectAnim, modeAnim, openAnim;
 
     private YoutubeTablet(Activity act) {
         this.act = act;
@@ -142,25 +184,77 @@ public final class YoutubeTablet {
 
     private int dpx(float v) { return Math.round(v * dp); }
     private static int clamp(int v, int a, int b) { return v < a ? a : (v > b ? Math.max(a, b) : v); }
+    private static float clamp01(float v) { return v < 0f ? 0f : (v > 1f ? 1f : v); }
+
+    private View root() { return act.findViewById(android.R.id.content); }
 
     private int screenW() {
-        if (card != null && card.getParent() instanceof View && ((View) card.getParent()).getWidth() > 0)
-            return ((View) card.getParent()).getWidth();
+        View r = root();
+        if (r != null && r.getWidth() > 0) return r.getWidth();
         return act.getResources().getDisplayMetrics().widthPixels;
     }
 
     private int screenH() {
-        if (card != null && card.getParent() instanceof View && ((View) card.getParent()).getHeight() > 0)
-            return ((View) card.getParent()).getHeight();
+        View r = root();
+        if (r != null && r.getHeight() > 0) return r.getHeight();
         return act.getResources().getDisplayMetrics().heightPixels;
     }
 
     private int curW() { return card.getLayoutParams() != null ? card.getLayoutParams().width : nw; }
     private int curH() { return card.getLayoutParams() != null ? card.getLayoutParams().height : nh; }
 
+    // ------------------------------------------------------------------ iOS spring
+    /** Sonuk salinimli (underdamped) yay. zeta: 1=salinimsiz, 0.7=nezerceare sekme */
+    private static final class Spring implements TimeInterpolator {
+        private final double z, w, wd, T;
+        Spring(float zeta, float responseSec, float durationSec) {
+            z = zeta;
+            w = 2.0 * Math.PI / responseSec;
+            wd = w * Math.sqrt(1.0 - z * z);
+            T = durationSec;
+        }
+        @Override public float getInterpolation(float x) {
+            if (x <= 0f) return 0f;
+            if (x >= 1f) return 1f;
+            double t = x * T;
+            double e = Math.exp(-z * w * t);
+            return (float) (1.0 - e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)));
+        }
+    }
+
+    // ------------------------------------------------------------------ yuksek FPS
+    @SuppressWarnings("deprecation")
+    private void boostFps(boolean on) {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            Window w = act.getWindow();
+            WindowManager.LayoutParams a = w.getAttributes();
+            if (on) {
+                if (fpsBoost) return;
+                Display d = act.getWindowManager().getDefaultDisplay();
+                Display.Mode cur = d.getMode(), best = cur;
+                for (Display.Mode m : d.getSupportedModes()) {
+                    if (m.getPhysicalWidth() == cur.getPhysicalWidth()
+                            && m.getPhysicalHeight() == cur.getPhysicalHeight()
+                            && m.getRefreshRate() > best.getRefreshRate() + 1f) best = m;
+                }
+                if (best.getModeId() == cur.getModeId()) return;
+                savedMode = a.preferredDisplayModeId;
+                a.preferredDisplayModeId = best.getModeId();
+                w.setAttributes(a);
+                fpsBoost = true;
+            } else {
+                if (!fpsBoost) return;
+                a.preferredDisplayModeId = savedMode;
+                w.setAttributes(a);
+                fpsBoost = false;
+            }
+        } catch (Throwable ignored) { }
+    }
+
     // ------------------------------------------------------------------ komanda
     private void onCommand(String arg) {
-        if (closing) return;
+        if (closing) { pending = arg; return; }          // baglanma bitende yeniden acilacaq
         if (attached) {
             if (arg.isEmpty()) { close(); return; }
             if (mini) exitMini();
@@ -170,9 +264,20 @@ public final class YoutubeTablet {
         open(arg);
     }
 
+    private final View.OnLayoutChangeListener rootLayout = new View.OnLayoutChangeListener() {
+        @Override public void onLayoutChange(View v, int l, int t, int r, int b,
+                                             int oldL, int oldT, int oldR, int oldB) {
+            if (!attached || closing) return;
+            if (r - l == oldR - oldL && b - t == oldB - oldT) return;
+            refit();
+        }
+    };
+
     private void open(String arg) {
         if (!built) build();
 
+        web.onResume();
+        web.resumeTimers();
         ensureRect();
         resetViewsToNormal();
 
@@ -181,35 +286,67 @@ public final class YoutubeTablet {
         act.addContentView(card, lp);
         card.setTranslationX(nx);
         card.setTranslationY(ny);
+        card.setTranslationZ(0f);
         attached = true;
+
+        View r = root();
+        if (r != null) r.addOnLayoutChangeListener(rootLayout);
 
         oldSoftMode = act.getWindow().getAttributes().softInputMode;
         act.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
 
+        boostFps(true);
+
+        // iOS "pop" acilisi
         card.setPivotX(nw / 2f);
         card.setPivotY(nh / 2f);
-        card.setScaleX(0.92f);
-        card.setScaleY(0.92f);
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(230)
-                .setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f)).setListener(null).start();
+        card.setScaleX(0.86f);
+        card.setScaleY(0.86f);
+        final ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+        openAnim = a;
+        a.setDuration(520);
+        a.setInterpolator(new Spring(0.80f, 0.40f, 0.52f));
+        a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator an) {
+                float f = (Float) an.getAnimatedValue();
+                float s = 0.86f + 0.14f * f;
+                card.setScaleX(s);
+                card.setScaleY(s);
+                card.setAlpha(clamp01(f * 3f));
+            }
+        });
+        a.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator an) {
+                card.setScaleX(1f);
+                card.setScaleY(1f);
+                card.setAlpha(1f);
+                if (openAnim == a) openAnim = null;
+            }
+        });
+        a.start();
 
+        histReset = true;
         if (arg.isEmpty()) web.loadUrl(HOME); else go(arg);
     }
 
     private void close() {
         if (!attached || closing) return;
         closing = true;
+        pending = null;
+        wantPlay = false;
         ui.removeCallbacks(poll);
+        cancelAnims();
         exitFullscreenVideo();
         hideIme();
-        if (rectAnim != null) rectAnim.cancel();
-        web.loadUrl("about:blank");           // oynatmani dayandir
+        web.evaluateJavascript(PAUSE_ALL_JS, null);
+        web.loadUrl("about:blank");           // oynatmani tam dayandir
 
+        card.animate().cancel();
         card.setPivotX(curW() / 2f);
         card.setPivotY(curH() / 2f);
-        card.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).setDuration(160)
-                .setInterpolator(new AccelerateInterpolator())
+        card.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).translationZ(0f).setDuration(190)
+                .setInterpolator(new AccelerateInterpolator(1.4f))
                 .setListener(new AnimatorListenerAdapter() {
                     @Override public void onAnimationEnd(Animator a) {
                         card.animate().setListener(null);
@@ -219,26 +356,42 @@ public final class YoutubeTablet {
     }
 
     private void detach() {
+        View r = root();
+        if (r != null) r.removeOnLayoutChangeListener(rootLayout);
         if (card.getParent() instanceof ViewGroup) ((ViewGroup) card.getParent()).removeView(card);
         attached = false;
         closing = false;
         card.setScaleX(1f);
         card.setScaleY(1f);
+        card.setAlpha(1f);
         resetViewsToNormal();
+        if (web != null) web.onPause();
         if (oldSoftMode != -1) act.getWindow().setSoftInputMode(oldSoftMode);
+        boostFps(false);
         savePrefs();
+
+        String p = pending;
+        pending = null;
+        if (p != null) open(p);
     }
 
     private void destroy() {
         ui.removeCallbacksAndMessages(null);
-        if (rectAnim != null) rectAnim.cancel();
+        cancelAnims();
+        View r = root();
+        if (r != null) r.removeOnLayoutChangeListener(rootLayout);
+        if (card != null) card.animate().cancel();
         if (card != null && card.getParent() instanceof ViewGroup) ((ViewGroup) card.getParent()).removeView(card);
         if (web != null) {
+            web.evaluateJavascript(PAUSE_ALL_JS, null);
             if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
             web.destroy();
             web = null;
         }
+        boostFps(false);
         attached = false;
+        closing = false;
+        busy = false;
         built = false;
     }
 
@@ -261,11 +414,21 @@ public final class YoutubeTablet {
 
     private void refreshNav() {
         if (web == null) return;
-        icBack.setAlpha(web.canGoBack() ? 1f : 0.35f);
-        icFwd.setAlpha(web.canGoForward() ? 1f : 0.35f);
+        float b = web.canGoBack() ? 1f : 0.35f, f = web.canGoForward() ? 1f : 0.35f;
+        if (icBack.getAlpha() != b) icBack.animate().alpha(b).setDuration(150).start();
+        if (icFwd.getAlpha() != f) icFwd.animate().alpha(f).setDuration(150).start();
     }
 
     // ------------------------------------------------------------------ olcu / movqe
+    private void fitNormal() {
+        final int sw = screenW(), sh = screenH();
+        final int minW = Math.min(dpx(420), sw), minH = Math.min(dpx(240), sh);
+        nw = clamp(nw, minW, sw);
+        nh = clamp(nh, minH, sh);
+        nx = clamp(nx, 0, sw - nw);
+        ny = clamp(ny, 0, sh - nh);
+    }
+
     private void ensureRect() {
         final int sw = screenW(), sh = screenH();
         if (nw <= 0 || nh <= 0) {
@@ -274,16 +437,30 @@ public final class YoutubeTablet {
             nx = (sw - nw) / 2;
             ny = (sh - nh) / 2;
         }
-        nw = clamp(nw, dpx(420), sw);
-        nh = clamp(nh, dpx(240), sh);
-        nx = clamp(nx, 0, sw - nw);
-        ny = clamp(ny, 0, sh - nh);
+        fitNormal();
         maximized = false;
         icMax.setType(Ic.MAX);
     }
 
+    /** ekran olcusu deyisende pencereni yeniden yerleshdir */
+    private void refit() {
+        if (busy || card == null) return;
+        cancelRectAnim();
+        final int sw = screenW(), sh = screenH(), m = dpx(10);
+        if (mini) {
+            mx = clamp(mx, 0, sw - curW());
+            my = clamp(my, 0, sh - curH());
+            applyRect(mx, my, curW(), curH());
+        } else if (maximized) {
+            applyRect(m, m, sw - 2 * m, sh - 2 * m);
+        } else {
+            fitNormal();
+            applyRect(nx, ny, nw, nh);
+        }
+    }
+
     private void rememberNormal() {
-        if (mini || maximized || card == null) return;
+        if (mini || maximized || card == null || busy) return;
         nx = Math.round(card.getTranslationX());
         ny = Math.round(card.getTranslationY());
         nw = curW();
@@ -310,13 +487,35 @@ public final class YoutubeTablet {
         card.setTranslationY(y);
     }
 
+    private void cancelRectAnim() {
+        if (openAnim != null && openAnim.isRunning()) openAnim.cancel();
+        openAnim = null;
+        if (rectAnim != null && rectAnim.isRunning()) rectAnim.cancel();   // cari veziyyeti "bake" edir
+        rectAnim = null;
+    }
+
+    private void cancelAnims() {
+        cancelRectAnim();
+        if (modeAnim != null && modeAnim.isRunning()) modeAnim.cancel();
+        modeAnim = null;
+    }
+
+    /** animasiya yarimciq dayananda cari gorunen veziyyeti real layout-a cevir (tullanma olmasin) */
+    private void bakeVisual() {
+        int w = Math.max(1, Math.round(curW() * card.getScaleX()));
+        int h = Math.max(1, Math.round(curH() * card.getScaleY()));
+        applyRect(Math.round(card.getTranslationX()), Math.round(card.getTranslationY()), w, h);
+    }
+
+    private void animateRect(int x, int y, int w, int h) { animateRect(x, y, w, h, 0.82f); }
+
     /**
-     * Axici kecid (FLIP): yeni olcu bir defe teyin olunur, sonra GPU ile
-     * kohne cerceveden yeniye "scale + translate" animasiyasi gedir.
-     * Her kadrda WebView-ni yeniden olcmek lazim olmur.
+     * Axici kecid (FLIP + spring): yeni olcu bir defe teyin olunur, sonra GPU ile
+     * kohne cerceveden yeniye scale+translate animasiyasi gedir.
+     * WebView her kadrda yeniden olculmur -> yuksek FPS.
      */
-    private void animateRect(final int x, final int y, final int w, final int h) {
-        if (rectAnim != null) rectAnim.cancel();
+    private void animateRect(final int x, final int y, final int w, final int h, float zeta) {
+        cancelRectAnim();
 
         final float vx = card.getTranslationX(), vy = card.getTranslationY();
         final float vw = curW() * card.getScaleX(), vh = curH() * card.getScaleY();
@@ -330,30 +529,36 @@ public final class YoutubeTablet {
         card.setTranslationX(vx);
         card.setTranslationY(vy);
 
-        rectAnim = ValueAnimator.ofFloat(0f, 1f);
-        rectAnim.setDuration(280);
-        rectAnim.setInterpolator(new PathInterpolator(0.22f, 1f, 0.36f, 1f));
-        rectAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override public void onAnimationUpdate(ValueAnimator a) {
-                float f = (Float) a.getAnimatedValue();
+        final ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+        rectAnim = a;
+        a.setDuration(480);
+        a.setInterpolator(new Spring(zeta, 0.40f, 0.48f));
+        a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator an) {
+                float f = (Float) an.getAnimatedValue();
                 card.setScaleX(sx0 + (1f - sx0) * f);
                 card.setScaleY(sy0 + (1f - sy0) * f);
                 card.setTranslationX(vx + (x - vx) * f);
                 card.setTranslationY(vy + (y - vy) * f);
             }
         });
-        rectAnim.addListener(new AnimatorListenerAdapter() {
-            private void settle() {
+        a.addListener(new AnimatorListenerAdapter() {
+            boolean cancelled;
+            @Override public void onAnimationCancel(Animator an) {
+                cancelled = true;
+                bakeVisual();
+            }
+            @Override public void onAnimationEnd(Animator an) {
+                if (cancelled) return;
                 card.setScaleX(1f);
                 card.setScaleY(1f);
                 card.setTranslationX(x);
                 card.setTranslationY(y);
+                if (rectAnim == a) rectAnim = null;
                 savePrefs();
             }
-            @Override public void onAnimationCancel(Animator a) { settle(); }
-            @Override public void onAnimationEnd(Animator a) { settle(); }
         });
-        rectAnim.start();
+        a.start();
     }
 
     private void setPos(float x, float y) {
@@ -366,7 +571,7 @@ public final class YoutubeTablet {
 
     private void savePrefs() {
         if (card == null) return;
-        if (!mini && !maximized && attached) rememberNormal();
+        if (!mini && !maximized && attached && !busy) rememberNormal();
         SharedPreferences.Editor e = prefs.edit();
         e.putInt("nx", nx).putInt("ny", ny).putInt("nw", nw).putInt("nh", nh);
         e.putInt("mx", mx).putInt("my", my);
@@ -374,142 +579,288 @@ public final class YoutubeTablet {
     }
 
     private void toggleMaximize() {
-        if (mini) return;
+        if (mini || busy || closing) return;
+        final int m = dpx(10);
         if (!maximized) {
+            cancelRectAnim();
             rememberNormal();
-            pmx = nx; pmy = ny; pmw = nw; pmh = nh;
-            final int m = dpx(10);
             maximized = true;
             icMax.setType(Ic.RESTORE);
             animateRect(m, m, screenW() - 2 * m, screenH() - 2 * m);
         } else {
             maximized = false;
             icMax.setType(Ic.MAX);
-            nx = pmx; ny = pmy; nw = pmw; nh = pmh;
+            fitNormal();
             animateRect(nx, ny, nw, nh);
         }
     }
 
     // ------------------------------------------------------------------ mini pleyer
+    private float miniScale() {
+        return dpx(PREV_W) / (float) Math.max(1, webW0);
+    }
+
     /**
-     * Rejimi deyisir. VACIB: WebView hec vaxt detach olunmur ve onun
-     * valideynlerinden hec biri GONE edilmir - yoxsa YouTube oynatmani dayandirir.
+     * Rejimin STABIL (animasiyasiz) veziyyeti. VACIB: WebView hec vaxt detach olunmur,
+     * valideynleri GONE edilmir ve mini-de LAYOUT OLCUSU DEYISMIR (yalniz scale).
      */
     private void applyMode(boolean m) {
-        FrameLayout.LayoutParams wl;
-        FrameLayout.LayoutParams vl;
+        FrameLayout.LayoutParams hp;
         if (m) {
-            wl = new FrameLayout.LayoutParams(dpx(PREV_W), dpx(PREV_H), Gravity.TOP | Gravity.LEFT);
-            wl.leftMargin = dpx(6);
-            wl.topMargin = dpx(6);
-            vl = new FrameLayout.LayoutParams(dpx(VIRT_W), dpx(VIRT_H));
-            web.setLayoutParams(vl);
+            hp = new FrameLayout.LayoutParams(dpx(PREV_W), dpx(PREV_H), Gravity.TOP | Gravity.LEFT);
+            hp.leftMargin = dpx(6);
+            hp.topMargin = dpx(6);
+            FrameLayout.LayoutParams wl = new FrameLayout.LayoutParams(
+                    Math.max(1, webW0), Math.max(1, webH0), Gravity.TOP | Gravity.LEFT);
+            web.setLayoutParams(wl);
             web.setPivotX(0f);
             web.setPivotY(0f);
-            float sc = dpx(PREV_W) / (float) dpx(VIRT_W);
+            float sc = miniScale();
             web.setScaleX(sc);
             web.setScaleY(sc);
+            holderRadius = dpx(8);
         } else {
-            wl = new FrameLayout.LayoutParams(MATCH, MATCH);
-            wl.topMargin = dpx(CHROME_H);
-            vl = new FrameLayout.LayoutParams(MATCH, MATCH);
-            web.setLayoutParams(vl);
+            hp = new FrameLayout.LayoutParams(MATCH, MATCH);
+            hp.topMargin = dpx(CHROME_H);
+            web.setLayoutParams(new FrameLayout.LayoutParams(MATCH, MATCH));
             web.setScaleX(1f);
             web.setScaleY(1f);
+            holderRadius = 0f;
         }
-        webHolder.setLayoutParams(wl);
+        webHolder.setLayoutParams(hp);
         webHolder.invalidateOutline();
 
+        chrome.setAlpha(1f);
+        miniGroup.setAlpha(1f);
+        icGrip.setAlpha(1f);
         chrome.setVisibility(m ? View.GONE : View.VISIBLE);
         miniGroup.setVisibility(m ? View.VISIBLE : View.GONE);
         previewOverlay.setVisibility(m ? View.VISIBLE : View.GONE);
         icGrip.setVisibility(m ? View.GONE : View.VISIBLE);
     }
 
+    /**
+     * Normal <-> mini kecidi: kart olcusu, webHolder ve scale HER KADRDA hesablanir (spring),
+     * WebView-nin ozunun layout olcusu sabit qalir -> mahni dayanmir, FPS yuksek qalir.
+     */
+    private void transitionMode(final boolean toMini, final int tx, final int ty, final int tw, final int th) {
+        if (modeAnim != null && modeAnim.isRunning()) modeAnim.cancel();
+        busy = true;
+
+        final int pad = dpx(PAD) * 2, chromeH = dpx(CHROME_H), m6 = dpx(6);
+        final float sx = card.getTranslationX(), sy = card.getTranslationY();
+        final int sw0 = curW(), sh0 = curH();
+        card.setScaleX(1f);
+        card.setScaleY(1f);
+
+        // WebView-ni sabit olcuye kecir (cari olcu ile eynidir -> real resize yoxdur)
+        web.setLayoutParams(new FrameLayout.LayoutParams(
+                Math.max(1, webW0), Math.max(1, webH0), Gravity.TOP | Gravity.LEFT));
+        web.setPivotX(0f);
+        web.setPivotY(0f);
+
+        final float hl0, ht0, hw0, hh0, hl1, ht1, hw1, hh1;
+        if (toMini) {
+            hl0 = 0; ht0 = chromeH; hw0 = sw0 - pad; hh0 = sh0 - pad - chromeH;
+            hl1 = m6; ht1 = m6; hw1 = dpx(PREV_W); hh1 = dpx(PREV_H);
+        } else {
+            hl0 = m6; ht0 = m6; hw0 = dpx(PREV_W); hh0 = dpx(PREV_H);
+            hl1 = 0; ht1 = chromeH; hw1 = tw - pad; hh1 = th - pad - chromeH;
+        }
+        final float rad0 = toMini ? 0f : dpx(8), rad1 = toMini ? dpx(8) : 0f;
+
+        chrome.setVisibility(View.VISIBLE);
+        miniGroup.setVisibility(View.VISIBLE);
+        previewOverlay.setVisibility(View.GONE);
+        icGrip.setVisibility(View.VISIBLE);
+
+        final ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+        modeAnim = a;
+        a.setDuration(520);
+        a.setInterpolator(new Spring(0.84f, 0.42f, 0.52f));
+        a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator an) {
+                float f = (Float) an.getAnimatedValue();
+                int w = Math.max(dpx(60), Math.round(sw0 + (tw - sw0) * f));
+                int h = Math.max(dpx(40), Math.round(sh0 + (th - sh0) * f));
+                setLayoutSize(w, h);
+                card.setTranslationX(sx + (tx - sx) * f);
+                card.setTranslationY(sy + (ty - sy) * f);
+
+                float hw = Math.max(1f, hw0 + (hw1 - hw0) * f);
+                float hh = Math.max(1f, hh0 + (hh1 - hh0) * f);
+                FrameLayout.LayoutParams hp = (FrameLayout.LayoutParams) webHolder.getLayoutParams();
+                hp.width = Math.round(hw);
+                hp.height = Math.round(hh);
+                hp.leftMargin = Math.round(hl0 + (hl1 - hl0) * f);
+                hp.topMargin = Math.round(ht0 + (ht1 - ht0) * f);
+                webHolder.setLayoutParams(hp);
+
+                float s = hw / Math.max(1, webW0);
+                web.setScaleX(s);
+                web.setScaleY(s);
+
+                holderRadius = rad0 + (rad1 - rad0) * clamp01(f);
+                webHolder.invalidateOutline();
+
+                float c = clamp01(f);
+                float outA = 1f - clamp01(c * 2.5f);
+                float inA = clamp01((c - 0.4f) * 2.5f);
+                chrome.setAlpha(toMini ? outA : inA);
+                icGrip.setAlpha(toMini ? outA : inA);
+                miniGroup.setAlpha(toMini ? inA : outA);
+            }
+        });
+        a.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator an) {
+                if (modeAnim == a) modeAnim = null;
+                if (web == null || card == null) { busy = false; return; }
+                busy = false;
+                setLayoutSize(tw, th);
+                card.setTranslationX(tx);
+                card.setTranslationY(ty);
+                applyMode(toMini);
+                savePrefs();
+            }
+        });
+        a.start();
+    }
+
+    private static String clean(String s) {
+        return s == null ? "x" : s.replace("\"", "");
+    }
+
     private void enterMini() {
-        if (mini || !attached) return;
+        if (mini || !attached || closing || busy) return;
         exitFullscreenVideo();
         hideIme();
+        cancelRectAnim();
         rememberNormal();
-        mini = true;
-        applyMode(true);
+
+        webW0 = web.getWidth();
+        webH0 = web.getHeight();
+        if (webW0 <= 0 || webH0 <= 0) {
+            webW0 = Math.max(1, curW() - 2 * dpx(PAD));
+            webH0 = Math.max(1, curH() - 2 * dpx(PAD) - dpx(CHROME_H));
+        }
+
+        // hazirki oynatma veziyyetini oyren -> mini-de ona gore "davam etdir" qoruyucusu
+        web.evaluateJavascript(KEEPALIVE, null);
+        web.evaluateJavascript(STATE_JS, new ValueCallback<String>() {
+            @Override public void onReceiveValue(String s) {
+                String st = clean(s);
+                if (st.equals("1")) { wantPlay = true; playing = true; }
+                else if (st.equals("0")) { wantPlay = false; playing = false; }
+                icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+            }
+        });
+        web.onResume();
+        web.resumeTimers();
 
         final int sw = screenW(), sh = screenH();
         if (mx < 0 || my < 0) { mx = sw - dpx(MINI_W) - dpx(12); my = dpx(12); }
         mx = clamp(mx, 0, sw - dpx(MINI_W));
         my = clamp(my, 0, sh - dpx(MINI_H));
-        animateRect(mx, my, dpx(MINI_W), dpx(MINI_H));
 
-        icPlay.setType(Ic.PAUSE);
+        String t = web.getTitle();
+        if (t != null) { lastTitle = t.replace(" - YouTube", ""); miniTitle.setText(lastTitle); }
+
+        mini = true;
+        transitionMode(true, mx, my, dpx(MINI_W), dpx(MINI_H));
+
         ui.removeCallbacks(poll);
-        ui.post(poll);
+        ui.postDelayed(poll, 400);
     }
 
     private void exitMini() {
-        if (!mini) return;
+        if (!mini || busy || closing) return;
         ui.removeCallbacks(poll);
+        cancelRectAnim();
         mx = Math.round(card.getTranslationX());
         my = Math.round(card.getTranslationY());
-        mini = false;
-        applyMode(false);
 
-        ensureRectKeepMax();
-        final int m = dpx(10);
-        if (maximized) animateRect(m, m, screenW() - 2 * m, screenH() - 2 * m);
-        else animateRect(nx, ny, nw, nh);
-    }
-
-    private void ensureRectKeepMax() {
-        final boolean wasMax = maximized;
-        final int sw = screenW(), sh = screenH();
-        nw = clamp(nw, dpx(420), sw);
-        nh = clamp(nh, dpx(240), sh);
-        nx = clamp(nx, 0, sw - nw);
-        ny = clamp(ny, 0, sh - nh);
-        maximized = wasMax;
-    }
-
-    /** mini pleyeri en yaxin kenara yapishdir */
-    private void snapMini() {
         final int sw = screenW(), sh = screenH(), m = dpx(10);
-        int cx = Math.round(card.getTranslationX()) + curW() / 2;
-        int tx = cx < sw / 2 ? m : sw - curW() - m;
-        int ty = clamp(Math.round(card.getTranslationY()), m, sh - curH() - m);
-        mx = tx; my = ty;
-        animateRect(tx, ty, curW(), curH());
+        final int tx, ty, tw, th;
+        if (maximized) {
+            tx = m; ty = m; tw = sw - 2 * m; th = sh - 2 * m;
+        } else {
+            fitNormal();
+            tx = nx; ty = ny; tw = nw; th = nh;
+        }
+        // yeni normal web olcusu - animasiyadan EVVEL bir defe (mini-de gorunmur)
+        webW0 = Math.max(1, tw - 2 * dpx(PAD));
+        webH0 = Math.max(1, th - 2 * dpx(PAD) - dpx(CHROME_H));
+
+        mini = false;
+        transitionMode(false, tx, ty, tw, th);
+    }
+
+    /** mini pleyeri en yaxin kenara yapishdir (atma sureti nezere alinir) */
+    private void snapMini(float vx, float vy) {
+        final int sw = screenW(), sh = screenH(), m = dpx(10);
+        float px = card.getTranslationX() + vx * 0.12f;
+        float py = card.getTranslationY() + vy * 0.12f;
+        float cx = px + curW() / 2f;
+        int tx = cx < sw / 2f ? m : sw - curW() - m;
+        int ty = clamp(Math.round(py), m, sh - curH() - m);
+        mx = tx;
+        my = ty;
+        animateRect(tx, ty, curW(), curH(), 0.70f);
     }
 
     private void resetViewsToNormal() {
         if (!built) return;
         ui.removeCallbacks(poll);
+        if (modeAnim != null && modeAnim.isRunning()) modeAnim.cancel();
+        busy = false;
         mini = false;
-        applyMode(false);
         maximized = false;
+        applyMode(false);
         icMax.setType(Ic.MAX);
     }
 
     private final Runnable poll = new Runnable() {
         @Override public void run() {
-            if (!attached || !mini || web == null) return;
-            web.evaluateJavascript(
-                    "(function(){var v=document.querySelector('video');return v?(v.paused?'0':'1'):'x';})()",
-                    new ValueCallback<String>() {
-                        @Override public void onReceiveValue(String s) {
-                            playing = s != null && s.contains("1");
-                            icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+            if (!attached || !mini || web == null || closing) return;
+            web.evaluateJavascript(STATE_JS, new ValueCallback<String>() {
+                @Override public void onReceiveValue(String s) {
+                    if (!attached || !mini || web == null) return;
+                    if (SystemClock.uptimeMillis() - toggleAt < 500) return;   // istifadeci toxunusu ile yarish
+                    String st = clean(s);
+                    if (st.equals("1")) {
+                        playing = true;
+                        wantPlay = true;
+                    } else if (st.equals("0")) {
+                        if (wantPlay) {
+                            // istifadeci pauza etmeyib, sistem/audio focus dayandirib -> davam et
+                            web.evaluateJavascript(PLAY_JS, null);
+                            playing = true;
+                        } else {
+                            playing = false;
                         }
-                    });
+                    } else {
+                        playing = false;    // 'e' (bitib) ve ya 'x' (video yoxdur): zorla oynatma
+                    }
+                    icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+                }
+            });
+            web.evaluateJavascript(KEEPALIVE, null);
             String t = web.getTitle();
-            if (t != null) miniTitle.setText(t.replace(" - YouTube", ""));
+            if (t != null) {
+                String c = t.replace(" - YouTube", "");
+                if (!c.equals(lastTitle)) { lastTitle = c; miniTitle.setText(c); }
+            }
             ui.postDelayed(this, 700);
         }
     };
 
     private void togglePlay() {
-        web.evaluateJavascript(
-                "(function(){var v=document.querySelector('video');if(v){if(v.paused)v.play();else v.pause();}})()", null);
-        playing = !playing;
-        icPlay.setType(playing ? Ic.PAUSE : Ic.PLAY);
+        boolean target = !playing;
+        wantPlay = target;
+        playing = target;
+        toggleAt = SystemClock.uptimeMillis();
+        web.evaluateJavascript(target ? PLAY_JS : PAUSE_JS, null);
+        icPlay.setType(target ? Ic.PAUSE : Ic.PLAY);
     }
 
     private void exitFullscreenVideo() {
@@ -523,47 +874,74 @@ public final class YoutubeTablet {
     }
 
     // ------------------------------------------------------------------ toxunus: surukleme
+    private void lift(boolean on) {
+        card.animate().cancel();
+        card.animate().alpha(on ? 0.94f : 1f).translationZ(on ? dpx(10) : 0f)
+                .setDuration(on ? 120 : 220).setInterpolator(new DecelerateInterpolator())
+                .setListener(null).start();
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private void attachDrag(View v, final Runnable onTap, final Runnable onDoubleTap) {
         v.setOnTouchListener(new View.OnTouchListener() {
-            float sx, sy, stx, sty;
-            boolean moved;
-            long lastTap;
+            float sx, sy, stx, sty, lx, ly, vx, vy;
+            long lt, lastTap;
+            boolean moved, active;
 
             @Override public boolean onTouch(View view, MotionEvent e) {
                 switch (e.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
-                        if (rectAnim != null) rectAnim.cancel();
+                        active = !(closing || busy);
+                        if (!active) return true;
+                        cancelRectAnim();
                         sx = e.getRawX(); sy = e.getRawY();
+                        lx = sx; ly = sy; lt = e.getEventTime();
+                        vx = 0; vy = 0;
                         stx = card.getTranslationX(); sty = card.getTranslationY();
                         moved = false;
                         return true;
                     case MotionEvent.ACTION_MOVE: {
-                        float dx = e.getRawX() - sx, dy = e.getRawY() - sy;
+                        if (!active) return true;
+                        float rx = e.getRawX(), ry = e.getRawY();
+                        float dx = rx - sx, dy = ry - sy;
                         if (!moved && Math.hypot(dx, dy) > dpx(6)) {
+                            if (!mini && maximized) { active = false; return true; }   // maximize-da surukleme yoxdur
                             moved = true;
-                            card.animate().cancel();
-                            card.setAlpha(0.92f);          // suruklenende yungul seffaflig
+                            lift(true);
                         }
-                        if (moved) setPos(stx + dx, sty + dy);
+                        if (moved) {
+                            long dt = e.getEventTime() - lt;
+                            if (dt >= 8) {
+                                vx = vx * 0.4f + ((rx - lx) / dt * 1000f) * 0.6f;
+                                vy = vy * 0.4f + ((ry - ly) / dt * 1000f) * 0.6f;
+                                lx = rx; ly = ry; lt = e.getEventTime();
+                            }
+                            setPos(stx + dx, sty + dy);
+                        }
                         return true;
                     }
                     case MotionEvent.ACTION_UP:
-                        card.setAlpha(1f);
-                        if (!moved) {
+                    case MotionEvent.ACTION_CANCEL: {
+                        if (!active) return true;
+                        boolean up = e.getActionMasked() == MotionEvent.ACTION_UP;
+                        if (moved) {
+                            lift(false);
+                            if (e.getEventTime() - lt > 80) { vx = 0; vy = 0; }
+                            if (mini) {
+                                snapMini(vx, vy);
+                            } else {
+                                int px = clamp(Math.round(card.getTranslationX() + vx * 0.08f), 0, screenW() - curW());
+                                int py = clamp(Math.round(card.getTranslationY() + vy * 0.08f), 0, screenH() - curH());
+                                nx = px; ny = py;
+                                animateRect(px, py, curW(), curH(), 0.88f);
+                            }
+                        } else if (up) {
                             long now = SystemClock.uptimeMillis();
                             if (onDoubleTap != null && now - lastTap < 320) { lastTap = 0; onDoubleTap.run(); }
                             else { lastTap = now; if (onTap != null) onTap.run(); }
-                        } else if (mini) {
-                            snapMini();
-                        } else {
-                            savePrefs();
                         }
                         return true;
-                    case MotionEvent.ACTION_CANCEL:
-                        card.setAlpha(1f);
-                        if (moved) { if (mini) snapMini(); else savePrefs(); }
-                        return true;
+                    }
                 }
                 return false;
             }
@@ -580,7 +958,7 @@ public final class YoutubeTablet {
         bezel.setCornerRadius(dpx(22));
         bezel.setStroke(Math.max(1, dpx(1)), 0xFF2A2E38);
         card.setBackground(bezel);
-        card.setPadding(dpx(5), dpx(5), dpx(5), dpx(5));
+        card.setPadding(dpx(PAD), dpx(PAD), dpx(PAD), dpx(PAD));
         card.setElevation(dpx(18));
         card.setClickable(true);
         card.setFocusable(true);
@@ -637,7 +1015,7 @@ public final class YoutubeTablet {
         webHolder.setBackgroundColor(0xFF0F0F0F);
         webHolder.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
-                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), mini ? dpx(8) : 0);
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), holderRadius);
             }
         });
         webHolder.setClipToOutline(true);
@@ -647,6 +1025,8 @@ public final class YoutubeTablet {
 
         web = new WebView(act);
         web.setBackgroundColor(0xFF0F0F0F);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -655,6 +1035,7 @@ public final class YoutubeTablet {
         s.setLoadWithOverviewMode(true);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
+        s.setAllowFileAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         s.setUserAgentString(s.getUserAgentString().replace("; wv", ""));
         CookieManager cm = CookieManager.getInstance();
@@ -671,9 +1052,16 @@ public final class YoutubeTablet {
                 v.evaluateJavascript(KEEPALIVE, null);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                line.set(0);
+                line.set(100);
+                if (histReset && url != null && !url.startsWith("about:")) {
+                    histReset = false;
+                    v.clearHistory();             // about:blank girisi geri duymesine dusmesin
+                }
                 refreshNav();
                 v.evaluateJavascript(KEEPALIVE, null);
+            }
+            @Override public void doUpdateVisitedHistory(WebView v, String url, boolean isReload) {
+                refreshNav();
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -736,6 +1124,8 @@ public final class YoutubeTablet {
         topBar.addView(icBack, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
         topBar.addView(icFwd,  new LinearLayout.LayoutParams(dpx(38), dpx(38)));
         topBar.addView(icHome, new LinearLayout.LayoutParams(dpx(38), dpx(38)));
+        icBack.setAlpha(0.35f);
+        icFwd.setAlpha(0.35f);
 
         search = new EditText(act);
         search.setSingleLine(true);
@@ -799,18 +1189,22 @@ public final class YoutubeTablet {
         FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dpx(34), dpx(34), Gravity.BOTTOM | Gravity.RIGHT);
         card.addView(icGrip, glp);
         icGrip.setOnTouchListener(new View.OnTouchListener() {
-            float sx, sy; int sw0, sh0;
+            float sx, sy; int sw0, sh0; boolean active;
             @Override public boolean onTouch(View v, MotionEvent e) {
                 switch (e.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
-                        if (rectAnim != null) rectAnim.cancel();
+                        active = !(closing || busy || mini);
+                        if (!active) return true;
+                        cancelRectAnim();
                         sx = e.getRawX(); sy = e.getRawY(); sw0 = curW(); sh0 = curH();
-                        card.getParent().requestDisallowInterceptTouchEvent(true);
+                        if (card.getParent() != null) card.getParent().requestDisallowInterceptTouchEvent(true);
                         return true;
                     case MotionEvent.ACTION_MOVE: {
+                        if (!active) return true;
                         int tx = Math.round(card.getTranslationX()), ty = Math.round(card.getTranslationY());
-                        int w = clamp(Math.round(sw0 + (e.getRawX() - sx)), dpx(420), screenW() - tx);
-                        int h = clamp(Math.round(sh0 + (e.getRawY() - sy)), dpx(240), screenH() - ty);
+                        int minW = Math.min(dpx(420), screenW() - tx), minH = Math.min(dpx(240), screenH() - ty);
+                        int w = clamp(Math.round(sw0 + (e.getRawX() - sx)), minW, screenW() - tx);
+                        int h = clamp(Math.round(sh0 + (e.getRawY() - sy)), minH, screenH() - ty);
                         maximized = false;
                         icMax.setType(Ic.MAX);
                         applyRect(tx, ty, w, h);
@@ -819,7 +1213,8 @@ public final class YoutubeTablet {
                     }
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
-                        savePrefs();
+                        if (active) savePrefs();
+                        active = false;
                         return true;
                 }
                 return false;
@@ -831,19 +1226,44 @@ public final class YoutubeTablet {
     }
 
     // ------------------------------------------------------------------ yardimci View-lar
-    /** nazik yukleme xetti */
+    /** hamar yukleme xetti (iOS usulu: yumshaq irelileme + solma) */
     private static final class Line extends View {
         private final Paint p = new Paint();
-        private int pct;
+        private float shown, target;
+        private final Runnable step = new Runnable() {
+            @Override public void run() {
+                shown += (target - shown) * 0.2f;
+                if (Math.abs(target - shown) < 0.4f) shown = target;
+                invalidate();
+                if (shown < target) {
+                    postOnAnimation(this);
+                } else if (shown >= 100f) {
+                    animate().alpha(0f).setDuration(280).withEndAction(new Runnable() {
+                        @Override public void run() { shown = 0f; target = 0f; invalidate(); }
+                    }).start();
+                }
+            }
+        };
+
         Line(Context c) { super(c); p.setColor(C_ACC); }
-        void set(int v) { pct = v; invalidate(); }
+
+        void set(int v) {
+            animate().cancel();
+            setAlpha(1f);
+            if (v <= 0) { shown = 0f; target = 0f; invalidate(); return; }
+            if (shown >= 100f) shown = 0f;
+            target = Math.min(100f, v);
+            removeCallbacks(step);
+            postOnAnimation(step);
+        }
+
         @Override protected void onDraw(Canvas c) {
-            if (pct <= 0 || pct >= 100) return;
-            c.drawRect(0, 0, getWidth() * pct / 100f, getHeight(), p);
+            if (shown <= 0f) return;
+            c.drawRect(0, 0, getWidth() * shown / 100f, getHeight(), p);
         }
     }
 
-    /** vektor ikonlar (resurs lazim deyil) */
+    /** vektor ikonlar (resurs lazim deyil) + iOS press-scale */
     private static final class Ic extends View {
         static final int BACK = 0, FWD = 1, HOME = 2, SEARCH = 3, NOTE = 4, MAX = 5, RESTORE = 6,
                          CLOSE = 7, PLAY = 8, PAUSE = 9, EXPAND = 10, GRIP = 11;
@@ -867,7 +1287,32 @@ public final class YoutubeTablet {
             setClickable(true);
         }
 
-        void setType(int t) { if (type != t) { type = t; invalidate(); } }
+        void setType(int t) {
+            if (type == t) return;
+            type = t;
+            invalidate();
+            if (isAttachedToWindow()) {
+                setScaleX(0.6f);
+                setScaleY(0.6f);
+                animate().scaleX(1f).scaleY(1f).setDuration(260)
+                        .setInterpolator(new OvershootInterpolator(2.2f)).start();
+            }
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    animate().scaleX(0.82f).scaleY(0.82f).setDuration(90)
+                            .setInterpolator(new DecelerateInterpolator()).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    animate().scaleX(1f).scaleY(1f).setDuration(280)
+                            .setInterpolator(new OvershootInterpolator(2.5f)).start();
+                    break;
+            }
+            return super.onTouchEvent(e);
+        }
 
         @Override protected void onDraw(Canvas c) {
             final float w = getWidth(), h = getHeight(), cx = w / 2f, cy = h / 2f, u = Math.min(w, h) / 24f;

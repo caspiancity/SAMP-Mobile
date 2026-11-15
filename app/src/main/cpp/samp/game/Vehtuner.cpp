@@ -70,10 +70,7 @@ namespace
         return Near100(t.speedPct) && Near100(t.accelPct) && Near100(t.inertiaPct) && Near100(t.massPct) &&
                Near100(t.dragPct) && Near100(t.brakePct) && Near100(t.steerPct) && Near100(t.tractionPct) &&
                Near100(t.tracLossPct) && Near100(t.turnPct) && Near100(t.suspForcePct) &&
-               Near100(t.suspDampPct) && Near100(t.collisionPct) &&
-               Near100(t.suspUpperPct) && Near100(t.suspLowerPct) && Near100(t.suspBiasPct) &&
-               Near100(t.antiDivePct) && Near100(t.tractBiasPct) && Near100(t.brakeBiasPct) &&
-               std::fabs(t.comZOffset) < 0.5f;
+               Near100(t.suspDampPct) && Near100(t.collisionPct);
     }
 
     // g_mutex artiq tutulub olmalidir.
@@ -126,13 +123,6 @@ namespace
         t.suspForcePct= Clamp(t.suspForcePct,30.0f, 300.0f);
         t.suspDampPct = Clamp(t.suspDampPct, 30.0f, 300.0f);
         t.collisionPct= Clamp(t.collisionPct,10.0f, 300.0f);
-        t.suspUpperPct= Clamp(t.suspUpperPct,30.0f, 300.0f);
-        t.suspLowerPct= Clamp(t.suspLowerPct,30.0f, 300.0f);
-        t.suspBiasPct = Clamp(t.suspBiasPct, 50.0f, 150.0f);
-        t.antiDivePct = Clamp(t.antiDivePct,  0.0f, 300.0f);
-        t.tractBiasPct= Clamp(t.tractBiasPct,50.0f, 150.0f);
-        t.brakeBiasPct= Clamp(t.brakeBiasPct,50.0f, 150.0f);
-        t.comZOffset  = Clamp(t.comZOffset, -50.0f,  50.0f);
         if (t.headlight >= VEHTUNER_COLOR_COUNT) t.headlight = 0;
 
         if (IsNeutral(t))
@@ -195,16 +185,6 @@ namespace
         e.copy->m_fSuspensionDampingLevel = e.orig->m_fSuspensionDampingLevel * (t.suspDampPct  * 0.01f);
         e.copy->m_fCollisionDamageMultiplier = e.orig->m_fCollisionDamageMultiplier * (t.collisionPct * 0.01f);
 
-        // TG_PATCH10: asma sinirlari, balanslar, agirliq merkezi (hamisi ORIGINAL-dan hesablanir)
-        e.copy->m_fSuspensionUpperLimit = e.orig->m_fSuspensionUpperLimit * (t.suspUpperPct * 0.01f);
-        e.copy->m_fSuspensionLowerLimit = e.orig->m_fSuspensionLowerLimit * (t.suspLowerPct * 0.01f);
-        e.copy->m_fSuspensionBiasBetweenFrontAndRear =
-            Clamp(e.orig->m_fSuspensionBiasBetweenFrontAndRear * (t.suspBiasPct * 0.01f), 0.05f, 0.95f);
-        e.copy->m_fSuspensionAntiDiveMultiplier = e.orig->m_fSuspensionAntiDiveMultiplier * (t.antiDivePct * 0.01f);
-        e.copy->m_fTractionBias = Clamp(e.orig->m_fTractionBias * (t.tractBiasPct * 0.01f), 0.05f, 0.95f);
-        e.copy->m_fBrakeBias    = Clamp(e.orig->m_fBrakeBias    * (t.brakeBiasPct * 0.01f), 0.05f, 0.95f);
-        e.copy->m_vecCentreOfMass.z = e.orig->m_vecCentreOfMass.z + t.comZOffset * 0.01f;
-
         // Fizika kutlesi handling-den AYRI saxlanir -> onu da yenile.
         veh->m_fMass = e.baseMass * kMas;
     }
@@ -264,156 +244,5 @@ namespace VehTuner
         r = kPalette[id][0];
         g = kPalette[id][1];
         b = kPalette[id][2];
-    }
-}
-
-
-// ===== TG_PATCH10: slotlar + handling kodu =====
-#include <string>
-#include <cstdio>
-#include <cstring>
-#include <cmath>
-extern char* g_pszStorage;
-
-namespace
-{
-    constexpr int VT_NF = 20;
-
-    void VtFields(VehTune& t, float** f)
-    {
-        f[0]  = &t.speedPct;     f[1]  = &t.accelPct;    f[2]  = &t.inertiaPct;   f[3]  = &t.massPct;
-        f[4]  = &t.dragPct;      f[5]  = &t.brakePct;    f[6]  = &t.steerPct;     f[7]  = &t.tractionPct;
-        f[8]  = &t.tracLossPct;  f[9]  = &t.turnPct;     f[10] = &t.suspForcePct; f[11] = &t.suspDampPct;
-        f[12] = &t.collisionPct; f[13] = &t.suspUpperPct; f[14] = &t.suspLowerPct; f[15] = &t.suspBiasPct;
-        f[16] = &t.antiDivePct;  f[17] = &t.tractBiasPct; f[18] = &t.brakeBiasPct; f[19] = &t.comZOffset;
-    }
-
-    std::string VtPath(const char* file)
-    {
-        return std::string(g_pszStorage ? g_pszStorage : "") + "SAMP/" + file;
-    }
-
-    int VtHex(char c)
-    {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    }
-
-    std::string VtEncode(const VehTune& src)
-    {
-        VehTune t = src;
-        float* f[VT_NF];
-        VtFields(t, f);
-        std::string s = "T1";
-        for (int i = 0; i < VT_NF; ++i) {
-            uint32_t b;
-            memcpy(&b, f[i], 4);
-            char h[9];
-            snprintf(h, sizeof(h), "%08X", b);
-            s += h;
-        }
-        return s;
-    }
-
-    bool VtDecode(const std::string& code, VehTune& out)
-    {
-        if (code.size() != (size_t)(2 + 8 * VT_NF) || code[0] != 'T' || code[1] != '1') return false;
-        VehTune t = out;
-        float* f[VT_NF];
-        VtFields(t, f);
-        for (int i = 0; i < VT_NF; ++i) {
-            uint32_t b = 0;
-            for (int k = 0; k < 8; ++k) {
-                int h = VtHex(code[2 + i * 8 + k]);
-                if (h < 0) return false;
-                b = (b << 4) | (uint32_t)h;
-            }
-            float v;
-            memcpy(&v, &b, 4);
-            if (!std::isfinite(v) || v < -1000.0f || v > 1000.0f) return false;
-            *f[i] = v;
-        }
-        out = t;
-        return true;
-    }
-
-    std::string g_vtSlots[VehTuner::VEHTUNER_SLOTS + 1];
-    bool        g_vtSlotsLoaded = false;
-
-    void VtSlotsLoad()
-    {
-        if (g_vtSlotsLoaded) return;
-        g_vtSlotsLoaded = true;
-        FILE* f = fopen(VtPath("vehtune_slots.txt").c_str(), "r");
-        if (!f) return;
-        char line[400];
-        while (fgets(line, sizeof(line), f)) {
-            int slot = 0;
-            char code[300];
-            if (sscanf(line, "%d %299s", &slot, code) != 2) continue;
-            if (slot < 1 || slot > VehTuner::VEHTUNER_SLOTS) continue;
-            VehTune probe;
-            if (VtDecode(code, probe)) g_vtSlots[slot] = code;
-        }
-        fclose(f);
-    }
-
-    void VtSlotsWrite()
-    {
-        FILE* f = fopen(VtPath("vehtune_slots.txt").c_str(), "w");
-        if (!f) return;
-        for (int i = 1; i <= VehTuner::VEHTUNER_SLOTS; ++i)
-            if (!g_vtSlots[i].empty()) fprintf(f, "%d %s\n", i, g_vtSlots[i].c_str());
-        fclose(f);
-    }
-}
-
-namespace VehTuner
-{
-    bool SaveSlot(int slot, const VehTune& t)
-    {
-        if (slot < 1 || slot > VEHTUNER_SLOTS) return false;
-        VtSlotsLoad();
-        g_vtSlots[slot] = VtEncode(t);
-        VtSlotsWrite();
-        return true;
-    }
-
-    bool LoadSlot(int slot, VehTune& t)
-    {
-        if (slot < 1 || slot > VEHTUNER_SLOTS) return false;
-        VtSlotsLoad();
-        if (g_vtSlots[slot].empty()) return false;
-        return VtDecode(g_vtSlots[slot], t);
-    }
-
-    bool SlotUsed(int slot)
-    {
-        if (slot < 1 || slot > VEHTUNER_SLOTS) return false;
-        VtSlotsLoad();
-        return !g_vtSlots[slot].empty();
-    }
-
-    std::string ExportCode(const VehTune& t)
-    {
-        std::string c = VtEncode(t);
-        FILE* f = fopen(VtPath("vehtune_code.txt").c_str(), "w");
-        if (f) { fprintf(f, "%s\n", c.c_str()); fclose(f); }
-        return c;
-    }
-
-    bool ParseCode(const std::string& code, VehTune& t) { return VtDecode(code, t); }
-
-    bool ImportCodeFile(VehTune& t)
-    {
-        FILE* f = fopen(VtPath("vehtune_code.txt").c_str(), "r");
-        if (!f) return false;
-        char buf[400];
-        int ok = fscanf(f, "%399s", buf);
-        fclose(f);
-        if (ok != 1) return false;
-        return VtDecode(buf, t);
     }
 }

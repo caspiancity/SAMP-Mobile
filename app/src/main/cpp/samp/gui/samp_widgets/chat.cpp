@@ -25,33 +25,6 @@ bool g_bHideAllUI = false;
 extern bool g_bHideMinimap; // FAR_RGB_PATCH (patches.cpp)
 void CamCtl_Command(const char* a, const char* b, char* rep, int n);   // AZ_PATCH4 (gui.cpp)
 bool g_bShowHandlingDlg = false;   // /mm (kohne addi: /tuning)
-std::string Emoji_Replace(const std::string& in);   // EMOJI_PATCH11 (keyboard.cpp)
-extern int g_mmOpenPage;   // TG_PATCH10 (gui.cpp)
-
-// ===== HNDEXT_PATCH8 =====
-#include <vector>
-std::string HndExt_FieldList();
-bool HndExt_Set(CVehicle*, const char*, float);
-bool HndExt_Get(CVehicle*, const char*, float*);
-std::vector<std::string> HndExt_DumpLines(CVehicle*);
-bool HndExt_SaveSlot(CVehicle*, int);
-bool HndExt_LoadSlot(CVehicle*, int);
-std::string HndExt_GetCode(CVehicle*);
-bool HndExt_SetCode(CVehicle*, const std::string&);
-int HndExt_LoadCfg(CVehicle*, const char*);
-
-static CVehicle* HndExt_LocalVehicle()
-{
-    CPlayerPed* p = pGame ? pGame->FindPlayerPed() : nullptr;
-    if (!p || !p->IsInVehicle() || !p->m_pPed) return nullptr;
-    if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
-    CVehiclePool* pool = pNetGame->GetVehiclePool();
-    VEHICLEID id = pool->FindIDFromGtaPtr(p->m_pPed->pVehicle);
-    if (id == INVALID_VEHICLE_ID) return nullptr;
-    CVehicle* v = pool->GetAt(id);
-    return (v && v->m_pVehicle) ? v : nullptr;
-}
-// ===== /HNDEXT_PATCH8 =====
 
 Chat::Chat()
         : ListBox()
@@ -100,7 +73,7 @@ void Chat::addMessage(const std::string& message, const ImColor& color)
                 this->removeItem(0);
         }
 
-        MessageItem* item = new MessageItem(Emoji_Replace(message), color);
+        MessageItem* item = new MessageItem(message, color);
         this->addItem(item);
         /*if(!active())*/ this->setScrollY(1.0f);
         m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
@@ -113,7 +86,7 @@ void Chat::addPlayerMessage(const std::string& message, const std::string& nick,
                 this->removeItem(0);
         }
 
-        PlayerMessageItem* item = new PlayerMessageItem(Emoji_Replace(message), nick, nick_color);
+        PlayerMessageItem* item = new PlayerMessageItem(message, nick, nick_color);
         this->addItem(item);
         /*if(!active())*/ this->setScrollY(1.0f);
         m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
@@ -235,84 +208,8 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
-        if (false && (cmd == "/hlist" || cmd == "/hset" || cmd == "/hget" || cmd == "/hsave" ||
-            cmd == "/hload" || cmd == "/hcode" || cmd == "/hcfg")) {   // HNDEXT_PATCH8
-                if (cmd == "/hlist") {
-                        pUI->chat()->addDebugMessage("{B9C9BF}[Handling]: %s", HndExt_FieldList().c_str());
-                        pUI->chat()->addDebugMessage("{B9C9BF}/hset sahe deyer | /hget [sahe] | /hsave 1-5 | /hload 1-5 | /hcode [kod] | /hcfg [ad]");
-                        return true;
-                }
-                CVehicle* hv = HndExt_LocalVehicle();
-                if (!hv) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Handling]: Avtomobilde deyilsiniz!");
-                        return true;
-                }
-                std::string a1, a2;
-                ss >> a1 >> a2;
-
-                if (cmd == "/hset") {
-                        if (a1.empty() || a2.empty()) {
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: /hset sahe deyer  (sahe siyahisi: /hlist)");
-                        } else if (HndExt_Set(hv, a1.c_str(), (float)atof(a2.c_str()))) {
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: %s = %s", a1.c_str(), a2.c_str());
-                        } else {
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: Namelum sahe (/hlist)");
-                        }
-                } else if (cmd == "/hget") {
-                        if (a1.empty()) {
-                                std::vector<std::string> ls = HndExt_DumpLines(hv);
-                                for (size_t i = 0; i < ls.size(); i++)
-                                        pUI->chat()->addDebugMessage("{B9C9BF}%s", ls[i].c_str());
-                        } else {
-                                float fv = 0.0f;
-                                if (HndExt_Get(hv, a1.c_str(), &fv))
-                                        pUI->chat()->addDebugMessage("{00FF00}[Handling]: %s = %.3f", a1.c_str(), fv);
-                                else
-                                        pUI->chat()->addDebugMessage("{FF0000}[Handling]: Namelum sahe (/hlist)");
-                        }
-                } else if (cmd == "/hsave") {
-                        int sl = atoi(a1.c_str());
-                        if (HndExt_SaveSlot(hv, sl))
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: Slot %d yadda saxlanildi", sl);
-                        else
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: /hsave 1-5");
-                } else if (cmd == "/hload") {
-                        int sl = atoi(a1.c_str());
-                        if (HndExt_LoadSlot(hv, sl))
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: Slot %d yuklendi", sl);
-                        else
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: Slot bosdur ve ya yanlisdir (1-5)");
-                } else if (cmd == "/hcode") {
-                        if (a1.empty()) {
-                                std::string code = HndExt_GetCode(hv);
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: Kod (SAMP/handling_code.txt-ye da yazildi):");
-                                pUI->chat()->addDebugMessage("{B9C9BF}%s", code.c_str());
-                        } else if (HndExt_SetCode(hv, a1)) {
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: Kod tetbiq olundu");
-                        } else {
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: Kod yanlisdir");
-                        }
-                } else if (cmd == "/hcfg") {
-                        int r = HndExt_LoadCfg(hv, a1.c_str());
-                        if (r >= 0)
-                                pUI->chat()->addDebugMessage("{00FF00}[Handling]: cfg yuklendi, %d sahe tetbiq olundu", r);
-                        else if (r == -2)
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: Yanlis fayl adi");
-                        else
-                                pUI->chat()->addDebugMessage("{FF0000}[Handling]: SAMP/%s tapilmadi", a1.empty() ? "handling_user.cfg" : a1.c_str());
-                }
-                return true;
-        }
-
-        if (cmd == "/tg") {   // TG_PATCH10: tuning menyusu
-                if (g_bShowHandlingDlg) { g_bShowHandlingDlg = false; }
-                else { g_mmOpenPage = 1; g_bShowHandlingDlg = true; }
-                return true;
-        }
-
         if (cmd == "/mm") {   // MM_NO_VEHICLE_PATCH: artiq masinsiz da acilir
-                if (g_bShowHandlingDlg) { g_bShowHandlingDlg = false; }   // PROFILE_PATCH11: /mm profil
-                else { g_mmOpenPage = 5; g_bShowHandlingDlg = true; }
+                g_bShowHandlingDlg = !g_bShowHandlingDlg;
                 return true;
         }
 

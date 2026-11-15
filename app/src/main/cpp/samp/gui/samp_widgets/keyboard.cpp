@@ -10,52 +10,6 @@ extern UI* pUI;
 extern CSettings* pSettings;
 extern CJavaWrapper* pJavaWrapper;
 
-
-// ===== EMOJI_PATCH11 =====
-#include <chrono>
-#include <cmath>
-#include <cstring>
-#include <algorithm>
-
-static std::chrono::steady_clock::time_point g_kbShowTP = std::chrono::steady_clock::now();
-static float g_kbDt = 0.016f;
-
-// ":smile:" kimi ASCII kodlari sistem fontundaki simvollara cevirir (chat ucun de istifade olunur)
-std::string Emoji_Replace(const std::string& in)
-{
-	static const struct { const char* code; const char* glyph; } kMap[] = {
-		{ ":smile:", "\xE2\x98\xBA" }, { ":sad:", "\xE2\x98\xB9" },   { ":heart:", "\xE2\x99\xA5" },
-		{ ":star:", "\xE2\x98\x85" },  { ":sun:", "\xE2\x98\x80" },   { ":snow:", "\xE2\x9D\x84" },
-		{ ":skull:", "\xE2\x98\xA0" }, { ":ok:", "\xE2\x9C\x94" },    { ":no:", "\xE2\x9C\x98" },
-		{ ":bolt:", "\xE2\x9A\xA1" },  { ":music:", "\xE2\x99\xAB" }, { ":note:", "\xE2\x99\xAA" },
-		{ ":phone:", "\xE2\x98\x8E" }, { ":mail:", "\xE2\x9C\x89" },  { ":plane:", "\xE2\x9C\x88" },
-		{ ":crown:", "\xE2\x99\x9B" }, { ":flower:", "\xE2\x9C\xBF" },{ ":cloud:", "\xE2\x98\x81" },
-		{ ":umbrella:", "\xE2\x98\x82" }, { ":peace:", "\xE2\x98\xAE" }, { ":hand:", "\xE2\x9C\x8C" },
-		{ ":cross:", "\xE2\x9C\x9D" }, { ":yin:", "\xE2\x98\xAF" },   { ":flag:", "\xE2\x9A\x91" },
-		{ ":)", "\xE2\x98\xBA" },      { ":(", "\xE2\x98\xB9" },      { "<3", "\xE2\x99\xA5" },
-	};
-	if (in.find(':') == std::string::npos && in.find("<3") == std::string::npos) return in;
-	std::string out;
-	out.reserve(in.size());
-	size_t i = 0;
-	while (i < in.size())
-	{
-		if (in[i] == ':' || in[i] == '<')
-		{
-			bool hit = false;
-			for (const auto& e : kMap)
-			{
-				const size_t n = strlen(e.code);
-				if (in.compare(i, n, e.code) == 0) { out += e.glyph; i += n; hit = true; break; }
-			}
-			if (hit) continue;
-		}
-		out += in[i++];
-	}
-	return out;
-}
-// ===== /EMOJI_PATCH11 =====
-
 /* Keyboard */
 
 Keyboard::Keyboard()
@@ -95,12 +49,6 @@ Keyboard::Keyboard()
 	m_layoutNUM->setSpacing(0.0f);
 	m_layoutNUM->setVisible(false);
 
-	m_layoutEmoji = new KeyboardLayoutEmoji();   // EMOJI_PATCH11
-	this->addChild(m_layoutEmoji);
-	m_layoutEmoji->setPadding(0.0f);
-	m_layoutEmoji->setSpacing(0.0f);
-	m_layoutEmoji->setVisible(false);
-
 	m_activeLayout = m_layoutLowerENG;
 	m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
 	m_activeLayout->setVisible(true);
@@ -129,36 +77,13 @@ void Keyboard::performLayout()
 	m_layoutNUM->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
 	m_layoutNUM->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
-	/* EMOJI */
-	m_layoutEmoji->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutEmoji->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-
 	Widget::performLayout();
 }
 
 void Keyboard::draw(ImGuiRenderer* renderer)
 {
-	// yumsaq asagidan yuxari acilis + qaranliq gradient + narinci aksent xett
-	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-	static std::chrono::steady_clock::time_point s_lastFrame = now;
-	g_kbDt = std::chrono::duration<float>(now - s_lastFrame).count();
-	s_lastFrame = now;
-	if (g_kbDt > 0.1f) g_kbDt = 0.1f;
-
-	const ImVec2 a = absolutePosition();
-	const ImVec2 b = a + size();
-	float t = std::chrono::duration<float>(now - g_kbShowTP).count() / 0.26f;
-	t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
-	const float e = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
-	const float top = a.y + (b.y - a.y) * (1.0f - e);
-
-	renderer->pushClipRect(ImVec2(a.x, top), ImVec2(b.x, b.y), false);
-	ImDrawList* dl = ImGui::GetBackgroundDrawList();
-	dl->AddRectFilledMultiColor(a, b, IM_COL32(20, 23, 33, 250), IM_COL32(20, 23, 33, 250),
-	                            IM_COL32(10, 12, 18, 255), IM_COL32(10, 12, 18, 255));
-	dl->AddRectFilled(a, ImVec2(b.x, a.y + 2.0f), IM_COL32(245, 145, 50, 255));
+	renderer->drawRect(absolutePosition(), absolutePosition() + size(), UISettings::keyboardBackgroundColor(), true);
 	Widget::draw(renderer);
-	renderer->popClipRect();
 }
 
 void Keyboard::setActiveLayout(KeyboardLayout::Type type)
@@ -191,11 +116,6 @@ void Keyboard::setActiveLayout(KeyboardLayout::Type type)
 			m_layoutNUM->setVisible(true);
 			m_activeLayout = m_layoutNUM;
 			break;
-
-		case KeyboardLayout::Type::EMOJI:
-			m_layoutEmoji->setVisible(true);
-			m_activeLayout = m_layoutEmoji;
-			break;
 	}
 
 	m_activeLayoutType = type;
@@ -219,7 +139,6 @@ void Keyboard::changeCase(KeyboardLayout::KeyCase key_case)
 
 void Keyboard::show(Widget* caller)
 {
-	g_kbShowTP = std::chrono::steady_clock::now();   // EMOJI_PATCH11
 	if(pSettings->Get().iAndroidKeyboard)
 	{
 		pJavaWrapper->ShowKeyboard();
@@ -326,13 +245,13 @@ void KeyboardInput::performLayout()
 void KeyboardInput::addCharToInput(char value)
 {
 	m_input += value;
-	m_caption = Emoji_Replace(Encoding::cp2utf(m_input));
+	m_caption = Encoding::cp2utf(m_input);
 }
 
 void KeyboardInput::addStringToInput(const std::string& value)
 {
 	m_input += value;
-	m_caption = Emoji_Replace(Encoding::cp2utf(m_input));
+	m_caption = Encoding::cp2utf(m_input);
 }
 
 void KeyboardInput::popCharFromInput()
@@ -351,40 +270,20 @@ void KeyboardInput::popCharFromInput()
 	else
 		m_input.pop_back();
 
-	m_caption = Emoji_Replace(Encoding::cp2utf(m_input));
+	m_caption = Encoding::cp2utf(m_input);
 }
 
 void KeyboardInput::draw(ImGuiRenderer* renderer)
 {
-	const ImVec2 a = absolutePosition();
-	const ImVec2 b = a + size();
-	const float divLinePosY = b.y - UISettings::outlineSize();
-	const float font_sz = UISettings::fontSize();
-	const float textY = a.y + (height() - font_sz) / 2;
-	ImDrawList* dl = ImGui::GetBackgroundDrawList();
+	float divLinePosY = (absolutePosition().y + size().y) - UISettings::outlineSize();
+	float font_sz = UISettings::fontSize();
 
-	// yuvarlaq yazi sahesi
-	const float pad = UISettings::padding() * 0.5f;
-	dl->AddRectFilled(ImVec2(a.x + pad, a.y + 5.0f), ImVec2(b.x - pad, b.y - 7.0f), IM_COL32(0, 0, 0, 95), 12.0f);
-
-	if (m_caption.empty())
-		renderer->drawText(ImVec2(a.x + UISettings::padding(), textY), ImColor(1.0f, 1.0f, 1.0f, 0.35f),
-		                   std::string("Mesaj yaz...  (:smile: :heart: <3)"), false, font_sz);
-	else
-		renderer->drawText(ImVec2(a.x + UISettings::padding(), textY), ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
-
-	// yanib-sonen kursor
-	const float blink = std::fmod(std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count(), 1.0f);
-	if (blink < 0.6f)
-	{
-		const float tw = m_caption.empty() ? 0.0f : renderer->calculateTextSize(m_caption, font_sz).x;
-		const float cx = a.x + UISettings::padding() + tw + 2.0f;
-		dl->AddRectFilled(ImVec2(cx, textY), ImVec2(cx + 2.0f, textY + font_sz), IM_COL32(245, 145, 50, 255), 1.0f);
-	}
+	renderer->drawText(absolutePosition() + ImVec2(UISettings::padding(), (height() - font_sz) / 2),
+					   ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
 
 	renderer->drawLine(
-			ImVec2(a.x, divLinePosY),
-			ImVec2(b.x, divLinePosY),
+			ImVec2(absolutePosition().x, divLinePosY),
+			ImVec2(absolutePosition().x + size().x, divLinePosY),
 			ImColor(0xF5, 0x91, 0x32), UISettings::outlineSize()
 	);
 
@@ -470,9 +369,6 @@ KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
 		case ExtendedKey::LANG_AZE:
 			this->setCaption(std::string("AZE"));
 			break;
-		case ExtendedKey::EMOJI:
-			this->setCaption(std::string(":)"));
-			break;
 	}
 
 	m_extendedKey = extended_key;
@@ -480,23 +376,7 @@ KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
 
 void KeyboardLayout::Row::Key::draw(ImGuiRenderer* renderer)
 {
-	{
-		// MODERN DUYME: yuvarlaq, kolge, basanda aksent rengine yumsaq kecid
-		const ImVec2 ka = absolutePosition();
-		const ImVec2 kb = absolutePosition() + size();
-		m_pressAnim += ((focused() ? 1.0f : 0.0f) - m_pressAnim) * std::min(1.0f, g_kbDt * 18.0f);
-		const float ins = 3.0f + 2.0f * m_pressAnim;
-		const ImVec2 p0(ka.x + ins, ka.y + ins), p1(kb.x - ins, kb.y - ins);
-		int br = 35, bg = 40, bb = 54;
-		if (m_extendedKey != ExtendedKey::NONE) { br = 46; bg = 52; bb = 70; }
-		if (m_extendedKey == ExtendedKey::SEND) { br = 245; bg = 145; bb = 50; }
-		const float k = (m_extendedKey == ExtendedKey::SEND) ? 0.0f : m_pressAnim;
-		const int cr = (int)(br + (245 - br) * k), cg = (int)(bg + (145 - bg) * k), cb = (int)(bb + (50 - bb) * k);
-		ImDrawList* kd = ImGui::GetBackgroundDrawList();
-		kd->AddRectFilled(ImVec2(p0.x, p0.y + 2.0f), ImVec2(p1.x, p1.y + 2.0f), IM_COL32(0, 0, 0, 70), 9.0f);
-		kd->AddRectFilled(p0, p1, IM_COL32(cr, cg, cb, 255), 9.0f);
-		kd->AddRect(p0, p1, IM_COL32(255, 255, 255, 20), 9.0f, 0, 1.0f);
-	}
+	if (focused()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0xF5, 0x91, 0x32), true);
 
 	switch (m_extendedKey)
 	{
@@ -597,10 +477,6 @@ void KeyboardLayout::Row::Key::touchPopEvent()
 			keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
 			break;
 
-		case ExtendedKey::EMOJI:
-			keyboard->setActiveLayout(KeyboardLayout::Type::EMOJI);
-			break;
-
 		case ExtendedKey::NONE:
 			if (m_isStringValue)
 				keyboard->input()->addStringToInput(m_valueStr);
@@ -664,7 +540,7 @@ void KeyboardLayoutLowerENG::performLayout()
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
+	m_rows[3]->addKey(std::string("?"), '?');
 	m_rows[3]->addKey(std::string("."), '.');
 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
@@ -725,7 +601,7 @@ void KeyboardLayoutUpperENG::performLayout()
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
+	m_rows[3]->addKey(std::string("?"), '?');
 	m_rows[3]->addKey(std::string("."), '.');
 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
@@ -789,7 +665,7 @@ void KeyboardLayoutLowerAZE::performLayout()
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
+	m_rows[3]->addKey(std::string("?"), '?');
 	m_rows[3]->addKey(std::string("."), '.');
 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
@@ -853,7 +729,7 @@ void KeyboardLayoutUpperAZE::performLayout()
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
+	m_rows[3]->addKey(std::string("?"), '?');
 	m_rows[3]->addKey(std::string("."), '.');
 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
@@ -963,42 +839,4 @@ const std::string KeyboardHistory::prev()
 	std::string str = m_vMessages[m_index];
 	if (m_index > 0) m_index--;
 	return str;
-}
-
-
-/* KeyboardLayoutEmoji (EMOJI_PATCH11) */
-
-KeyboardLayoutEmoji::KeyboardLayoutEmoji() : KeyboardLayout() {}
-
-void KeyboardLayoutEmoji::performLayout()
-{
-	static const char* kGlyph[24] = {
-		"\xE2\x98\xBA", "\xE2\x98\xB9", "\xE2\x99\xA5", "\xE2\x98\x85", "\xE2\x98\x80", "\xE2\x9D\x84", "\xE2\x98\xA0", "\xE2\x9C\x94",
-		"\xE2\x9C\x98", "\xE2\x9A\xA1", "\xE2\x99\xAB", "\xE2\x99\xAA", "\xE2\x98\x8E", "\xE2\x9C\x89", "\xE2\x9C\x88", "\xE2\x99\x9B",
-		"\xE2\x9C\xBF", "\xE2\x98\x81", "\xE2\x98\x82", "\xE2\x98\xAE", "\xE2\x9C\x8C", "\xE2\x9C\x9D", "\xE2\x98\xAF", "\xE2\x9A\x91"
-	};
-	static const char* kCode[24] = {
-		":smile:", ":sad:", ":heart:", ":star:", ":sun:", ":snow:", ":skull:", ":ok:",
-		":no:", ":bolt:", ":music:", ":note:", ":phone:", ":mail:", ":plane:", ":crown:",
-		":flower:", ":cloud:", ":umbrella:", ":peace:", ":hand:", ":cross:", ":yin:", ":flag:"
-	};
-
-	for (int r = 0; r < 3; ++r)
-	{
-		m_rows[r]->setPadding(0.0f);
-		m_rows[r]->setSpacing(0.0f);
-		for (int c = 0; c < 8; ++c)
-			m_rows[r]->addKey(std::string(kGlyph[r * 8 + c]), std::string(kCode[r * 8 + c]));
-	}
-
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
-	m_rows[3]->addKey(ExtendedKey::BACKSPACE);
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-
-	KeyboardLayout::performLayout();
 }

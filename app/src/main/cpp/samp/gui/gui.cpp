@@ -1,6 +1,4 @@
 #include "../main.h"
-#include <ctime>   // PROFILE_PATCH11
-#include <cmath>
 #include "../game/game.h"
 #include "../net/netgame.h"
 #include "../game/vehicle.h"
@@ -597,8 +595,6 @@ static void PlatePreview(const mm::Rc& r, const char* text)
 // SPEEDO_STYLES_PATCH: /mm -> Spidometr sehifesi (asagida, HUD bolmesinde teyin olunur)
 static void MM_SpeedoPage(float cx0, float cw, const mm::Rc& P, float dt, bool canInput);
 
-int g_mmOpenPage = -1;   // TG_PATCH10: /tg ucun acilis sehifesi
-
 void RenderHandlingDialog()
 {
         using namespace mm;
@@ -628,8 +624,6 @@ void RenderHandlingDialog()
         dt = Clamp(dt, 0.0f, 0.05f);
 
         const bool want = g_bShowHandlingDlg;
-        if (want && g_mmOpenPage >= 0 && g_mmOpenPage < 10) { s_page = g_mmOpenPage; s_pageAnim = 0.0f; }   // TG_PATCH10
-        if (want) g_mmOpenPage = -1;
         if (!want && s_t <= 0.0f) {
                 s_wasOpen = false;
                 s_hndRectValid = false;
@@ -776,17 +770,17 @@ void RenderHandlingDialog()
         }
 
         // --- sidebar ---
-        static const char* kPages[10] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Profil" , "Nömrə", "Spidometr", "Balans", "Slotlar" };
-        static const char* kSubs[10]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma, hədlər və toqquşma", "Far rəngi", "Profil, status və komandalar" , "Azərbaycan nömrə lövhəsi (10-AA-123)", "Spidometr stilini və rəngini seç", "Ön/arxa balans və ağırlıq mərkəzi", "Tuning slotları və handling kodu" };
+        static const char* kPages[8] = { "Nəzarət", "Mühərrik", "Sürücülük", "Asma", "Far", "Komandalar" , "Nömrə", "Spidometr" };
+        static const char* kSubs[8]  = { "Mühərrik, fara, qapılar və sinyal", "Sürətlənmə, sürət və çəki", "Tormoz, manevr və yol tutuş", "Asma və toqquşma", "Far rəngi", "Bütün komandaların siyahısı" , "Azərbaycan nömrə lövhəsi (10-AA-123)", "Spidometr stilini və rəngini seç" };
         {
-                s_navRel = Smooth(s_navRel, 74.0f + 44.0f * s_page, dt, 18.0f);
-                const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(40.0f) };
+                s_navRel = Smooth(s_navRel, 74.0f + 56.0f * s_page, dt, 18.0f);
+                const Rc ind{ P.x + S(16.0f), P.y + S(s_navRel), S(166.0f), S(48.0f) };
                 Fill(ind, Col(255, 255, 255, 12), S(10.0f));
-                Fill(Rc{ ind.x, ind.y + S(10.0f), S(3.0f), S(20.0f) }, Accent(0.0f), S(1.5f));
+                Fill(Rc{ ind.x, ind.y + S(12.0f), S(3.0f), S(24.0f) }, Accent(0.0f), S(1.5f));
 
-                for (int i = 0; i < 10; ++i)
+                for (int i = 0; i < 8; ++i)
                 {
-                        const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 44.0f * i), S(166.0f), S(40.0f) };
+                        const Rc it{ P.x + S(16.0f), P.y + S(74.0f + 56.0f * i), S(166.0f), S(48.0f) };
                         if (Tap(ID_NAV0 + i, it, canInput) && s_page != i) {
                                 s_page = i;
                                 s_pageAnim = 0.0f;
@@ -802,7 +796,7 @@ void RenderHandlingDialog()
         }
 
         const bool canInputAll = canInput;
-        if (noVeh && (s_page <= 4 || s_page == 6 || s_page >= 8)) canInput = false;   // masina bolmelerinde toxunus yoxdur
+        if (noVeh && (s_page <= 4 || s_page == 6)) canInput = false;   // masina bolmelerinde toxunus yoxdur
 
         // --- mezmun ---
         bool changed = false;
@@ -1037,144 +1031,26 @@ void RenderHandlingDialog()
                                 );
                         }
                 }
-                else if (s_page == 5)    // PROFIL + KOMANDALAR (PROFILE_PATCH11)
+                else if (s_page == 5)    // KOMANDALAR
                 {
-                        static float s_profT = 0.0f, s_profTime = 0.0f;
-                        static int   s_profFc = -100;
-                        const int fc = ImGui::GetFrameCount();
-                        if (fc - s_profFc > 3) s_profT = 0.0f;      // sehifeye yeniden girende animasiya basdan
-                        s_profFc = fc;
-                        s_profT = Clamp(s_profT + dt / 0.55f, 0.0f, 1.0f);
-                        s_profTime += dt;
-                        const float e  = 1.0f - powf(1.0f - s_profT, 3.0f);
-                        const int   A  = (int)(255.0f * e);
-                        const float oy = (1.0f - e) * S(34.0f);
-
-                        // ---- melumatlar ----
-                        char nick[40] = "Oyuncu";
-                        int pid = -1, score = 0, ping = 0;
-                        float hp = 0.0f;
-                        const char* status = "Oyunda";
-                        CPlayerPool* ppool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
-                        if (ppool) {
-                                const char* nm = ppool->GetLocalPlayerName();
-                                if (nm && *nm) snprintf(nick, sizeof(nick), "%s", nm);
-                                pid = (int)ppool->GetLocalPlayerID();
-                                score = ppool->GetLocalPlayerScore();
-                                ping = ppool->GetLocalPlayerPing();
-                                CLocalPlayer* plp = ppool->GetLocalPlayer();
-                                if (plp && plp->IsSpectating()) status = "Izleyir";
-                        }
-                        CPlayerPed* pedP = pGame ? pGame->FindPlayerPed() : nullptr;
-                        if (pedP) {
-                                hp = pedP->GetHealth();
-                                if (status[0] == 'O' && pedP->IsInVehicle()) status = "Avtomobilde";
-                        }
-                        char initial[4] = { (char)((nick[0] >= 'a' && nick[0] <= 'z') ? nick[0] - 32 : nick[0]), 0, 0, 0 };
-
-                        // ---- tablet ----
-                        const Rc card{ cx0, P.y + S(124.0f) + oy, cw, S(158.0f) };
-                        Fill(card, Col(12, 14, 20, A), S(22.0f));
-                        Stroke(card, Col(76, 84, 106, A), S(22.0f), S(1.6f));
-                        s_dl->AddCircleFilled(ImVec2(card.x + card.w * 0.5f, card.y + S(4.0f)), S(1.8f), Col(64, 70, 90, A), 8);
-                        const Rc scr = Shrink(card, S(8.0f));
-                        Fill(scr, Col(23, 27, 39, A), S(16.0f));
-                        Fill(Rc{ scr.x, scr.y, scr.w, S(30.0f) }, Accent(0.0f, (int)(36.0f * e)), S(16.0f));
-
-                        // status cubugu: saat + siqnal
-                        time_t tnow = time(nullptr);
-                        struct tm* lt = localtime(&tnow);
-                        char clk[8];
-                        snprintf(clk, sizeof(clk), "%02d:%02d", lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0);
-                        Txt(S(13.0f), scr.x + S(14.0f), scr.y + S(8.0f), Col(206, 212, 226, A), clk);
-                        const int bars = ping < 60 ? 4 : (ping < 120 ? 3 : (ping < 200 ? 2 : 1));
-                        for (int i = 0; i < 4; ++i) {
-                                const float bh = S(5.0f + 3.0f * i);
-                                const float bx = scr.x + scr.w - S(70.0f) + S(7.0f) * i;
-                                const bool on = i < bars;
-                                Fill(Rc{ bx, scr.y + S(21.0f) - bh, S(4.5f), bh },
-                                     on ? Col(120, 215, 160, A) : Col(70, 76, 94, A), S(1.5f));
-                        }
-                        char pingTxt[16];
-                        snprintf(pingTxt, sizeof(pingTxt), "%dms", ping);
-                        Txt(S(12.0f), scr.x + scr.w - S(38.0f), scr.y + S(9.0f), Col(170, 178, 196, A), pingTxt);
-
-                        // avatar (nefes alan halqa)
-                        const ImVec2 av(scr.x + S(54.0f), scr.y + S(92.0f));
-                        const float  ar = S(32.0f);
-                        s_dl->AddCircleFilled(av, ar, Col(245, 145, 50, A), 32);
-                        s_dl->AddCircle(av, ar + S(4.0f) + S(2.0f) * sinf(s_profTime * 2.4f),
-                                        Col(245, 145, 50, (int)(110.0f * e)), 32, S(2.0f));
-                        TxtC(S(30.0f), Rc{ av.x - ar, av.y - ar, ar * 2.0f, ar * 2.0f }, Col(255, 255, 255, A), initial, true);
-
-                        // ad, ID, skor
-                        const float ix = scr.x + S(104.0f);
-                        TxtB(S(24.0f), ix, scr.y + S(44.0f), Col(240, 244, 255, A), nick);
-                        char idl[48];
-                        snprintf(idl, sizeof(idl), "ID: %d", pid);
-                        Txt(S(14.0f), ix, scr.y + S(76.0f), Col(150, 158, 178, A), idl);
-
-                        // status qutusu (zərif nəbz)
-                        const Rc chip{ ix, scr.y + S(100.0f), S(122.0f), S(24.0f) };
-                        Fill(chip, Col(46, 200, 120, (int)(46.0f * e)), S(12.0f));
-                        s_dl->AddCircleFilled(ImVec2(chip.x + S(12.0f), chip.y + S(12.0f)),
-                                              S(3.5f) + S(1.0f) * sinf(s_profTime * 3.0f), Col(80, 220, 140, A), 12);
-                        Txt(S(13.0f), chip.x + S(24.0f), chip.y + S(4.0f), Col(150, 232, 185, A), status);
-
-                        // HP cubugu (animasiya ile dolur)
-                        const Rc hpr{ ix, scr.y + S(136.0f), S(214.0f), S(8.0f) };
-                        Fill(hpr, Col(40, 44, 58, A), S(4.0f));
-                        const float hpf = Clamp(hp / 100.0f, 0.0f, 1.0f) * e;
-                        if (hpf > 0.0f)
-                            Fill(Rc{ hpr.x, hpr.y, hpr.w * hpf, hpr.h },
-                                 Col((int)(235 - 130 * hpf), (int)(70 + 140 * hpf), 80, A), S(4.0f));
-                        char hpl[16];
-                        snprintf(hpl, sizeof(hpl), "HP %d", (int)hp);
-                        Txt(S(11.0f), hpr.x + hpr.w + S(8.0f), hpr.y - S(3.0f), Col(170, 178, 196, A), hpl);
-
-                        // sag terefde statistika qutulari + server ucun yer
-                        const float tx = scr.x + S(394.0f);
-                        const float tw = S(108.0f);
-                        char scl[16], pgl[16];
-                        snprintf(scl, sizeof(scl), "%d", score);
-                        snprintf(pgl, sizeof(pgl), "%d", ping);
-                        struct Tile { const char* lb; const char* val; float x; };
-                        const Tile tiles[2] = { { "SKOR", scl, tx }, { "PING", pgl, tx + tw + S(8.0f) } };
-                        for (int i = 0; i < 2; ++i) {
-                                const Rc tr{ tiles[i].x, scr.y + S(44.0f), tw, S(52.0f) };
-                                Fill(tr, Col(33, 38, 54, A), S(10.0f));
-                                Txt(S(11.0f), tr.x + S(10.0f), tr.y + S(6.0f), Col(138, 146, 168, A), tiles[i].lb);
-                                Txt(S(22.0f), tr.x + S(10.0f), tr.y + S(21.0f), Accent(0.0f, A), tiles[i].val);
-                        }
-                        const Rc srv{ tx, scr.y + S(104.0f), tw * 2.0f + S(8.0f), S(40.0f) };
-                        Fill(srv, Col(33, 38, 54, A), S(10.0f));
-                        Stroke(srv, Col(78, 142, 235, (int)(80.0f * e)), S(10.0f), S(1.2f));
-                        Txt(S(12.0f), srv.x + S(12.0f), srv.y + S(6.0f), Col(138, 146, 168, A), "SERVER PROFILI");
-                        Txt(S(13.0f), srv.x + S(12.0f), srv.y + S(21.0f), Col(200, 206, 222, A), "Tezlikle: seviyye, pul, komanda");
-
-                        // ---- komandalar ----
-                        Txt(S(13.0f), cx0, P.y + S(296.0f) + oy, Col(138, 146, 168, A), "KOMANDALAR");
                         struct CmdInfo { const char* cmd; const char* desc; };
                         static const CmdInfo kCmds[] = {
-                                { "/mm",      "Profil menyusu" },
-                                { "/tg",      "Tuning menyusu" },
+                                { "/mm",      "Maşın menyusunu aç/bağla" },
                                 { "/sinyal",  "sol | sag | avariya | off" },
-                                { "/far N",   "Far rengi (0-15)" },
-                                { "/gizle",   "UI gizlet / geri qaytar" },
+                                { "/far N",   "Far rəngi (0-15)" },
+                                { "/suret N", "Maksimum sürət" },
+                                { "/manevr N","Manevr bucağı" },
+                                { "/tormoz N","Tormoz gücü" },
+                                { "/gizle",   "Bütün UI-ı gizlət/geri qaytar" },
                                 { "/yt",      "YouTube paneli" },
-                                { "/suret N", "Maksimum surət" },
-                                { "/manevr N","Manevr bucagi" },
-                                { "/tormoz N","Tormoz gucu" },
                         };
-                        const int nc = (int)(sizeof(kCmds) / sizeof(kCmds[0]));
-                        const float colW = (cw - S(10.0f)) * 0.5f;
-                        for (int i = 0; i < nc; ++i)
+                        const int n = (int)(sizeof(kCmds) / sizeof(kCmds[0]));
+                        for (int i = 0; i < n; ++i)
                         {
-                                const int col = i % 2, rowi = i / 2;
-                                const Rc row{ cx0 + col * (colW + S(10.0f)), P.y + S(318.0f + 40.0f * rowi) + oy, colW, S(34.0f) };
-                                Fill(row, Col(27, 30, 40, A), S(9.0f));
-                                Txt(S(14.0f), row.x + S(12.0f), row.y + (row.h - S(14.0f)) * 0.5f, Accent(0.0f, A), kCmds[i].cmd);
-                                Txt(S(13.0f), row.x + S(100.0f), row.y + (row.h - S(13.0f)) * 0.5f, Col(200, 204, 216, A), kCmds[i].desc);
+                                const Rc row{ cx0, P.y + S(124.0f + 52.0f * i), cw, S(44.0f) };
+                                Fill(row, Col(27, 30, 40, 255), S(9.0f));
+                                Txt(S(15.0f), row.x + S(16.0f), row.y + (row.h - S(15.0f)) * 0.5f, Accent(0.0f), kCmds[i].cmd);
+                                Txt(S(14.0f), row.x + S(160.0f), row.y + (row.h - S(14.0f)) * 0.5f, Col(200, 204, 216), kCmds[i].desc);
                         }
                 }
                 else if (s_page == 6)    // NOMRE (Azerbaycan)
@@ -1296,72 +1172,6 @@ void RenderHandlingDialog()
                 {
                         MM_SpeedoPage(cx0, cw, P, dt, canInput);
                 }
-                else if (s_page == 9)    // SLOTLAR / KOD (TG_PATCH10)
-                {
-                        auto Btn = [&](int id, const Rc& r, const char* label) -> bool {
-                                const bool hit = Tap(id, r, canInput);
-                                const float pr = Prs(id, dt);
-                                const Rc rd = Shrink(r, S(1.5f) * pr);
-                                Fill(rd, Accent(0.0f, 24 + (int)(36.0f * pr)), S(9.0f));
-                                Stroke(rd, Accent(0.0f, 170), S(9.0f), S(1.3f));
-                                TxtC(S(15.0f), rd, Col(232, 238, 250), label, true);
-                                return hit;
-                        };
-
-                        for (int i = 0; i < VehTuner::VEHTUNER_SLOTS; ++i)
-                        {
-                                const Rc row{ cx0, P.y + S(124.0f + 60.0f * i), cw, S(52.0f) };
-                                Fill(row, Col(27, 30, 40, 255), S(10.0f));
-                                char lb[32];
-                                snprintf(lb, sizeof(lb), "Slot %d", i + 1);
-                                Txt(S(17.0f), row.x + S(16.0f), row.y + S(8.0f), Col(214, 220, 232), lb);
-                                const bool used = VehTuner::SlotUsed(i + 1);
-                                Txt(S(13.0f), row.x + S(16.0f), row.y + S(29.0f),
-                                    used ? Col(120, 215, 160) : Col(124, 132, 152), used ? "Dolu" : "Boş");
-
-                                const Rc bSave{ row.x + row.w - S(256.0f), row.y + S(6.0f), S(116.0f), S(40.0f) };
-                                const Rc bLoad{ row.x + row.w - S(130.0f), row.y + S(6.0f), S(116.0f), S(40.0f) };
-
-                                if (Btn(80 + i * 2, bSave, "Yadda saxla") && gtaVeh) {
-                                        VehTuner::SaveSlot(i + 1, s_tune);
-                                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Slot %d yadda saxlanildi.", i + 1);
-                                }
-                                if (Btn(81 + i * 2, bLoad, "Yüklə") && gtaVeh) {
-                                        VehTune lt = s_tune;
-                                        if (VehTuner::LoadSlot(i + 1, lt)) {
-                                                s_tune = lt;
-                                                changed = true;
-                                                for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
-                                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Slot %d yuklendi.", i + 1);
-                                        } else if (pUI && pUI->chat()) {
-                                                pUI->chat()->addDebugMessage("{FF0000}[MM]: Slot %d bosdur.", i + 1);
-                                        }
-                                }
-                        }
-
-                        const Rc bCode{ cx0, P.y + S(432.0f), S(300.0f), S(44.0f) };
-                        const Rc bImp { cx0 + S(316.0f), P.y + S(432.0f), S(300.0f), S(44.0f) };
-                        if (Btn(90, bCode, "Handling kodunu göstər") && gtaVeh) {
-                                const std::string code = VehTuner::ExportCode(s_tune);
-                                if (pUI && pUI->chat()) {
-                                        pUI->chat()->addDebugMessage("{00FF00}[MM]: Handling kodu (SAMP/vehtune_code.txt-ye de yazildi):");
-                                        pUI->chat()->addDebugMessage("{B9C9BF}%s", code.c_str());
-                                }
-                        }
-                        if (Btn(91, bImp, "Koddan yüklə (fayl)") && gtaVeh) {
-                                VehTune lt = s_tune;
-                                if (VehTuner::ImportCodeFile(lt)) {
-                                        s_tune = lt;
-                                        changed = true;
-                                        for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
-                                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Kod tetbiq olundu.");
-                                } else if (pUI && pUI->chat()) {
-                                        pUI->chat()->addDebugMessage("{FF0000}[MM]: SAMP/vehtune_code.txt tapilmadi ve ya kod yanlisdir.");
-                                }
-                        }
-                        Txt(S(13.0f), cx0, P.y + S(486.0f), Col(124, 132, 152),
-                            "Kodu başqa maşına tətbiq etmək: kodu SAMP/vehtune_code.txt faylına yaz, sonra \"Koddan yüklə\".");
-                }
                 else                      // HANDLING SEHIFELERI
                 {
                         Spec sp[5];
@@ -1378,29 +1188,20 @@ void RenderHandlingDialog()
                                 sp[n++] = { "Yol tutuş (traction)",        &s_tune.tractionPct, 50.0f, 200.0f };
                                 sp[n++] = { "Sürüşmə itkisi (az = yaxşı)", &s_tune.tracLossPct, 20.0f, 200.0f };
                                 sp[n++] = { "Fırlanma ətaləti",            &s_tune.turnPct,     30.0f, 300.0f };
-                        } else if (s_page == 3) {
+                        } else {
                                 sp[n++] = { "Asma gücü",                   &s_tune.suspForcePct, 30.0f, 300.0f };
                                 sp[n++] = { "Asma amortizatorları",        &s_tune.suspDampPct,  30.0f, 300.0f };
                                 sp[n++] = { "Toqquşma zərəri",             &s_tune.collisionPct, 10.0f, 300.0f };
-                                sp[n++] = { "Asma yuxarı hədd (hündürlük)",   &s_tune.suspUpperPct, 30.0f, 300.0f };
-                                sp[n++] = { "Asma aşağı hədd (yol aralığı)",  &s_tune.suspLowerPct, 30.0f, 300.0f };
-                        } else if (s_page == 8) {
-                                sp[n++] = { "Asma balansı (ön/arxa)",        &s_tune.suspBiasPct,  50.0f, 150.0f };
-                                sp[n++] = { "Anti-dive (burun enməsi)",        &s_tune.antiDivePct,   0.0f, 300.0f };
-                                sp[n++] = { "Yol tutuş balansı (ön/arxa)",   &s_tune.tractBiasPct, 50.0f, 150.0f };
-                                sp[n++] = { "Tormoz balansı (ön/arxa)",      &s_tune.brakeBiasPct, 50.0f, 150.0f };
-                                sp[n++] = { "Ağırlıq mərkəzi hündürlüyü",      &s_tune.comZOffset,  -50.0f,  50.0f };
                         }
 
                         for (int i = 0; i < n; ++i) {
                                 const Rc row{ cx0, P.y + S(124.0f + 72.0f * i), cw, S(66.0f) };
-                                if (SliderRow(i, row, sp[i].label, sp[i].v, sp[i].mn, sp[i].mx, dt, canInput,
-                                      (sp[i].v == &s_tune.comZOffset) ? " sm" : "%", (sp[i].v == &s_tune.comZOffset) ? 1.0f : 5.0f)) changed = true;
+                                if (SliderRow(i, row, sp[i].label, sp[i].v, sp[i].mn, sp[i].mx, dt, canInput)) changed = true;
                         }
                 }
 
                 // --- alt sira: Sifirla (yalniz handling sehifelerinde) + status ---
-                if ((s_page >= 1 && s_page <= 3) || s_page == 8)
+                if (s_page >= 1 && s_page <= 3)
                 {
                         const Rc rb{ cx0, P.y + P.h - S(60.0f), S(150.0f), S(42.0f) };
                         if (Tap(ID_RESET, rb, canInput) && gtaVeh) {
@@ -1423,7 +1224,7 @@ void RenderHandlingDialog()
                         }
                 }
 
-                if (noVeh && (s_page <= 4 || s_page == 6 || s_page >= 8))
+                if (noVeh && (s_page <= 4 || s_page == 6))
                 {
                         // masina yoxdur: bu bolme sondurulub
                         const Rc ov{ cx0 - S(8.0f), P.y + S(112.0f), cw + S(16.0f), P.h - S(128.0f) };

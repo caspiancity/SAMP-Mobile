@@ -595,7 +595,8 @@ static void PlatePreview(const mm::Rc& r, const char* text)
 // SPEEDO_STYLES_PATCH: /mm -> Spidometr sehifesi (asagida, HUD bolmesinde teyin olunur)
 static void MM_SpeedoPage(float cx0, float cw, const mm::Rc& P, float dt, bool canInput);
 
-void RenderHandlingDialog()
+void RenderHandlingDialog();   // MM2_V2 (yeni, faylin sonunda)
+static void RenderHandlingDialog_Old()
 {
         using namespace mm;
 
@@ -1881,3 +1882,493 @@ void UI::ProcessPushedTextdraws()
 }
 
 // AZ_PATCH4
+
+// ===== MM2_V2: iOS stili /mm menyusu (shushe panel, yay animasiyasi, scroll siyahi) =====
+bool HndExt_Get(CVehicle*, const char*, float*);
+bool HndExt_Set(CVehicle*, const char*, float);
+bool HndExt_Reset(CVehicle*);
+bool HndExt_SlotUsed(int);
+bool HndExt_SaveSlot(CVehicle*, int);
+bool HndExt_LoadSlot(CVehicle*, int);
+bool HndExt_ImportCodeFile(CVehicle*);
+std::string HndExt_GetCode(CVehicle*);
+
+namespace mm2
+{
+    static char  s_msg[112] = "";
+    static float s_msgT = 0.0f;
+
+    static void SetMsg(const std::string& m)
+    {
+        snprintf(s_msg, sizeof(s_msg), "%s", m.c_str());
+        s_msgT = 1.0f;
+    }
+
+    static CVehicle* LocalVeh()
+    {
+        CPlayerPed* p = pGame ? pGame->FindPlayerPed() : nullptr;
+        if (!p || !p->IsInVehicle() || !p->m_pPed) return nullptr;
+        if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
+        CVehiclePool* pool = pNetGame->GetVehiclePool();
+        const VEHICLEID id = pool->FindIDFromGtaPtr(p->m_pPed->pVehicle);
+        if (id == INVALID_VEHICLE_ID) return nullptr;
+        CVehicle* v = pool->GetAt(id);
+        return (v && v->m_pVehicle) ? v : nullptr;
+    }
+
+    struct HF { const char* key; const char* label; const char* fmt; };
+    static const HF kHF[] = {
+        { "mass",          "Çəki",                          "%.1f" },
+        { "turnmass",      "Fırlanma kütləsi",              "%.1f" },
+        { "drag",          "Hava müqaviməti",               "%.4f" },
+        { "comx",          "Ağırlıq mərkəzi X",             "%.3f" },
+        { "comy",          "Ağırlıq mərkəzi Y",             "%.3f" },
+        { "comz",          "Ağırlıq mərkəzi Z",             "%.3f" },
+        { "buoyancy",      "Üzmə qüvvəsi",                  "%.3f" },
+        { "traction",      "Yol tutuş",                     "%.3f" },
+        { "accel",         "Təcil",                         "%.4f" },
+        { "maxspeed",      "Maksimum sürət",                "%.4f" },
+        { "brake",         "Tormoz gücü",                   "%.4f" },
+        { "brakebias",     "Tormoz balansı (ön/arxa)",      "%.3f" },
+        { "steering",      "Sükan bucağı",                  "%.3f" },
+        { "tractionloss",  "Sürüşmə itkisi",                "%.3f" },
+        { "tractionbias",  "Yol tutuş balansı (ön/arxa)",   "%.3f" },
+        { "suspforce",     "Süspansiyon gücü",              "%.3f" },
+        { "suspdamp",      "Süspansiyon amortizatoru",      "%.3f" },
+        { "suspdampspeed", "Süspansiyon sürət sönməsi",     "%.3f" },
+        { "suspupper",     "Süspansiyon yuxarı hədd",       "%.3f" },
+        { "susplower",     "Süspansiyon aşağı hədd",        "%.3f" },
+        { "suspbias",      "Süspansiyon balansı (ön/arxa)", "%.3f" },
+        { "suspantidive",  "Anti-dive (burun enməsi)",      "%.3f" },
+        { "collision",     "Toqquşma zərəri",               "%.3f" },
+        { "seatoffset",    "Oturacaq məsafəsi",             "%.3f" },
+    };
+    static const int kHFN = (int)(sizeof(kHF) / sizeof(kHF[0]));
+
+    struct EditCaller : public Widget
+    {
+        std::string key;
+        std::string label;
+        virtual void keyboardEvent(const std::string& input) override
+        {
+            CVehicle* v = LocalVeh();
+            if (!v || key.empty()) { SetMsg("Avtomobil tapılmadı"); return; }
+            std::string t = input;
+            for (size_t i = 0; i < t.size(); ++i) if (t[i] == ',') t[i] = '.';
+            char* end = nullptr;
+            const float f = strtof(t.c_str(), &end);
+            if (end == t.c_str()) { SetMsg("Yanlış dəyər"); return; }
+            if (HndExt_Set(v, key.c_str(), f)) SetMsg(label + " = " + t);
+            else SetMsg("Dəyər qəbul edilmədi");
+        }
+    };
+    static EditCaller* s_caller = nullptr;
+
+    static float EaseOutBack(float t)
+    {
+        const float c1 = 1.0f, c3 = c1 + 1.0f;
+        const float p = t - 1.0f;
+        return 1.0f + c3 * p * p * p + c1 * p * p;
+    }
+
+    static void Hair(float x0, float x1, float y, int a = 22)
+    {
+        mm::s_dl->AddLine(ImVec2(x0, y), ImVec2(x1, y), mm::Col(255, 255, 255, a), mm::S(1.0f));
+    }
+
+    // sheshe (frosted glass) panel
+    static void Glass(const mm::Rc& P, float rad)
+    {
+        using namespace mm;
+        for (int k = 0; k < 4; ++k) {
+            const float e = S(3.0f + k * 6.0f);
+            Fill(Rc{ P.x - e, P.y - e + S(12.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 30 - k * 7), rad + e);
+        }
+        Fill(P, Col(26, 29, 40, 218), rad);
+        s_dl->AddRectFilledMultiColor(ImVec2(P.x + rad * 0.4f, P.y + S(1.0f)), ImVec2(P.x + P.w - rad * 0.4f, P.y + P.h * 0.34f),
+                                      Col(255, 255, 255, 30), Col(255, 255, 255, 30), Col(255, 255, 255, 0), Col(255, 255, 255, 0));
+        Stroke(P, Col(255, 255, 255, 52), rad, S(1.0f));
+    }
+
+    static void EmptyState(const mm::Rc& r, const char* title, const char* sub)
+    {
+        using namespace mm;
+        Fill(r, Col(255, 255, 255, 12), S(18.0f));
+        Dot(r.x + r.w * 0.5f, r.y + r.h * 0.5f - S(34.0f), S(26.0f), Col(255, 255, 255, 18));
+        TxtC(S(26.0f), Rc{ r.x + r.w * 0.5f - S(26.0f), r.y + r.h * 0.5f - S(60.0f), S(52.0f), S(52.0f) }, Col(160, 168, 190), "!", true);
+        TxtC(S(21.0f), Rc{ r.x, r.y + r.h * 0.5f + S(2.0f), r.w, S(28.0f) }, Col(236, 240, 250), title, true);
+        TxtC(S(14.0f), Rc{ r.x, r.y + r.h * 0.5f + S(32.0f), r.w, S(20.0f) }, Col(130, 138, 160), sub, false);
+    }
+
+    // iOS acari
+    static bool SwitchRow(int idx, const mm::Rc& row, const char* label, const char* sub, bool on, float dt, bool canInput)
+    {
+        using namespace mm;
+        const int id = ID_TOGGLE + idx;
+        const bool tapped = Tap(id, row, canInput);
+        const float p = Prs(id, dt);
+        s_sw[idx] = Smooth(s_sw[idx], on ? 1.0f : 0.0f, dt, 16.0f);
+        const float sw = s_sw[idx];
+
+        if (p > 0.02f) Fill(row, Col(255, 255, 255, (int)(16.0f * p)), 0.0f);
+        Txt(S(19.0f), row.x + S(18.0f), row.y + S(8.0f), Col(238, 241, 250), label);
+        Txt(S(13.0f), row.x + S(18.0f), row.y + S(32.0f), Col(128, 136, 158), sub);
+
+        const Rc tr{ row.x + row.w - S(18.0f) - S(54.0f), row.y + (row.h - S(32.0f)) * 0.5f, S(54.0f), S(32.0f) };
+        Fill(tr, Col((int)Lerp(72.0f, 52.0f, sw), (int)Lerp(76.0f, 199.0f, sw), (int)Lerp(92.0f, 89.0f, sw), 255), S(16.0f));
+        const float kx = tr.x + S(16.0f) + sw * (tr.w - S(32.0f));
+        Dot(kx, tr.y + tr.h * 0.5f + S(1.5f), S(14.0f), Col(0, 0, 0, 50));
+        Dot(kx, tr.y + tr.h * 0.5f, S(13.0f) + S(1.0f) * p, Col(255, 255, 255, 255));
+        return tapped;
+    }
+
+    static bool SmallBtn(int id, const mm::Rc& r, const char* label, float dt, bool canInput, bool primary)
+    {
+        using namespace mm;
+        const bool hit = Tap(id, r, canInput);
+        const float p = Prs(id, dt);
+        const Rc d = Shrink(r, S(1.5f) * p);
+        Fill(d, primary ? Accent(0.0f, 200 + (int)(40.0f * p)) : Col(255, 255, 255, 20 + (int)(30.0f * p)), S(12.0f));
+        TxtC(S(15.0f), d, Col(244, 247, 253), label, true);
+        return hit;
+    }
+}
+
+void RenderHandlingDialog()
+{
+    using namespace mm;
+
+    static bool          s_wasOpen = false;
+    static CVehicleGTA*  s_lastVeh = nullptr;
+    static bool          s_eng = false, s_lig = false, s_lock = false;
+    static uint8_t       s_sig = 0;
+    static float         s_t = 0.0f;
+    static int           s_tab = 0;
+    static float         s_pill = 0.0f, s_tabAnim = 1.0f, s_tabDir = 1.0f;
+    static bool          s_outDown = false;
+    static int           s_slot = 1;
+    static float         s_hOff = 0.0f, s_hVel = 0.0f, s_hLastY = 0.0f, s_hDownY = 0.0f;
+    static bool          s_hDrag = false, s_hMoved = false;
+    static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    float dt = std::chrono::duration<float>(now - s_last).count();
+    s_last = now;
+    dt = Clamp(dt, 0.0f, 0.05f);
+
+    const bool want = g_bShowHandlingDlg;
+    if (!want && s_t <= 0.0f) {
+        s_wasOpen = false;
+        s_hndRectValid = false;
+        s_act = 0;
+        s_hDrag = false;
+        return;
+    }
+
+    CVehicle*    pVeh   = nullptr;
+    CVehicleGTA* gtaVeh = nullptr;
+    bool         noVeh  = true;
+    if (want) {
+        pVeh = mm2::LocalVeh();
+        noVeh = (pVeh == nullptr);
+        if (pVeh) {
+            gtaVeh = pVeh->m_pVehicle;
+            if (!s_wasOpen || gtaVeh != s_lastVeh) { s_lastVeh = gtaVeh; s_hOff = 0.0f; s_hVel = 0.0f; }
+            s_eng = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+            s_lig = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+            { const int lk = (int)gtaVeh->m_nDoorLock; s_lock = (lk == 2 || lk == 3); }
+            s_sig = VehControls::GetSignal(gtaVeh);
+        }
+        s_wasOpen = true;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    const ImVec2 disp = io.DisplaySize;
+
+    // klaviatura aciq olanda (deyer yazilir) menyu gizlenir, yuxarida kicik yazi qalir
+    const bool kbOpen = pUI && pUI->keyboard() && pUI->keyboard()->visible();
+    if (kbOpen && want) {
+        s_hndRectValid = false;
+        s_act = 0;
+        s_dl = ImGui::GetForegroundDrawList();
+        s_A = 1.0f;
+        s_U = std::min(disp.y / 720.0f, disp.x / 880.0f);
+        const Rc b{ disp.x * 0.5f - S(220.0f), S(14.0f), S(440.0f), S(44.0f) };
+        Fill(b, Col(26, 29, 40, 236), S(22.0f));
+        Stroke(b, Col(255, 255, 255, 46), S(22.0f), S(1.0f));
+        TxtC(S(16.0f), b, Col(238, 241, 250), mm2::s_caller ? (mm2::s_caller->label + " — yeni dəyəri yaz").c_str() : "Yeni dəyəri yaz", true);
+        return;
+    }
+
+    s_t = Clamp(s_t + (want ? dt / 0.38f : -dt / 0.18f), 0.0f, 1.0f);
+    const float open = want ? mm2::EaseOutBack(s_t) : EaseOutCubic(s_t);
+    s_A = Clamp(s_t * 2.2f, 0.0f, 1.0f);
+    s_tabAnim = Clamp(s_tabAnim + dt / 0.26f, 0.0f, 1.0f);
+    mm2::s_msgT = Clamp(mm2::s_msgT - dt / 3.5f, 0.0f, 1.0f);
+
+    const float W0 = 880.0f, H0 = 560.0f;
+    float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+    u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
+    s_U = u0 * (0.90f + 0.10f * open);
+
+    const Rc P{ disp.x * 0.5f - W0 * s_U * 0.5f, disp.y * 0.5f - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U };
+    const bool canInput = want && s_t > 0.8f;
+    const MMTouch& tch = g_mmTouch;
+
+    s_hndRectValid = (s_t > 0.05f);
+    s_hndPos  = ImVec2(P.x, P.y);
+    s_hndSize = ImVec2(P.w, P.h);
+    s_dl = ImGui::GetForegroundDrawList();
+
+    // fonu qaraldan perde
+    s_dl->AddRectFilled(ImVec2(0.0f, 0.0f), disp, IM_COL32(0, 0, 0, (int)(115.0f * Clamp(s_t, 0.0f, 1.0f))));
+
+    // paneldan kenara toxunus = bagla
+    if (canInput) {
+        if (tch.pressed && s_act == 0 && !In(P, tch.x, tch.y)) s_outDown = true;
+        if (tch.released) {
+            if (s_outDown && !In(P, tch.x, tch.y)) g_bShowHandlingDlg = false;
+            s_outDown = false;
+        }
+    }
+
+    mm2::Glass(P, S(28.0f));
+
+    // grabber + basliq + bagla
+    Fill(Rc{ P.x + P.w * 0.5f - S(22.0f), P.y + S(9.0f), S(44.0f), S(5.0f) }, Col(255, 255, 255, 54), S(2.5f));
+    TxtC(S(22.0f), Rc{ P.x, P.y + S(18.0f), P.w, S(34.0f) }, Col(244, 247, 253), "Maşın menyusu", true);
+    {
+        const Rc cl{ P.x + P.w - S(54.0f), P.y + S(16.0f), S(36.0f), S(36.0f) };
+        if (Tap(ID_CLOSE, cl, canInput)) g_bShowHandlingDlg = false;
+        const float p = Prs(ID_CLOSE, dt);
+        Dot(cl.x + cl.w * 0.5f, cl.y + cl.h * 0.5f, S(15.0f) - S(1.5f) * p, Col(255, 255, 255, 26 + (int)(30.0f * p)));
+        const float cx = cl.x + cl.w * 0.5f, cy = cl.y + cl.h * 0.5f, k = S(5.0f);
+        s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(236, 240, 250, 230), S(2.0f));
+        s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(236, 240, 250, 230), S(2.0f));
+    }
+
+    // segmentli idareetme (iOS)
+    static const char* kTabs[4] = { "Maşın", "Handling", "Far", "Spidometr" };
+    {
+        const Rc seg{ P.x + S(24.0f), P.y + S(66.0f), P.w - S(48.0f), S(40.0f) };
+        Fill(seg, Col(255, 255, 255, 18), S(13.0f));
+        const float tw = seg.w / 4.0f;
+        s_pill = Smooth(s_pill, (float)s_tab, dt, 16.0f);
+        Fill(Rc{ seg.x + S(3.0f) + s_pill * tw, seg.y + S(3.0f), tw - S(6.0f), seg.h - S(6.0f) }, Col(255, 255, 255, 50), S(10.5f));
+        for (int i = 0; i < 4; ++i) {
+            const Rc ti{ seg.x + i * tw, seg.y, tw, seg.h };
+            if (Tap(ID_NAV0 + i, ti, canInput) && s_tab != i) {
+                s_tabDir = (i > s_tab) ? 1.0f : -1.0f;
+                s_tab = i;
+                s_tabAnim = 0.0f;
+            }
+            Prs(ID_NAV0 + i, dt);
+            const bool on = (s_tab == i);
+            TxtC(S(16.0f), ti, on ? Col(248, 250, 255) : Col(150, 158, 180), kTabs[i], on);
+        }
+    }
+
+    // ---- sehife mezmunu ----
+    const float saveA = s_A;
+    const float pe = EaseOutCubic(s_tabAnim);
+    s_A = saveA * pe;
+    const float cx0 = P.x + S(24.0f) + (1.0f - pe) * S(26.0f) * s_tabDir;
+    const float cw  = P.w - S(48.0f);
+    const float y0  = P.y + S(124.0f);
+    const bool  inputPage = canInput && s_tabAnim > 0.6f;
+
+    if (s_tab == 0)                                         // MASIN
+    {
+        if (noVeh) {
+            mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobildə deyilsiniz", "Bu bölmə yalnız maşının içində işləyir");
+        } else {
+            const Rc grp{ cx0, y0, cw, S(168.0f) };
+            Fill(grp, Col(255, 255, 255, 15), S(18.0f));
+            Stroke(grp, Col(255, 255, 255, 22), S(18.0f), S(1.0f));
+            const char* labs[3] = { "Mühərrik", "Fara", "Qapılar" };
+            const char* subs[3] = { s_eng ? "İşləyir" : "Söndürülüb", s_lig ? "Yanır" : "Sönülü", s_lock ? "Kilidli" : "Açıq" };
+            const bool  st[3]   = { s_eng, s_lig, s_lock };
+            for (int i = 0; i < 3; ++i) {
+                const Rc row{ cx0, y0 + S(56.0f) * i, cw, S(56.0f) };
+                if (i > 0) mm2::Hair(row.x + S(18.0f), row.x + row.w, row.y);
+                if (mm2::SwitchRow(i, row, labs[i], subs[i], st[i], dt, inputPage) && pVeh) {
+                    if (i == 0)      pVeh->ApplyEngineState(s_eng ? 0 : 1);
+                    else if (i == 1) pVeh->ApplyLightState(s_lig ? 0 : 1);
+                    else             pVeh->SetDoorState(s_lock ? 0 : 1);
+                }
+            }
+            SignalBlock(Rc{ cx0, y0 + S(186.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, inputPage);
+        }
+    }
+    else if (s_tab == 1)                                    // HANDLING
+    {
+        if (noVeh) {
+            mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobildə deyilsiniz", "Handling yalnız maşının içində dəyişdirilir");
+        } else {
+            // slot secimi
+            for (int i = 0; i < 5; ++i) {
+                const Rc c{ cx0 + S(52.0f) * i, y0, S(46.0f), S(40.0f) };
+                if (Tap(80 + i, c, inputPage)) s_slot = i + 1;
+                const bool on = (s_slot == i + 1);
+                Fill(c, on ? Accent(0.0f, 215) : Col(255, 255, 255, 18), S(12.0f));
+                char nb[4];
+                snprintf(nb, sizeof(nb), "%d", i + 1);
+                TxtC(S(18.0f), c, on ? Col(255, 255, 255) : Col(190, 198, 216), nb, true);
+                if (HndExt_SlotUsed(i + 1)) Dot(c.x + c.w - S(8.0f), c.y + S(8.0f), S(3.2f), Col(80, 220, 140, 255));
+            }
+            // emeller
+            static const char* kAct[5] = { "Yaz", "Yüklə", "Kod", "Fayl", "Sıfırla" };
+            const float bx = cx0 + S(272.0f);
+            const float bw = (cw - S(272.0f) - S(6.0f) * 4.0f) / 5.0f;
+            for (int k = 0; k < 5; ++k) {
+                const Rc b{ bx + k * (bw + S(6.0f)), y0, bw, S(40.0f) };
+                if (mm2::SmallBtn(85 + k, b, kAct[k], dt, inputPage, k == 0) && pVeh) {
+                    if (k == 0)      mm2::SetMsg(HndExt_SaveSlot(pVeh, s_slot) ? "Slot yadda saxlandı" : "Yadda saxlanmadı");
+                    else if (k == 1) mm2::SetMsg(HndExt_LoadSlot(pVeh, s_slot) ? "Slot yükləndi" : "Slot boşdur");
+                    else if (k == 2) {
+                        const std::string code = HndExt_GetCode(pVeh);
+                        if (pUI && pUI->chat() && !code.empty()) {
+                            pUI->chat()->addDebugMessage("{00FF00}[Handling]: kod SAMP/handling_code.txt faylına yazıldı:");
+                            pUI->chat()->addDebugMessage("{B9C9BF}%s", code.c_str());
+                        }
+                        mm2::SetMsg(code.empty() ? "Kod alınmadı" : "Kod fayla yazıldı və çata çıxdı");
+                    }
+                    else if (k == 3) mm2::SetMsg(HndExt_ImportCodeFile(pVeh) ? "Koddan yükləndi" : "handling_code.txt tapılmadı / kod yanlışdır");
+                    else             mm2::SetMsg(HndExt_Reset(pVeh) ? "Standarta qaytarıldı" : "Dəyişiklik yoxdur");
+                }
+            }
+            if (mm2::s_msgT > 0.01f)
+                Txt(S(13.0f), cx0, y0 + S(48.0f), Col(120, 215, 160, (int)(255.0f * mm2::s_msgT)), mm2::s_msg);
+            else
+                Txt(S(13.0f), cx0, y0 + S(48.0f), Col(128, 136, 158), "Sətrə toxun və yeni dəyəri yaz. Sürüşdürərək bütün sahələri gör.");
+
+            // sahe siyahisi (scroll)
+            const float rowH = S(46.0f);
+            const Rc lr{ cx0, y0 + S(74.0f), cw, P.y + P.h - S(18.0f) - (y0 + S(74.0f)) };
+            const float contentH = rowH * mm2::kHFN;
+            const float maxOff = std::max(0.0f, contentH - lr.h);
+
+            if (inputPage) {
+                if (tch.pressed && s_act == 0 && In(lr, tch.x, tch.y)) {
+                    s_act = 95; s_hDrag = true; s_hMoved = false; s_hLastY = tch.y; s_hDownY = tch.y; s_hVel = 0.0f;
+                }
+                if (s_hDrag && s_act == 95) {
+                    if (tch.down) {
+                        const float dy = tch.y - s_hLastY;
+                        s_hLastY = tch.y;
+                        if (fabsf(tch.y - s_hDownY) > S(8.0f)) s_hMoved = true;
+                        if (s_hMoved) {
+                            const float over = (s_hOff < 0.0f) ? -s_hOff : (s_hOff > maxOff ? s_hOff - maxOff : 0.0f);
+                            const float k = 1.0f / (1.0f + over / S(60.0f));
+                            s_hOff -= dy * k;
+                            s_hVel = Lerp(s_hVel, -dy / std::max(dt, 0.001f), 0.35f);
+                        }
+                    }
+                    if (tch.released) {
+                        if (!s_hMoved && In(lr, tch.x, tch.y)) {
+                            const int row = (int)((tch.y - lr.y + s_hOff) / rowH);
+                            if (row >= 0 && row < mm2::kHFN && pUI && pUI->keyboard()) {
+                                if (!mm2::s_caller) mm2::s_caller = new mm2::EditCaller();
+                                mm2::s_caller->key = mm2::kHF[row].key;
+                                mm2::s_caller->label = mm2::kHF[row].label;
+                                pUI->keyboard()->show(mm2::s_caller);
+                                float cur = 0.0f;
+                                if (HndExt_Get(pVeh, mm2::kHF[row].key, &cur)) {
+                                    char vb[32];
+                                    snprintf(vb, sizeof(vb), "%.4f", cur);
+                                    pUI->keyboard()->input()->setInputString(vb);
+                                }
+                            }
+                            s_hVel = 0.0f;
+                        }
+                        s_hDrag = false;
+                    }
+                }
+            }
+            if (!(s_hDrag && s_act == 95)) {
+                if (s_hOff < 0.0f || s_hOff > maxOff) {
+                    s_hOff = Smooth(s_hOff, Clamp(s_hOff, 0.0f, maxOff), dt, 14.0f);
+                    s_hVel = 0.0f;
+                } else {
+                    s_hOff += s_hVel * dt;
+                    s_hVel *= expf(-dt * 3.5f);
+                    if (fabsf(s_hVel) < 5.0f) s_hVel = 0.0f;
+                }
+            }
+
+            Fill(lr, Col(255, 255, 255, 15), S(18.0f));
+            Stroke(lr, Col(255, 255, 255, 22), S(18.0f), S(1.0f));
+            s_dl->PushClipRect(ImVec2(lr.x, lr.y + S(1.0f)), ImVec2(lr.x + lr.w, lr.y + lr.h - S(1.0f)), true);
+            for (int r = 0; r < mm2::kHFN; ++r) {
+                const float ry = lr.y - s_hOff + rowH * r;
+                if (ry + rowH < lr.y || ry > lr.y + lr.h) continue;
+                if (s_hDrag && !s_hMoved && s_act == 95 && tch.y >= ry && tch.y < ry + rowH)
+                    Fill(Rc{ lr.x, ry, lr.w, rowH }, Col(255, 255, 255, 16), 0.0f);
+                if (r > 0) mm2::Hair(lr.x + S(18.0f), lr.x + lr.w, ry);
+                Txt(S(17.0f), lr.x + S(18.0f), ry + (rowH - S(17.0f)) * 0.5f, Col(228, 232, 244), mm2::kHF[r].label);
+                float cur = 0.0f;
+                char vb[40] = "-";
+                if (HndExt_Get(pVeh, mm2::kHF[r].key, &cur)) snprintf(vb, sizeof(vb), mm2::kHF[r].fmt, cur);
+                Txt(S(17.0f), lr.x + lr.w - S(40.0f) - TW(S(17.0f), vb), ry + (rowH - S(17.0f)) * 0.5f, Accent(0.0f), vb);
+                Txt(S(18.0f), lr.x + lr.w - S(26.0f), ry + (rowH - S(18.0f)) * 0.5f, Col(110, 118, 140), ">");
+            }
+            s_dl->PopClipRect();
+            if (maxOff > 1.0f) {
+                const float th = std::max(S(26.0f), lr.h * (lr.h / contentH));
+                const float ty = lr.y + S(4.0f) + (lr.h - S(8.0f) - th) * Clamp(s_hOff / maxOff, 0.0f, 1.0f);
+                Fill(Rc{ lr.x + lr.w - S(6.0f), ty, S(3.0f), th }, Col(255, 255, 255, 60), S(1.5f));
+            }
+        }
+    }
+    else if (s_tab == 2)                                    // FAR
+    {
+        if (noVeh) {
+            mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobildə deyilsiniz", "Far rəngi yalnız maşının içində dəyişdirilir");
+        } else {
+            static CVehicleGTA* s_hlVeh = nullptr;
+            static float s_hl[3] = { 255.0f, 255.0f, 255.0f };
+            if (gtaVeh != s_hlVeh) {
+                s_hlVeh = gtaVeh;
+                uint8_t r8 = 255, g8 = 255, b8 = 255;
+                if (gtaVeh && CCoronas::GetHeadlightRGB(gtaVeh, r8, g8, b8)) { s_hl[0] = r8; s_hl[1] = g8; s_hl[2] = b8; }
+                else { s_hl[0] = s_hl[1] = s_hl[2] = 255.0f; }
+            }
+            static const char* kRGB[3] = { "Qırmızı (R)", "Yaşıl (G)", "Mavi (B)" };
+            bool hlChanged = false;
+            for (int i = 0; i < 3; ++i) {
+                const Rc row{ cx0, y0 + S(72.0f) * (float)i - S(4.0f) + S(4.0f), cw, S(66.0f) };
+                if (SliderRow(i, row, kRGB[i], &s_hl[i], 0.0f, 255.0f, dt, inputPage, "", 5.0f)) hlChanged = true;
+            }
+            const Rc pvr{ cx0, y0 + S(224.0f), S(150.0f), S(44.0f) };
+            Fill(pvr, Col((int)s_hl[0], (int)s_hl[1], (int)s_hl[2], 255), S(12.0f));
+            Stroke(pvr, Col(255, 255, 255, 60), S(12.0f), S(1.2f));
+            char hx[24];
+            snprintf(hx, sizeof(hx), "#%02X%02X%02X", (int)s_hl[0], (int)s_hl[1], (int)s_hl[2]);
+            Txt(S(19.0f), cx0 + S(166.0f), y0 + S(234.0f), Col(228, 232, 244), hx);
+            if (mm2::SmallBtn(90, Rc{ cx0 + S(300.0f), y0 + S(224.0f), S(150.0f), S(44.0f) }, "Standart", dt, inputPage, false) && gtaVeh) {
+                CCoronas::ClearHeadlightRGB(gtaVeh);
+                s_hl[0] = s_hl[1] = s_hl[2] = 255.0f;
+            }
+            for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i) {
+                uint8_t r, g, b;
+                VehTuner::GetPaletteColor(i, r, g, b);
+                const int col = i % 8, rowi = i / 8;
+                const float cxs = cx0 + S(24.0f) + (float)col * S(58.0f);
+                const float cys = y0 + S(320.0f) + (float)rowi * S(54.0f);
+                const Rc sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+                const int sid = ID_SWATCH + std::min(i, 23);
+                if (Tap(sid, sq, inputPage) && gtaVeh) { s_hl[0] = r; s_hl[1] = g; s_hl[2] = b; hlChanged = true; }
+                const float p = Prs(sid, dt);
+                Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
+            }
+            if (hlChanged && gtaVeh) CCoronas::SetHeadlightRGB(gtaVeh, (uint8_t)s_hl[0], (uint8_t)s_hl[1], (uint8_t)s_hl[2]);
+        }
+    }
+    else                                                    // SPIDOMETR
+    {
+        MM_SpeedoPage(cx0, cw, P, dt, inputPage);
+    }
+    s_A = saveA;
+
+    if (!g_mmTouch.down) s_act = 0;
+}

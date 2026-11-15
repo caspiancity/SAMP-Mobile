@@ -75,6 +75,47 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
+        // ===== MM2_V2: yeni loading animasiyalari =====
+        try {
+            final android.view.View hRoot = findViewById(R.id.main_splash_layout);
+            final android.view.View hLogo = findViewById(R.id.imageView);
+            final TextView hLoad = (TextView) findViewById(R.id.textView2);
+            if (hRoot != null) {
+                hRoot.setAlpha(0f);
+                hRoot.animate().alpha(1f).setDuration(700).start();
+            }
+            if (hLogo != null) {
+                String[] props = {"scaleX", "scaleY"};
+                for (String pr : props) {
+                    android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(hLogo, pr, 1f, 1.12f);
+                    a.setDuration(900);
+                    a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                    a.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                    a.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+                    a.start();
+                }
+                android.animation.ObjectAnimator g = android.animation.ObjectAnimator.ofFloat(hLogo, "alpha", 0.75f, 1f);
+                g.setDuration(900);
+                g.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                g.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                g.start();
+            }
+            if (hLoad != null) {
+                final Handler hH = new Handler();
+                hH.post(new Runnable() {
+                    int i = 0;
+                    @Override public void run() {
+                        if (isFinishing() || isDestroyed()) return;
+                        StringBuilder sb = new StringBuilder("Loading");
+                        for (int k = 0; k < (i % 4); k++) sb.append('.');
+                        hLoad.setText(sb.toString());
+                        i++;
+                        hH.postDelayed(this, 400);
+                    }
+                });
+            }
+        } catch (Throwable ignored) {}
+
         if(!SignatureChecker.isSignatureValid(this, getPackageName()))
         {
             ((TextView)findViewById(R.id.launcher_orig_text)).setText("Using not original launcher");

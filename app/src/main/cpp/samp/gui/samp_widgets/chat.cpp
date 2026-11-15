@@ -182,15 +182,6 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
-        if (cmd == "/cam") {
-                std::string ca, cb;
-                ss >> ca >> cb;
-                char rep[96];
-                CamCtl_Command(ca.c_str(), cb.c_str(), rep, sizeof(rep));
-                pUI->chat()->addDebugMessage("{00FF00}[Client]: %s", rep);
-                return true;
-        }
-
         if (cmd == "/radar") {   // FAR_RGB_PATCH
                 g_bHideMinimap = !g_bHideMinimap;
                 pUI->chat()->addDebugMessage(
@@ -213,85 +204,6 @@ bool ProcessClientCommands(const std::string& input)
                 return true;
         }
 
-        if (cmd == "/dump")
-        {
-                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
-                        return true;
-                }
-
-                CVehicle* pVeh = nullptr;
-                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
-                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
-                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
-                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
-                }
-                if (!pVeh || !pVeh->m_pVehicle) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
-                        return true;
-                }
-
-                std::string path;
-                if (AzPlate::Dump(pVeh->m_pVehicle, path))
-                        {
-                        pUI->chat()->addDebugMessage(
-                            "{00FF00}[Client]: Yazildi: %s",
-                            path.c_str()
-                        );
-
-                        // son setirleri chata da yaz
-                        FILE* df = fopen(path.c_str(), "rb");
-
-                        if (df) {
-                                fseek(df, 0, SEEK_END);
-
-                                const long dsz = ftell(df);
-                                const long doff =
-                                    dsz > 1400 ? dsz - 1400 : 0;
-
-                                fseek(df, doff, SEEK_SET);
-
-                                char tb[1500];
-
-                                const size_t dn =
-                                    fread(tb, 1, sizeof(tb) - 1, df);
-
-                                tb[dn] = 0;
-
-                                fclose(df);
-
-                                char* dp = tb;
-
-                                if (doff > 0) {
-                                        char* nl = strchr(tb, '\n');
-                                        if (nl) dp = nl + 1;
-                                }
-
-                                while (*dp) {
-                                        char* de = strchr(dp, '\n');
-
-                                        if (de)
-                                            *de = 0;
-
-                                        if (*dp) {
-                                                pUI->chat()->addDebugMessage(
-                                                    "{B9C9BF}%s", dp
-                                                );
-                                        }
-
-                                        if (!de)
-                                            break;
-
-                                        dp = de + 1;
-                                }
-                        }
-                }
-                else
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Dump yazila bilmedi.");
-                return true;
-        }
-
         if (cmd == "/sinyalayar")
         {
                 std::string a;
@@ -309,48 +221,6 @@ bool ProcessClientCommands(const std::string& input)
                 } else {
                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona|lampa]");
                 }
-                return true;
-        }
-
-        if (cmd == "/nomre")
-        {
-                CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
-                if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
-                        return true;
-                }
-
-                CVehicle* pVeh = nullptr;
-                if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
-                        CVehiclePool* pPool = pNetGame->GetVehiclePool();
-                        VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
-                        if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
-                }
-                if (!pVeh || !pVeh->m_pVehicle) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
-                        return true;
-                }
-
-                std::string arg;
-                ss >> arg;
-                std::string low = arg;
-                std::transform(low.begin(), low.end(), low.begin(), ::tolower);
-
-                if (low == "off" || low == "0") {
-                        AzPlate::Clear(pVeh->m_pVehicle);
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Standart nomreye qayidildi.");
-                        return true;
-                }
-
-                std::string norm;
-                if (!AzPlate::Normalize(arg, norm)) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /nomre 10-AA-123  (ve ya /nomre off)");
-                        return true;
-                }
-                if (AzPlate::Set(pVeh->m_pVehicle, norm))
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Nomre: %s", norm.c_str());
-                else
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Bu masinda nomre lovhesi materiali tapilmadi (carplate/nomer).");
                 return true;
         }
 
@@ -573,3 +443,5 @@ void Chat::keyboardEvent(const std::string& input)
 }
 
 // AZ_PATCH4
+
+// MM2_V2: /cam, /dump, /nomre silindi

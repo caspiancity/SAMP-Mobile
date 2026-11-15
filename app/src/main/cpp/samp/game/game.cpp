@@ -776,8 +776,10 @@ extern CNetGame* pNetGame;
 extern UI *pUI;
 
 void MainLoop();
+void PerfLog_Frame();   // settings.cpp
 void CGame::Process() {
     if(bIsGameExiting)return;
+    PerfLog_Frame();   // CRASHLOG
 
     MainLoop();
     if (pNetGame)

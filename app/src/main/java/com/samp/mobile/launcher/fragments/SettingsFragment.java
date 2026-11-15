@@ -21,6 +21,13 @@ import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.ToggleButton;
+import android.net.Uri;   // MM2_V2
+import android.widget.Toast;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.fragment.app.Fragment;
@@ -59,6 +66,39 @@ public class SettingsFragment extends Fragment {
     ArrayAdapter<String> adapter;
 
 
+    // MM2_V2: handling.cfg secimi -> SAMP/handling_custom.cfg (oyun acilanda bunu yukleyir)
+    private final ActivityResultLauncher<String[]> hndPicker = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(), new ActivityResultCallback<Uri>() {
+                @Override
+                public void onActivityResult(Uri uri) {
+                    if (uri != null) copyHandling(uri);
+                }
+            });
+
+    private File hndTarget() {
+        File dir = new File(requireActivity().getExternalFilesDir(null), "SAMP");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, "handling_custom.cfg");
+    }
+
+    private void copyHandling(Uri uri) {
+        try {
+            InputStream in = requireActivity().getContentResolver().openInputStream(uri);
+            if (in == null) throw new IOException("fayl açıla bilmədi");
+            FileOutputStream os = new FileOutputStream(hndTarget());
+            byte[] buf = new byte[8192];
+            int n;
+            long total = 0;
+            while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); total += n; }
+            os.close();
+            in.close();
+            Toast.makeText(getActivity(), "handling.cfg yükləndi (" + total + " bayt). Oyunu yenidən başlat.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(getActivity(), "Xəta: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+
     @Override
     public View onCreateView(LayoutInflater layoutInflater, ViewGroup viewGroup, Bundle bundle) {
         View view = layoutInflater.inflate(R.layout.fragment_settings, viewGroup, false);
@@ -76,6 +116,23 @@ public class SettingsFragment extends Fragment {
         mMessagesText = view.findViewById(R.id.messages_count);
         mFPSSeekBar = view.findViewById(R.id.fps_seekbar);
         mFPSText = view.findViewById(R.id.fps_count);
+
+        // MM2_V2: handling.cfg düymələri
+        Button hndPick = view.findViewById(R.id.handling_pick);
+        Button hndReset = view.findViewById(R.id.handling_reset);
+        hndPick.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hndPicker.launch(new String[]{"*/*"});
+            }
+        });
+        hndReset.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                boolean ok = hndTarget().delete();
+                Toast.makeText(getActivity(), ok ? "Standart handling.cfg qaytarıldı. Oyunu yenidən başlat." : "Seçilmiş fayl yoxdur", Toast.LENGTH_LONG).show();
+            }
+        });
 
         adapter = new ArrayAdapter<String>(getActivity(), androidx.appcompat.R.layout.support_simple_spinner_dropdown_item, titles);
         adapter.setDropDownViewResource(androidx.appcompat.R.layout.support_simple_spinner_dropdown_item);

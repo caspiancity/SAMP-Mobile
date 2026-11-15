@@ -1380,7 +1380,8 @@ stFile* NvFOpen(const char* r0, const char* r1, int r2, int r3)
 
     if (!strncmp(r1, "DATA/HANDLING.CFG", 17))
     {
-        sprintf(path, "%sSAMP/handling.cfg", g_pszStorage);
+        sprintf(path, "%sSAMP/handling_custom.cfg", g_pszStorage);   // MM2_V2: launcherden secilen fayl
+        { FILE* hcf = fopen(path, "rb"); if (hcf) fclose(hcf); else sprintf(path, "%sSAMP/handling.cfg", g_pszStorage); }
         FLog("Loading handling.cfg..");
     }
 

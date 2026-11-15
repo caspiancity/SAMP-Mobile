@@ -7,6 +7,143 @@
 
 extern CGame *pGame;
 
+// ===== CRASHLOG_PATCH13 / STABIL_PATCH13 =====
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <dlfcn.h>
+#include <unwind.h>
+#include <ucontext.h>
+#include <time.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <chrono>
+
+namespace crashlog
+{
+    struct BtState { void** cur; void** end; };
+
+    static _Unwind_Reason_Code UnwindCb(struct _Unwind_Context* ctx, void* arg)
+    {
+        BtState* s = (BtState*)arg;
+        const uintptr_t pc = (uintptr_t)_Unwind_GetIP(ctx);
+        if (pc) {
+            if (s->cur == s->end) return _URC_END_OF_STACK;
+            *s->cur++ = (void*)pc;
+        }
+        return _URC_NO_REASON;
+    }
+
+    static char g_path[300] = "";
+    static struct sigaction g_old[NSIG];
+    static volatile sig_atomic_t g_in = 0;
+    static const int kSigs[] = { SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSYS };
+
+    static void Out(int fd, const char* s) { if (fd >= 0) { ssize_t r = write(fd, s, strlen(s)); (void)r; } }
+
+    static void Frame(int fd, int idx, uintptr_t pc)
+    {
+        char line[420];
+        Dl_info di;
+        memset(&di, 0, sizeof(di));
+        if (dladdr((void*)pc, &di) && di.dli_fname) {
+            const char* base = strrchr(di.dli_fname, '/');
+            base = base ? base + 1 : di.dli_fname;
+            snprintf(line, sizeof(line), "  #%02d  %s + 0x%lx   [%s]\n", idx, base,
+                     (unsigned long)(pc - (uintptr_t)di.dli_fbase), di.dli_sname ? di.dli_sname : "?");
+        } else {
+            snprintf(line, sizeof(line), "  #%02d  pc 0x%lx (modul tapilmadi)\n", idx, (unsigned long)pc);
+        }
+        Out(fd, line);
+    }
+
+    static void Handler(int sig, siginfo_t* info, void* uc)
+    {
+        if (!g_in) {
+            g_in = 1;
+            const int fd = open(g_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (fd >= 0) {
+                char buf[360];
+                snprintf(buf, sizeof(buf), "\n===== CRASH signal=%d code=%d addr=%p time=%ld build=%s %s =====\n",
+                         sig, info ? info->si_code : 0, info ? info->si_addr : nullptr, (long)time(nullptr), __DATE__, __TIME__);
+                Out(fd, buf);
+
+                uintptr_t pc = 0, lr = 0;
+                ucontext_t* c = (ucontext_t*)uc;
+#if defined(__aarch64__)
+                if (c) { pc = (uintptr_t)c->uc_mcontext.pc; lr = (uintptr_t)c->uc_mcontext.regs[30]; }
+#elif defined(__arm__)
+                if (c) { pc = (uintptr_t)c->uc_mcontext.arm_pc; lr = (uintptr_t)c->uc_mcontext.arm_lr; }
+#elif defined(__x86_64__)
+                if (c) { pc = (uintptr_t)c->uc_mcontext.gregs[REG_RIP]; }
+#endif
+                Out(fd, "cokme yeri (PC) ve LR:\n");
+                Frame(fd, 0, pc);
+                if (lr) Frame(fd, 1, lr);
+
+                Out(fd, "backtrace:\n");
+                void* frames[40];
+                BtState st{ frames, frames + 40 };
+                _Unwind_Backtrace(UnwindCb, &st);
+                for (void** p = frames; p < st.cur; ++p) Frame(fd, (int)(p - frames), (uintptr_t)*p);
+                close(fd);
+            }
+        }
+
+        // evvelki handler-e ver (Firebase ve s.)
+        const struct sigaction& o = g_old[sig];
+        if (o.sa_flags & SA_SIGINFO) {
+            if (o.sa_sigaction) { o.sa_sigaction(sig, info, uc); return; }
+        } else if (o.sa_handler != SIG_DFL && o.sa_handler != SIG_IGN && o.sa_handler) {
+            o.sa_handler(sig);
+            return;
+        }
+        signal(sig, SIG_DFL);
+        raise(sig);
+    }
+
+    static void Install(const char* path)
+    {
+        snprintf(g_path, sizeof(g_path), "%s", path);
+        static char altStack[64 * 1024];
+        stack_t ss;
+        ss.ss_sp = altStack;
+        ss.ss_size = sizeof(altStack);
+        ss.ss_flags = 0;
+        sigaltstack(&ss, nullptr);
+
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = Handler;
+        sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+        sigemptyset(&sa.sa_mask);
+        for (size_t i = 0; i < sizeof(kSigs) / sizeof(kSigs[0]); ++i)
+            sigaction(kSigs[i], &sa, &g_old[kSigs[i]]);
+    }
+}
+
+// 150ms-den uzun kadrlari SAMP/perf.log-a yazir (CGame::Process her kadr cagirir)
+void PerfLog_Frame()
+{
+    using namespace std::chrono;
+    static steady_clock::time_point last = steady_clock::now();
+    static int written = 0;
+    const steady_clock::time_point now = steady_clock::now();
+    const float ms = duration<float, std::milli>(now - last).count();
+    last = now;
+    if (ms < 150.0f || ms > 4000.0f || written >= 300 || !g_pszStorage) return;
+
+    char path[0x100];
+    snprintf(path, sizeof(path), "%sSAMP/perf.log", g_pszStorage);
+    FILE* f = fopen(path, "a");
+    if (!f) return;
+    fprintf(f, "%ld  kadr=%.0fms\n", (long)time(nullptr), ms);
+    fclose(f);
+    ++written;
+}
+// ===== /CRASHLOG_PATCH13 =====
+
 CSettings::CSettings()
 {
 	FLog("Loading settings..");	
@@ -94,6 +231,12 @@ CSettings::CSettings()
 	m_Settings.iSkyBox = reader.GetBoolean("gui", "skybox", false);
 	m_Settings.iSnow = reader.GetBoolean("gui", "snow", false);
 	FLog("Settings loaded.");
+
+	{   // CRASHLOG
+		char cpath[0x100];
+		snprintf(cpath, sizeof(cpath), "%sSAMP/crash.log", g_pszStorage);
+		crashlog::Install(cpath);
+	}
 }
 
 const stSettings& CSettings::GetReadOnly()

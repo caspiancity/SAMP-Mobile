@@ -868,3 +868,248 @@ void CVehicle::SetPlateText(const char* szPlateText)
     strncpy(m_szPlateText, szPlateText, sizeof(m_szPlateText) - 1);
     m_szPlateText[sizeof(m_szPlateText) - 1] = '\0';
 }
+
+// ===== HNDV2: handling redaktoru backend (menyu + slotlar + kod) =====
+#include <vector>
+#include <map>
+#include <string>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <strings.h>
+#include "tHandlingData.h"
+
+extern char* g_pszStorage;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+
+struct HndxField { const char* name; size_t off; };
+#define HNDX(n, m) { n, offsetof(tHandlingData, m) }
+static const HndxField g_HndxFields[] = {
+    HNDX("mass", m_fMass),
+    HNDX("turnmass", m_fTurnMass),
+    HNDX("drag", m_fDragMult),
+    { "comx", offsetof(tHandlingData, m_vecCentreOfMass) },
+    { "comy", offsetof(tHandlingData, m_vecCentreOfMass) + 4 },
+    { "comz", offsetof(tHandlingData, m_vecCentreOfMass) + 8 },
+    HNDX("buoyancy", m_fBuoyancyConstant),
+    HNDX("traction", m_fTractionMultiplier),
+    { "accel", HND_ENGINE_ACCEL },
+    { "maxspeed", HND_MAX_VELOCITY },
+    HNDX("brake", m_fBrakeDeceleration),
+    HNDX("brakebias", m_fBrakeBias),
+    HNDX("steering", m_fSteeringLock),
+    HNDX("tractionloss", m_fTractionLoss),
+    HNDX("tractionbias", m_fTractionBias),
+    HNDX("suspforce", m_fSuspensionForceLevel),
+    HNDX("suspdamp", m_fSuspensionDampingLevel),
+    HNDX("suspdampspeed", m_fSuspensionHighSpdComDamp),
+    HNDX("suspupper", m_fSuspensionUpperLimit),
+    HNDX("susplower", m_fSuspensionLowerLimit),
+    HNDX("suspbias", m_fSuspensionBiasBetweenFrontAndRear),
+    HNDX("suspantidive", m_fSuspensionAntiDiveMultiplier),
+    HNDX("collision", m_fCollisionDamageMultiplier),
+    HNDX("seatoffset", m_fSeatOffsetDistance),
+};
+static const int HNDX_COUNT = (int)(sizeof(g_HndxFields) / sizeof(g_HndxFields[0]));
+
+static const HndxField* HndxFind(const char* n)
+{
+    if (!n) return nullptr;
+    for (int i = 0; i < HNDX_COUNT; i++)
+        if (strcasecmp(g_HndxFields[i].name, n) == 0) return &g_HndxFields[i];
+    return nullptr;
+}
+
+static void HndxFixMass(uintptr_t p)
+{
+    const float m = *(float*)(p + offsetof(tHandlingData, m_fMass));
+    if (m > 0.0f) *(float*)(p + offsetof(tHandlingData, m_fMassRecpr)) = 1.0f / m;
+}
+
+// masinin ilk (original) handling-i: "Sifirla" ucun
+static std::map<CVehicleGTA*, std::vector<uint8_t>> g_HndxOrig;
+
+static void HndxSnap(CVehicle* v)
+{
+    CVehicleGTA* g = v->m_pVehicle;
+    const uintptr_t p = GetCurrentHandling(g);
+    if (!p) return;
+    std::map<CVehicleGTA*, std::vector<uint8_t>>::iterator it = g_HndxOrig.find(g);
+    if (it != g_HndxOrig.end() && it->second.size() == HND_SIZE &&
+        memcmp(it->second.data(), (void*)p, 4) == 0) return;   // eyni model, snapshot kecerlidir
+    g_HndxOrig[g].assign((uint8_t*)p, (uint8_t*)p + HND_SIZE);
+}
+
+static int HndxHexVal(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static bool HndxParseHex(const char* s, size_t n, std::vector<uint8_t>& out)
+{
+    if (n % 2) return false;
+    out.clear();
+    for (size_t i = 0; i < n; i += 2) {
+        const int a = HndxHexVal(s[i]), b = HndxHexVal(s[i + 1]);
+        if (a < 0 || b < 0) return false;
+        out.push_back((uint8_t)(a * 16 + b));
+    }
+    return true;
+}
+
+static std::string HndxPath(const char* file)
+{
+    return std::string(g_pszStorage ? g_pszStorage : "") + "SAMP/" + file;
+}
+
+bool HndExt_Get(CVehicle* v, const char* name, float* out)
+{
+    if (!v || !v->m_pVehicle || !out) return false;
+    const HndxField* f = HndxFind(name);
+    if (!f) return false;
+    const uintptr_t p = GetCurrentHandling(v->m_pVehicle);
+    if (!p) return false;
+    *out = *(float*)(p + f->off);
+    return true;
+}
+
+bool HndExt_Set(CVehicle* v, const char* name, float val)
+{
+    if (!v || !v->m_pVehicle) return false;
+    if (!std::isfinite(val) || val > 1.0e6f || val < -1.0e6f) return false;
+    const HndxField* f = HndxFind(name);
+    if (!f) return false;
+    HndxSnap(v);
+    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
+    if (!p) return false;
+    *(float*)(p + f->off) = val;
+    if (f->off == offsetof(tHandlingData, m_fMass)) HndxFixMass(p);
+    return true;
+}
+
+bool HndExt_Reset(CVehicle* v)
+{
+    if (!v || !v->m_pVehicle) return false;
+    std::map<CVehicleGTA*, std::vector<uint8_t>>::iterator it = g_HndxOrig.find(v->m_pVehicle);
+    if (it == g_HndxOrig.end() || it->second.size() != HND_SIZE) return false;
+    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
+    if (!p) return false;
+    memcpy((void*)(p + 4), it->second.data() + 4, HND_SIZE - 4);
+    return true;
+}
+
+// ---- slotlar 1..5 : SAMP/handling_slots.txt ----
+#define HNDX_SLOTS 5
+static std::vector<uint8_t> g_HndxSlots[HNDX_SLOTS + 1];
+static bool g_HndxSlotsLoaded = false;
+
+static void HndxSlotsWrite()
+{
+    FILE* f = fopen(HndxPath("handling_slots.txt").c_str(), "w");
+    if (!f) return;
+    for (int i = 1; i <= HNDX_SLOTS; i++) {
+        if (g_HndxSlots[i].empty()) continue;
+        fprintf(f, "%d ", i);
+        for (size_t k = 0; k < g_HndxSlots[i].size(); ++k) fprintf(f, "%02X", g_HndxSlots[i][k]);
+        fprintf(f, "\n");
+    }
+    fclose(f);
+}
+
+static void HndxSlotsRead()
+{
+    if (g_HndxSlotsLoaded) return;
+    g_HndxSlotsLoaded = true;
+    FILE* f = fopen(HndxPath("handling_slots.txt").c_str(), "r");
+    if (!f) return;
+    static char line[1024];
+    static char hex[900];
+    while (fgets(line, sizeof(line), f)) {
+        int slot = 0;
+        if (sscanf(line, "%d %899s", &slot, hex) != 2) continue;
+        if (slot < 1 || slot > HNDX_SLOTS) continue;
+        std::vector<uint8_t> data;
+        if (HndxParseHex(hex, strlen(hex), data) && data.size() == HND_SIZE) g_HndxSlots[slot] = data;
+    }
+    fclose(f);
+}
+
+bool HndExt_SlotUsed(int slot)
+{
+    if (slot < 1 || slot > HNDX_SLOTS) return false;
+    HndxSlotsRead();
+    return g_HndxSlots[slot].size() == HND_SIZE;
+}
+
+bool HndExt_SaveSlot(CVehicle* v, int slot)
+{
+    if (!v || !v->m_pVehicle || slot < 1 || slot > HNDX_SLOTS) return false;
+    const uintptr_t p = GetCurrentHandling(v->m_pVehicle);
+    if (!p) return false;
+    HndxSlotsRead();
+    g_HndxSlots[slot].assign((uint8_t*)p, (uint8_t*)p + HND_SIZE);
+    HndxSlotsWrite();
+    return true;
+}
+
+bool HndExt_LoadSlot(CVehicle* v, int slot)
+{
+    if (!v || !v->m_pVehicle || !HndExt_SlotUsed(slot)) return false;
+    HndxSnap(v);
+    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
+    if (!p) return false;
+    memcpy((void*)(p + 4), g_HndxSlots[slot].data() + 4, HND_SIZE - 4);   // ilk 4 bayt = model ID
+    return true;
+}
+
+// ---- handling kodu = butun strukturun hex-i; SAMP/handling_code.txt ----
+std::string HndExt_GetCode(CVehicle* v)
+{
+    if (!v || !v->m_pVehicle) return "";
+    const uintptr_t p = GetCurrentHandling(v->m_pVehicle);
+    if (!p) return "";
+    std::string s = "H2";
+    for (size_t i = 4; i < HND_SIZE; ++i) {
+        char b[3];
+        snprintf(b, sizeof(b), "%02X", ((uint8_t*)p)[i]);
+        s += b;
+    }
+    FILE* f = fopen(HndxPath("handling_code.txt").c_str(), "w");
+    if (f) { fprintf(f, "%s\n", s.c_str()); fclose(f); }
+    return s;
+}
+
+static bool HndxApplyCode(CVehicle* v, const std::string& code)
+{
+    if (!v || !v->m_pVehicle) return false;
+    if (code.size() != (size_t)(2 + 2 * (HND_SIZE - 4)) || code[0] != 'H' || code[1] != '2') return false;
+    std::vector<uint8_t> data;
+    if (!HndxParseHex(code.c_str() + 2, code.size() - 2, data)) return false;
+    HndxSnap(v);
+    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
+    if (!p) return false;
+    memcpy((void*)(p + 4), data.data(), data.size());
+    HndxFixMass(p);
+    return true;
+}
+
+bool HndExt_ImportCodeFile(CVehicle* v)
+{
+    FILE* f = fopen(HndxPath("handling_code.txt").c_str(), "r");
+    if (!f) return false;
+    char buf[800];
+    const int ok = fscanf(f, "%799s", buf);
+    fclose(f);
+    if (ok != 1) return false;
+    return HndxApplyCode(v, buf);
+}
+
+#pragma clang diagnostic pop
+// ===== /HNDV2 =====

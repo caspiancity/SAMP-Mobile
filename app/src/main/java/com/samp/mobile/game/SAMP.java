@@ -318,6 +318,53 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         startBackgroundMusic();
     }
 
+    // REQ_HND_PICK: menyudan handling.cfg fayl secici (native -> pickHandlingFile)
+    private static final int REQ_HND_PICK = 0x4801;
+    private String mHndDest = null;
+    private int mHndSlot = 0;
+
+    public void pickHandlingFile(final int slot, final String dest) {
+        mHndSlot = slot;
+        mHndDest = dest;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    android.content.Intent it = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+                    it.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                    it.setType("*/*");
+                    startActivityForResult(it, REQ_HND_PICK);
+                } catch (Throwable t) {
+                    Log.e(TAG, "pickHandlingFile: " + t);
+                    Toast.makeText(SAMP.this, "Fayl seçici açılmadı", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_HND_PICK || resultCode != RESULT_OK || data == null || data.getData() == null || mHndDest == null) return;
+        try {
+            java.io.InputStream in = getContentResolver().openInputStream(data.getData());
+            if (in == null) return;
+            File out = new File(mHndDest);
+            File parent = out.getParentFile();
+            if (parent != null && !parent.exists()) parent.mkdirs();
+            java.io.FileOutputStream os = new java.io.FileOutputStream(out);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            os.close();
+            in.close();
+            Toast.makeText(this, "Handling faylı slot " + mHndSlot + "-ə əlavə olundu", Toast.LENGTH_SHORT).show();
+        } catch (Throwable t) {
+            Log.e(TAG, "handling copy: " + t);
+            Toast.makeText(this, "Fayl oxunmadı", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private native void initializeSAMP();
 
     @Override

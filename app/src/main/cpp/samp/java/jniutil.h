@@ -44,6 +44,7 @@ public:
 	void HideEditObject();
 
 	void YtCommand(const char* arg);
+	void PickHandlingFile(int slot, const char* destPath);   // PICKFILE_V5
 
     jobject activity;
     jmethodID s_setPauseState;
@@ -60,4 +61,5 @@ public:
 	jmethodID s_showEditObject;
 	jmethodID s_hideEditObject;
 	jmethodID s_ytCommand;
+	jmethodID s_pickFile;
 };

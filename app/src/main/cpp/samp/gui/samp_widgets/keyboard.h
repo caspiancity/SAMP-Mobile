@@ -9,14 +9,15 @@ public:
         KeyboardInput();
 
         virtual void performLayout() override;
+        virtual void touchEvent(const ImVec2& pos, TouchType type) override;
 
-        void clear() { m_input.clear(); m_caption.clear(); }
+        void clear() { m_input.clear(); m_caption.clear(); m_caret = 0; }
 
         void addCharToInput(char value);
         void addStringToInput(const std::string& value);
         void popCharFromInput();
 
-        void setInputString(const std::string& string) { m_input = string; m_caption = string; } // KBFIX_V3
+        void setInputString(const std::string& string) { m_input = string; m_caption = string; m_caret = (int)m_input.size(); } // KBFIX_V3 + KBIOS_V5
         const std::string& inputString() const { return m_input; }
 
         virtual void draw(ImGuiRenderer* rendderer) override;
@@ -27,6 +28,7 @@ private:
         Button* m_buttonTub;
         std::string m_caption;
         std::string m_input;
+        int m_caret = 0;
 };
 
 class KeyboardLayout : public Layout

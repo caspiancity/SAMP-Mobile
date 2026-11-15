@@ -127,6 +127,35 @@ bool ImGuiWrapper::initialize()
 	}
 
 
+	// NICKFONT_V4: oyuncu adi ucun oz fontun. Font qovlugunda nick.ttf (ve ya nick.otf) varsa istifade olunur.
+	{
+		extern ImFont* g_pNickFont;
+		g_pNickFont = nullptr;
+		std::string nfDir = m_fontPath;
+		const size_t nfSlash = nfDir.find_last_of('/');
+		nfDir = (nfSlash == std::string::npos) ? std::string("") : nfDir.substr(0, nfSlash + 1);
+
+		static const ImWchar nickRanges[] =
+		{
+			0x0020, 0x00FF,
+			0x0100, 0x017F,   // c g i o s u
+			0x018F, 0x018F,   // Ə
+			0x0259, 0x0259,   // ə
+			0x0400, 0x04FF,
+			0
+		};
+		static const char* nickNames[] = { "nick.ttf", "nick.otf", "Nick.ttf", "Nick.otf", "NICK.TTF", "NICK.OTF" };
+		for (const char* nm : nickNames)
+		{
+			const std::string np = nfDir + nm;
+			if (access(np.c_str(), R_OK) != 0) continue;
+			ImFontConfig nc;
+			nc.PixelSnapH = true;
+			g_pNickFont = io.Fonts->AddFontFromFileTTF(np.c_str(), UISettings::fontSize(), &nc, nickRanges);
+			if (g_pNickFont) { Log::addParameter("Nick font: %s", np.c_str()); break; }
+		}
+	}
+
 	createFontTexture();
 
 	m_renderer = new ImGuiRenderer(ImGui::GetBackgroundDrawList(), font);

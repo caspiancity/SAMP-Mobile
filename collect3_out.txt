@@ -1,0 +1,1859 @@
+######## FAYL app/src/main/cpp/samp/gui/imguirenderer.cpp ########
+1: #include <string>
+2: #include "imguirenderer.h"
+3: #include "uisettings.h"
+4: 
+5: ImGuiRenderer::ImGuiRenderer(ImDrawList* draw_list, ImFont* font)
+6: {
+7: 	m_drawList = draw_list;
+8: 	m_font = font;
+9: }
+10: 
+11: void ImGuiRenderer::drawLine(const ImVec2& a, const ImVec2& b, const ImColor& color, float thickness)
+12: {
+13: 	m_drawList->AddLine(a, b, color, thickness);
+14: }
+15: 
+16: void ImGuiRenderer::drawRect(const ImVec2& a, const ImVec2& b, const ImColor& color, bool fill, float thickness)
+17: {
+18: 	fill ? m_drawList->AddRectFilled(a, b, color) :
+19: 		m_drawList->AddRect(a, b, color, 0.0f, 15, thickness);
+20: }
+21: 
+22: void ImGuiRenderer::drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b,
+23: 	const ImColor& col_upr_left, const ImColor& col_upr_right,
+24: 	const ImColor& col_bot_right, const ImColor& col_bot_left)
+25: {
+26: 	m_drawList->AddRectFilledMultiColor(a, b, col_upr_left, col_upr_right, col_bot_right, col_bot_left);
+27: }
+28: 
+29: void ImGuiRenderer::drawTriangle(const ImVec2& a, const ImVec2& b, const ImVec2& c, const ImColor& color, bool fill, float thickness)
+30: {
+31: 	fill ? m_drawList->AddTriangleFilled(a, b, c, color) :
+32: 		m_drawList->AddTriangle(a, b, c, color, thickness);
+33: }
+34: 
+35: void ImGuiRenderer::drawConvexPolyFilled(ImVec2* points, int num_points, const ImColor& color)
+36: {
+37: 	m_drawList->AddConvexPolyFilled(points, num_points, color);
+38: }
+39: 
+40: void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& color,
+41: 	const char* begin, const char* end, bool outline, float font_size)
+42: {
+43: 	float sz_font = font_size == 0.0f ? m_font->FontSize : font_size;
+44: 
+45: 	if (outline)
+46: 	{
+47: 		ImVec2 outlined = pos;
+48: 		float outlineSize = UISettings::outlineSize();
+49: 
+50: 		// right
+51: 		outlined.x += outlineSize;
+52: 		m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+53: 		outlined.x -= outlineSize;
+54: 
+55: 		// left
+56: 		outlined.x -= outlineSize;
+57: 		m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+58: 		outlined.x += outlineSize;
+59: 
+60: 		// bottom
+61: 		outlined.y += outlineSize;
+62: 		m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+63: 		outlined.y -= outlineSize;
+64: 
+65: 		// top
+66: 		outlined.y -= outlineSize;
+67: 		m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+68: 		outlined.y += outlineSize;
+69: 
+70: 		// bottom-right
+71: 		outlined.x += outlineSize;
+72: 		outlined.y += outlineSize;
+73: 		//m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+74: 		outlined.x -= outlineSize;
+75: 		outlined.y -= outlineSize;
+76: 
+77: 		// bottom-left
+78: 		outlined.x -= outlineSize;
+79: 		outlined.y += outlineSize;
+80: 		//m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+81: 		outlined.x += outlineSize;
+82: 		outlined.y -= outlineSize;
+83: 
+84: 		// top-right
+85: 		outlined.x += outlineSize;
+86: 		outlined.y -= outlineSize;
+87: 		//m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+88: 		outlined.x -= outlineSize;
+89: 		outlined.y += outlineSize;
+90: 
+91: 		// top-left
+92: 		outlined.x -= outlineSize;
+93: 		outlined.y -= outlineSize;
+94: 		//m_drawList->AddText(m_font, sz_font, outlined, ImColor(0.0f, 0.0f, 0.0f), begin, end);
+95: 		outlined.x += outlineSize;
+96: 		outlined.y += outlineSize;
+97: 	}
+98: 
+99: 	m_drawList->AddText(m_font, sz_font, pos, color, begin, end);
+100: }
+101: 
+102: void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& color, const std::string& text, bool outlined, float font_size)
+103: {
+104: 	if (text.empty()) return;
+105: 
+106: 	float sz_font = font_size == 0.0f ? m_font->FontSize : font_size;
+107: 
+108: 	const char* text_start = text.c_str();
+109: 	const char* text_cur = text.c_str();
+110: 	const char* text_end = text.c_str() + text.length();
+111: 
+112: 	ImVec2 pos_cur = pos;
+113: 	ImColor color_cur = color;
+114: 
+115: 	while (*text_cur)
+116: 	{
+117: 		if (*text_cur == '{' && ((&text_cur[7] < text_end) && text_cur[7] == '}'))
+118: 		{
+119: 			// print accumulated text
+120: 			if (text_cur != text_start)
+121: 			{
+122: 				drawText(pos_cur, color_cur, text_start, text_cur, outlined, sz_font);
+123: 				ImVec2 sz = calculateTextSize(text_start, text_cur, sz_font);
+124: 				pos_cur.x += sz.x;
+125: 			}
+126: 
+127: 			// new colorcode
+128: 			ImVec4 col;
+129: 			if (processInlineHexColor(text_cur + 1, text_cur + 7, col)) {
+130: 				color_cur = col;
+131: 			}
+132: 
+133: 			text_cur += 7;
+134: 			text_start = text_cur + 1;
+135: 		}
+136: 		else if (*text_cur == '\n')
+137: 		{
+138: 			// print accumulated text
+139: 			if (text_cur != text_start)
+140: 			{
+141: 				drawText(pos_cur, color_cur, text_start, text_cur, outlined, sz_font);
+142: 			}
+143: 
+144: 			pos_cur.x = pos.x;
+145: 			pos_cur.y += sz_font;
+146: 			text_start = text_cur + 1;
+147: 		}
+148: 		else if (*text_cur == '\t')
+149: 		{
+150: 			// print accumulated text
+151: 			if (text_cur != text_start)
+152: 			{
+153: 				drawText(pos_cur, color_cur, text_start, text_cur, outlined, sz_font);
+154: 				ImVec2 sz = calculateTextSize(text_start, text_cur, sz_font);
+155: 				pos_cur.x += sz.x;
+156: 			}
+157: 
+158: 			pos_cur.x += sz_font;
+159: 			text_start = text_cur + 1;
+160: 		}
+161: 
+162: 		++text_cur;
+163: 	}
+164: 
+165: 	if (text_cur != text_start) {
+166: 		drawText(pos_cur, color_cur, text_start, text_cur, outlined, sz_font);
+167: 	}
+168: }
+169: 
+170: ImVec2 ImGuiRenderer::calculateTextSize(const std::string& text, float font_size)
+171: {
+172: 	ImVec2 text_size = { 0.0f, 0.0f };
+173: 	if (text.empty()) return text_size;
+174: 
+175: 	ImVec2 cur_size = { 0.0f, 0.0f };
+176: 	if (font_size == 0.0f) font_size = m_font->FontSize;
+177: 	
+178: 	const char* text_start = text.c_str();
+179: 	const char* text_cur = text.c_str();
+180: 	const char* text_end = text.c_str() + text.length();
+181: 
+182: 	while (*text_cur)
+183: 	{
+184: 		if (*text_cur == '{' && ((&text_cur[7] < text_end) && text_cur[7] == '}'))
+185: 		{
+186: 			if (text_cur != text_start)
+187: 			{
+188: 				// текст до колор-кода
+189: 				ImVec2 sz = calculateTextSize(text_start, text_cur, font_size);
+190: 				cur_size.x += sz.x;
+191: 				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+192: 			}
+193: 
+194: 			text_cur += 7;
+195: 			text_start = text_cur + 1;
+196: 		}
+197: 		else if (*text_cur == '\n')
+198: 		{
+199: 			if (text_cur != text_start)
+200: 			{
+201: 				// текст до \n
+202: 				ImVec2 sz = calculateTextSize(text_start, text_cur, font_size);
+203: 				cur_size.x += sz.x;
+204: 				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+205: 			}
+206: 
+207: 			// обновляем text_size
+208: 			text_size.x = ImMax(text_size.x, cur_size.x);
+209: 			cur_size.y += font_size;
+210: 			cur_size.x = 0.0f;
+211: 
+212: 			text_start = text_cur + 1;
+213: 		}
+214: 		else if (*text_cur == '\t')
+215: 		{
+216: 			if (text_cur != text_start)
+217: 			{
+218: 				// текст до \t
+219: 				ImVec2 sz = calculateTextSize(text_start, text_cur, font_size);
+220: 				cur_size.x += sz.x;
+######## FAYL app/src/main/cpp/samp/gui/widgets/label.h ########
+1: #pragma once
+2: 
+3: class Label : public Widget
+4: {
+5: public:
+6: 	Label(const std::string& text, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f), bool outlined = false, float font_size = 0.0f);
+7: 
+8: 	void setText(const std::string& text);
+9: 	const std::string& text() const { return m_text; }
+10: 
+11: 	void setColor(const ImColor& color) { m_color = color; }
+12: 	const ImColor& color() const { return m_color; }
+13: 
+14: 	virtual void performLayout() override;
+15: 
+16: 	virtual void draw(ImGuiRenderer* renderer) override;
+17: 
+18: private:
+19: 	ImVec2 calculateTextSize(const std::string& text) const;
+20: 	ImVec2 calculateTextSize(const char* begin, const char* end) const;
+21: 
+22: private:
+23: 	std::string m_text;
+24: 	ImColor m_color;
+25: 	bool m_outlined;
+26: 	float m_fontSize;
+27: };
+28: 
+29: 
+30: 
+31: 
+32: class LabelImage : public Widget
+33: {
+34: public:
+35: 	LabelImage(const std::string& text, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f), bool outlined = false, float font_size = 0.0f);
+36: 
+37: 	void setText(const std::string& text);
+38: 	const std::string& text() const { return m_text; }
+39: 
+40: 	void setColor(const ImColor& color) { m_color = color; }
+41: 	const ImColor& color() const { return m_color; }
+42: 
+43: 	virtual void performLayout() override;
+44: 
+45: 	virtual void draw(ImGuiRenderer* renderer) override;
+46: 
+47: private:
+48: 	ImVec2 calculateTextSize(const std::string& text) const;
+49: 	ImVec2 calculateTextSize(const char* begin, const char* end) const;
+50: 
+51: private:
+52: 	std::string m_text;
+53: 	ImColor m_color;
+54: 	bool m_outlined;
+55: 	float m_fontSize;
+56: };
+######## FAYL app/src/main/cpp/samp/gui/widgets/label.cpp ########
+1: #include "..//imguirenderer.h"
+2: #include "..//widget.h"
+3: #include "label.h"
+4: 
+5: 
+6: Label::Label(const std::string& text, const ImColor& color, bool outlined, float font_size)
+7: 	: Widget()
+8: {
+9: 	m_text = text;
+10: 	m_color = color;
+11: 	m_outlined = outlined;
+12: 	m_fontSize = font_size;
+13: }
+14: void Label::setText(const std::string& text)
+15: {
+16: 	m_text = text;
+17: 	this->performLayout();
+18: }
+19: 
+20: void Label::performLayout()
+21: {
+22: 	ImVec2 sz = calculateTextSize(m_text);
+23: 	this->setSize(sz);
+24: }
+25: 
+26: void Label::draw(ImGuiRenderer* renderer)
+27: {
+28: 	renderer->drawText(absolutePosition(), m_color, m_text, m_outlined, m_fontSize);
+29: 	Widget::draw(renderer);
+30: }
+31: 
+32: ImVec2 Label::calculateTextSize(const std::string& text) const
+33: {
+34: 	ImVec2 text_size = { 0.0f, 0.0f };
+35: 	if (text.empty()) return text_size;
+36: 
+37: 	ImVec2 cur_size = { 0.0f, 0.0f };
+38: 
+39: 	float font_size = m_fontSize == 0.0f ? ImGui::GetIO().Fonts->Fonts[0]->FontSize : m_fontSize;
+40: 	const char* text_start = text.c_str();
+41: 	const char* text_cur = text.c_str();
+42: 	const char* text_end = text.c_str() + text.length();
+43: 
+44: 	while (*text_cur)
+45: 	{
+46: 		if (*text_cur == '{' && ((&text_cur[7] < text_end) && text_cur[7] == '}'))
+47: 		{
+48: 			if (text_cur != text_start)
+49: 			{
+50: 				// текст до колор-кода
+51: 				ImVec2 sz = calculateTextSize(text_start, text_cur);
+52: 				cur_size.x += sz.x;
+53: 				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+54: 			}
+55: 
+56: 			text_cur += 7;
+57: 			text_start = text_cur + 1;
+58: 		}
+59: 		else if (*text_cur == '\n')
+60: 		{
+61: 			if (text_cur != text_start)
+62: 			{
+63: 				// текст до \n
+64: 				ImVec2 sz = calculateTextSize(text_start, text_cur);
+65: 				cur_size.x += sz.x;
+66: 				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+67: 			}
+68: 
+69: 			// обновляем text_size
+70: 			text_size.x = ImMax(text_size.x, cur_size.x);
+71: 			cur_size.y += font_size;
+72: 			cur_size.x = 0.0f;
+73: 
+74: 			text_start = text_cur + 1;
+75: 		}
+76: 		else if (*text_cur == '\t')
+77: 		{
+78: 			if (text_cur != text_start)
+79: 			{
+80: 				// текст до \t
+81: 				ImVec2 sz = calculateTextSize(text_start, text_cur);
+82: 				cur_size.x += sz.x;
+83: 				if (cur_size.y == 0.0f) cur_size.y = sz.y;
+84: 			}
+85: 
+86: 			cur_size.x += font_size;
+87: 			text_start = text_cur + 1;
+88: 		}
+89: 
+90: 		++text_cur;
+91: 	}
+92: 
+93: 	if (text_cur != text_start)
+94: 	{
+95: 		// текст без форматирования
+96: 		ImVec2 sz = calculateTextSize(text_start, text_cur);
+97: 		cur_size.x += sz.x;
+98: 		if (cur_size.y == 0.0f) cur_size.y = sz.y;
+99: 	}
+100: 
+101: 	text_size = ImMax(text_size, cur_size);
+102: 	return text_size;
+103: }
+104: 
+105: ImVec2 Label::calculateTextSize(const char* begin, const char* end) const
+106: {
+107: 	ImFont* font = ImGui::GetIO().Fonts->Fonts[0];
+108: 	return font->CalcTextSizeA(m_fontSize == 0.0f ? font->FontSize : m_fontSize, FLT_MAX, 0.0f, begin, end);
+109: }
+110: 
+111: 
+112: 
+113: //LabelImage
+114: 
+115: LabelImage::LabelImage(const std::string& text, const ImColor& color, bool outlined, float font_size)
+116: 	: Widget()
+117: {
+118: 	//m_text = text;
+119: 	//Encoding::cp2utf(text);
+120: 	m_text = text;
+######## FAYL app/src/main/cpp/samp/gui/uisettings.h ########
+1: #pragma once
+2: 
+3: class UISettings
+4: {
+5: public:
+6: 	static void Initialize(const ImVec2& display_size);
+7: 
+8: 	/* font */
+9: 	static float fontSize() { return m_fontSize; }
+10: 	static float outlineSize() { return m_outlineSize; }
+11: 
+12: 	/* ////////////////// sizes ////////////////// */
+13: 
+14: 	/* widgets */
+15: 	static float padding() { return m_padding; }
+16: 
+17: 	/* keyboard */
+18: 	static ImVec2 keyboardPos() { return m_keyboardPos; }
+19: 	static ImVec2 keyboardSize() { return m_keyboardSize; }
+20: 	static float keyboardRowHeight() { return m_keyboardRowHeight; }
+21: 
+22: 	/* splashscreen */
+23: 	static ImVec2 splashscreenLogoPos() { return m_splashscreenLogoPos; }
+24: 	static ImVec2 splashscreenLogoSize() { return m_splashscreenLogoSize; }
+25: 	static ImVec2 splashscreenPBarPos() { return m_splashScreenPBarPos; }
+26: 	static ImVec2 splashscreenPBarSize() { return m_splashScreenPBarSize; }
+27: 
+28: 	/* chat */
+29: 	static ImVec2 chatPos() { return m_chatPos; }
+30: 	static ImVec2 chatSize() { return m_chatSize; }
+31: 	static ImVec2 chatItemSize() { return m_chatItemSize; }
+32: 	static int chatMaxMessages() { return m_chatMaxMessages; }
+33: 
+34: 	/* spawn */
+35: 	static ImVec2 spawnPos() { return m_spawnPos; }
+36: 	static ImVec2 spawnSize() { return m_spawnSize; }
+37: 
+38: 	/* nametag */
+39: 	static ImVec2 nametagBarSize() { return m_nametagBarSize; }
+40: 
+41: 	/* dialog */
+42: 	static ImVec2 dialogButtonPanelSize() { return m_dialogButtonPanelSize; }
+43: 	static ImVec2 dialogMinSize() { return m_dialogMinSize; }
+44: 	static ImVec2 dialogMaxSize() { return m_dialogMaxSize; }
+45: 	static float dialogTitleHeight() { return m_dialogTitleHeight; }
+46: 	static float dialogListItemHeight() { return m_dialogListItemHeight; }
+47: 
+48: 	/* buttonpanel */
+49: 	static ImVec2 buttonPanelPos() { return m_buttonPanelPos; }
+50: 	static ImVec2 buttonPanelSize() { return m_buttonPanelSize; }
+51: 
+52: 	/* voice button */
+53: 	static ImVec2 buttonVoicePos() { return m_buttonVoicePos; }
+54: 	static ImVec2 buttonVoiceSize() { return m_buttonVoiceSize; }
+55: 
+56: 	/* ////////////////// colors ////////////////// */
+57: 
+58: 	/* button */
+59: 	static ImColor buttonColor() { return m_buttonColor; }
+60: 	static ImColor buttonFocusedColor() { return m_buttonFocusedColor; }
+61: 
+62: 	/* keyboard */
+63: 	static ImColor keyboardBackgroundColor() { return m_keyboardBackgroundColor; }
+64: 
+65: 	/* dialog */
+66: 	static ImColor dialogBackgroundColor() { return m_dialogBackgroundColor; }
+67: 	static ImColor dialogTitleBackgroundColor() { return m_dialogTitleBackgroundColor; }
+68: 
+69: private:
+70: 	/* scaling */
+71: 	static ImVec2 m_baseSize;
+72: 	static ImVec2 m_scaleFactor;
+73: 
+74: 	/* font */
+75: 	static float m_fontSize;
+76: 	static float m_outlineSize;
+77: 
+78: 	/* ////////////////// pos & size ////////////////// */
+79: 
+80: 	/* Widgets */
+81: 	static float m_padding;
+82: 
+83: 	/* keyboard */
+84: 	static ImVec2 m_keyboardPos;
+85: 	static ImVec2 m_keyboardSize;
+86: 	static float m_keyboardRowHeight;
+87: 
+88: 	/* splashscreen */
+89: 	static ImVec2	m_splashscreenLogoPos;
+90: 	static ImVec2	m_splashscreenLogoSize;
+91: 	static ImVec2	m_splashScreenPBarPos;
+92: 	static ImVec2	m_splashScreenPBarSize;
+93: 
+94: 	/* chat */
+95: 	static ImVec2 m_chatPos;
+96: 	static ImVec2 m_chatSize;
+97: 	static ImVec2 m_chatItemSize;
+98: 	static int m_chatDispMesssages;
+99: 	static int m_chatMaxMessages;
+100: 
+101: 	/* spawn */
+102: 	static ImVec2 m_spawnPos;
+103: 	static ImVec2 m_spawnSize;
+104: 
+105: 	/* nametag */
+106: 	static ImVec2 m_nametagBarSize;
+107: 
+108: 	/* dialog */
+109: 	static ImVec2 m_dialogButtonPanelSize;
+110: 	static ImVec2 m_dialogMinSize;
+111: 	static ImVec2 m_dialogMaxSize;
+112: 	static float m_dialogTitleHeight;
+113: 	static float m_dialogListItemHeight;
+114: 
+115: 	/* buttonpanel */
+116: 	static ImVec2 m_buttonPanelPos;
+117: 	static ImVec2 m_buttonPanelSize;
+118: 
+119: 	/* voice button */
+120: 	static ImVec2 m_buttonVoicePos;
+121: 	static ImVec2 m_buttonVoiceSize;
+122: 
+123: 	/* ////////////////// colors ////////////////// */
+124: 
+125: 	/* button */
+126: 	static ImColor m_buttonColor;
+127: 	static ImColor m_buttonFocusedColor;
+128: 
+129: 	/* splashscreen */
+130: 
+131: 
+132: 	/* keyboard */
+133: 	static ImColor m_keyboardBackgroundColor;
+134: 
+135: 	/* dialog */
+136: 	static ImColor m_dialogBackgroundColor;
+137: 	static ImColor m_dialogTitleBackgroundColor;
+138: };
+######## FAYL app/src/main/cpp/samp/gui/samp_widgets/keyboard.cpp ########
+1: #include "../../main.h"
+2: #include "../gui.h"
+3: #include "../../game/game.h"
+4: #include "../../log.h"
+5: #include "../settings.h"
+6: #include "../java/jniutil.h"
+7: 
+8: extern CGame* pGame;
+9: extern UI* pUI;
+10: extern CSettings* pSettings;
+11: extern CJavaWrapper* pJavaWrapper;
+12: 
+13: /* Keyboard */
+14: 
+15: Keyboard::Keyboard()
+16: {
+17: 	m_input = new KeyboardInput();
+18: 	this->addChild(m_input);
+19: 
+20: 
+21: 	m_layoutLowerENG = new KeyboardLayoutLowerENG();
+22: 	this->addChild(m_layoutLowerENG);
+23: 	m_layoutLowerENG->setPadding(0.0f);
+24: 	m_layoutLowerENG->setSpacing(0.0f);
+25: 	m_layoutLowerENG->setVisible(false);
+26: 
+27: 	m_layoutUpperENG = new KeyboardLayoutUpperENG();
+28: 	this->addChild(m_layoutUpperENG);
+29: 	m_layoutUpperENG->setPadding(0.0f);
+30: 	m_layoutUpperENG->setSpacing(0.0f);
+31: 	m_layoutUpperENG->setVisible(false);
+32: 
+33: 	m_layoutLowerAZE = new KeyboardLayoutLowerAZE();
+34: 	this->addChild(m_layoutLowerAZE);
+35: 	m_layoutLowerAZE->setPadding(0.0f);
+36: 	m_layoutLowerAZE->setSpacing(0.0f);
+37: 	m_layoutLowerAZE->setVisible(false);
+38: 
+39: 	m_layoutUpperAZE = new KeyboardLayoutUpperAZE();
+40: 	this->addChild(m_layoutUpperAZE);
+41: 	m_layoutUpperAZE->setPadding(0.0f);
+42: 	m_layoutUpperAZE->setSpacing(0.0f);
+43: 	m_layoutUpperAZE->setVisible(false);
+44: 
+45: 
+46: 	m_layoutNUM = new KeyboardLayoutNUM();
+47: 	this->addChild(m_layoutNUM);
+48: 	m_layoutNUM->setPadding(0.0f);
+49: 	m_layoutNUM->setSpacing(0.0f);
+50: 	m_layoutNUM->setVisible(false);
+51: 
+52: 	m_activeLayout = m_layoutLowerENG;
+53: 	m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
+54: 	m_activeLayout->setVisible(true);
+55: 
+56: 	m_history = new KeyboardHistory();
+57: }
+58: 
+59: void Keyboard::performLayout()
+60: {
+######## app/src/main/cpp/samp/gui/samp_widgets/chat.cpp : /keyboardEvent|Encoding::|utf2cp|cp2utf|addMessage\(/ ########
+46-        vsprintf(tmp_buf, format.c_str(), args);
+47-        va_end(args);
+48-
+49:        addMessage(std::string(tmp_buf), ImColor(0x00, 0xc8, 0xc8));
+50-}
+51-
+52-void Chat::addDebugMessage(const std::string& format, ...)
+53-{
+54-        char tmp_buf[512];
+55-
+56-        va_list args;
+57-        va_start(args, format);
+58-        vsprintf(tmp_buf, format.c_str(), args);
+59-        va_end(args);
+60-
+61:        addMessage(std::string(tmp_buf), ImColor(0xbe, 0xbe, 0xbe));
+62-}
+63-
+64-void Chat::addClientMessage(const std::string& message, const ImColor& color)
+65-{
+66:        addMessage(message, color);
+67-}
+68-
+69:void Chat::addMessage(const std::string& message, const ImColor& color)
+70-{
+71-        if (this->itemsCount() > UISettings::chatMaxMessages())
+72-        {
+73-                this->removeItem(0);
+74-        }
+75-
+76-        MessageItem* item = new MessageItem(message, color);
+77-        this->addItem(item);
+78-        /*if(!active())*/ this->setScrollY(1.0f);
+79-        m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
+80-}
+81-
+82-void Chat::addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
+83-{
+84-        if (this->itemsCount() > UISettings::chatMaxMessages())
+85-        {
+--
+431-        return false;
+432-}
+433-
+434:void Chat::keyboardEvent(const std::string& input)
+435-{
+436-        if (input.length() > 0 && pNetGame)
+437-        {
+438-                if (ProcessClientCommands(input)) return;
+439-
+440-                if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
+441-                else pNetGame->SendChatMessage(input.c_str());
+442-        }
+443-}
+444-
+445-// AZ_PATCH4
+446-
+447-// MM2_V2: /cam, /dump, /nomre silindi
+######## app/src/main/cpp/samp/gui/gui.cpp : /CamCtl/ ########
+50: namespace CamCtl
+51: {
+52:         static int   s_mode   = 0;        // 0 = oyunun kamerasi, 1 = PC (3-cu shexs), 2 = birinci shexs
+53:         static bool  s_active = false;
+54:         static float s_yaw    = 0.0f;
+55:         static float s_pitch  = -0.25f;
+56:         static float s_sens   = 0.0045f;  // radian / piksel
+57:         static int   s_ptr    = -1;
+58:         static float s_lx = 0.0f, s_ly = 0.0f;
+59:         static float s_dist   = 4.5f;
+60: 
+61:         static void ClampPitch()
+62:         {
+63:                 const float lo = (s_mode == 2) ? -1.4f : -1.3f;
+64:                 const float hi = (s_mode == 2) ?  1.4f :  0.12f;   // 3-cu shexsde yuxari baxanda kamera yerin altina dusmesin
+65:                 if (s_pitch < lo) s_pitch = lo;
+66:                 if (s_pitch > hi) s_pitch = hi;
+67:         }
+68: }
+69: 
+70: void CamCtl_OnTouch(int type, int num, int x, int y)
+71: {
+72:         using namespace CamCtl;
+73:         if (s_mode == 0) { s_ptr = -1; return; }
+74: 
+75:         const ImVec2 d = ImGui::GetIO().DisplaySize;
+76:         const bool inZone = (float)x > d.x * 0.35f && (float)y < d.y * 0.72f;
+77: 
+78:         if (type == 2) {                         // push
+79:                 if (s_ptr < 0 && inZone) { s_ptr = num; s_lx = (float)x; s_ly = (float)y; }
+80:         }
+81:         else if (type == 3) {                    // move
+82:                 if (s_ptr < 0 && inZone) { s_ptr = num; s_lx = (float)x; s_ly = (float)y; return; }
+83:                 if (num == s_ptr) {
+84:                         const float dx = (float)x - s_lx, dy = (float)y - s_ly;
+85:                         s_lx = (float)x; s_ly = (float)y;
+86:                         s_yaw   -= dx * s_sens;   // saДџa surusdur -> saДџa bax
+87:                         s_pitch -= dy * s_sens;   // asagi surusdur -> asagi bax (mouse kimi)
+88:                         ClampPitch();
+89:                 }
+90:         }
+91:         else if (type == 1) {                    // pop
+92:                 if (num == s_ptr) s_ptr = -1;
+93:         }
+94: }
+95: 
+96: void CamCtl_Update()
+97: {
+98:         using namespace CamCtl;
+99: 
+100:         if (s_mode == 0) {
+101:                 if (s_active) { s_active = false; s_ptr = -1; CCamera::SetBehindPlayer(); }
+102:                 return;
+103:         }
+104:         if (!pGame || !pNetGame || pGame->IsGamePaused()) return;
+105: 
+106:         CPlayerPed* ped = pGame->FindPlayerPed();
+107:         if (!ped || !ped->m_pPed) return;
+108: 
+109:         RwMatrix m = ped->m_pPed->GetMatrix().ToRwMatrix();
+110:         if (!s_active) {
+111:                 s_active = true;
+112:                 s_yaw = atan2f(m.up.y, m.up.x);               // oyuncunun baxdigi istiqamet
+113:                 s_pitch = (s_mode == 2) ? 0.0f : -0.25f;
+114:         }
+115:         ClampPitch();
+116: 
+117:         const float cp = cosf(s_pitch), sp = sinf(s_pitch);
+118:         const float dx = cosf(s_yaw) * cp, dy = sinf(s_yaw) * cp, dz = sp;
+119:         const float px = m.pos.x, py = m.pos.y, pz = m.pos.z;
+120: 
+121:         float cx, cy, cz, lx, ly, lz;
+122:         if (s_mode == 2) {                                    // birinci shexs
+123:                 cx = px + cosf(s_yaw) * 0.15f;
+124:                 cy = py + sinf(s_yaw) * 0.15f;
+125:                 cz = pz + 0.68f;
+126:                 lx = cx + dx * 20.0f; ly = cy + dy * 20.0f; lz = cz + dz * 20.0f;
+127:         } else {                                              // PC / 3-cu shexs
+128:                 const float dist = ped->IsInVehicle() ? 7.0f : s_dist;
+129:                 const float tz = pz + 0.8f;
+130:                 cx = px - dx * dist; cy = py - dy * dist; cz = tz - dz * dist;
+131:                 lx = px; ly = py; lz = tz;
+132:         }
+133: 
+134:         ScriptCommand(&set_camera_position, cx, cy, cz, 0.0f, 0.0f, 0.0f);
+135:         ScriptCommand(&point_camera, lx, ly, lz, 2);
+136: }
+137: 
+138: // chat.cpp -> /cam
+139: void CamCtl_Command(const char* a, const char* b, char* rep, int n)
+140: {
+141:         using namespace CamCtl;
+142:         std::string s = a ? a : "";
+143:         for (size_t i = 0; i < s.size(); ++i) s[i] = (char)tolower((unsigned char)s[i]);
+144: 
+145:         if (s.empty())            s_mode = (s_mode + 1) % 3;
+146:         else if (s == "pc")       s_mode = 1;
+147:         else if (s == "fps" || s == "1") s_mode = 2;
+148:         else if (s == "off")      s_mode = 0;
+149:         else if (s == "sens") {
+150:                 const float v = b ? (float)atof(b) : 0.0f;
+151:                 if (v >= 0.5f && v <= 20.0f) { s_sens = v * 0.0009f; snprintf(rep, n, "Hessaslig: %.1f", v); }
+152:                 else snprintf(rep, n, "Istifade: /cam sens 1..20");
+153:                 return;
+154:         }
+155:         else { snprintf(rep, n, "Istifade: /cam [pc|fps|off|sens N]"); return; }
+156: 
+157:         s_active = false;   // novbeti kadrda yeniden baslat
+158:         ClampPitch();
+159:         const char* names[3] = { "oyunun kamerasi (off)", "PC rejimi (sag terefde surusdur)", "birinci shexs" };
+160:         snprintf(rep, n, "Kamera: %s", names[s_mode]);
+161: }
+162: 
+163: 
+164: extern bool g_bHideAllUI;
+165: extern bool g_bShowHandlingDlg;   // /mm (kohne addi: /tuning) ile acilir/baglanir
+166: 
+167: // Diaqnostika: 1 = toxunus noqtesi (qirmizi halqa) + loglar. Her sey islese 0 et.
+168: #define HND_DEBUG 0
+169: #if HND_DEBUG
+170: #define HND_LOG(...) FLog(__VA_ARGS__)
+171: #else
+172: #define HND_LOG(...) ((void)0)
+173: #endif
+174: 
+175: enum eTouchType
+176: {
+177:         TOUCH_POP = 1,
+178:         TOUCH_PUSH = 2,
+179:         TOUCH_MOVE = 3
+180: };
+181: 
+182: // ============================================================================
+183: //  TOXUNUS: hadiseler queue-ya yigilir, her kadrin evvelinde oxunur.
+184: //  Bir kadrda en cox BIR basma/buraxma emal olunur (qisa toxunus itmesin).
+185: //  Mod menyu ImGui-nin input sistemini istifade ETMIR, oz veziyyetini saxlayir.
+186: // ============================================================================
+187: struct MMTouch
+188: {
+189:         float    x = -1.0f, y = -1.0f;
+190:         bool     down = false, pressed = false, released = false;
+191:         unsigned events = 0;
+192: };
+193: static MMTouch g_mmTouch;
+194: 
+195: namespace
+196: {
+197:         struct TouchEv { int type; float x; float y; };
+198: 
+199:         std::mutex          s_touchMtx;
+200:         std::deque<TouchEv> s_touchQ;
+201: 
+202:         void PushTouch(int type, float x, float y)
+203:         {
+204:                 std::lock_guard<std::mutex> lk(s_touchMtx);
+205: 
+206:                 if (type == TOUCH_MOVE && !s_touchQ.empty() && s_touchQ.back().type == TOUCH_MOVE) {
+207:                         s_touchQ.back().x = x;
+208:                         s_touchQ.back().y = y;
+209:                         return;
+210:                 }
+211:                 if (s_touchQ.size() > 512) s_touchQ.clear();
+212:                 s_touchQ.push_back({ type, x, y });
+213:         }
+214: 
+215:         void ProcessTouchQueue()
+216:         {
+217:                 std::lock_guard<std::mutex> lk(s_touchMtx);
+218: 
+219:                 g_mmTouch.pressed  = false;
+220:                 g_mmTouch.released = false;
+221: 
+222:                 while (!s_touchQ.empty())
+223:                 {
+224:                         const TouchEv e = s_touchQ.front();
+225:                         s_touchQ.pop_front();
+226: 
+227:                         g_mmTouch.x = e.x;
+228:                         g_mmTouch.y = e.y;
+229:                         g_mmTouch.events++;
+230: 
+231:                         if (e.type == TOUCH_PUSH) { g_mmTouch.down = true;  g_mmTouch.pressed  = true; break; }
+232:                         if (e.type == TOUCH_POP)  { g_mmTouch.down = false; g_mmTouch.released = true; break; }
+233:                 }
+234:         }
+235: }
+236: 
+######## app/src/main/cpp/samp/gui/samp_widgets/chat.cpp : /cmd == "/far"/ ########
+266:         if (cmd == "/far")
+267:         {
+268:                 CPlayerPed* pLocalPlayer =
+269:                     pGame ? pGame->FindPlayerPed() : nullptr;
+270: 
+271:                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+272:                         pUI->chat()->addDebugMessage(
+273:                             "{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!"
+274:                         );
+275:                         return true;
+276:                 }
+277: 
+278:                 CVehicle* pVeh = nullptr;
+279: 
+280:                 if (pNetGame &&
+281:                     pNetGame->GetVehiclePool() &&
+282:                     pLocalPlayer->m_pPed) {
+283: 
+284:                         CVehiclePool* pPool =
+285:                             pNetGame->GetVehiclePool();
+286: 
+287:                         VEHICLEID vehID =
+288:                             pPool->FindIDFromGtaPtr(
+289:                                 pLocalPlayer->m_pPed->pVehicle
+290:                             );
+291: 
+292:                         if (vehID != INVALID_VEHICLE_ID)
+293:                             pVeh = pPool->GetAt(vehID);
+294:                 }
+295: 
+296:                 if (!pVeh || !pVeh->m_pVehicle) {
+297:                         pUI->chat()->addDebugMessage(
+298:                             "{FF0000}[Client]: Avtomobil tapilmadi!"
+299:                         );
+300:                         return true;
+301:                 }
+302: 
+303:                 std::string a1;
+304:                 ss >> a1;
+305: 
+306:                 std::transform(
+307:                     a1.begin(), a1.end(),
+308:                     a1.begin(), ::tolower
+309:                 );
+310: 
+311:                 if (a1 == "off" || a1 == "0" || a1 == "standart") {
+312:                         CCoronas::ClearHeadlightRGB(pVeh->m_pVehicle);
+313: 
+314:                         pUI->chat()->addDebugMessage(
+315:                             "{00FF00}[Client]: Far rengi standarta qaytarildi."
+316:                         );
+317: 
+318:                         return true;
+319:                 }
+320: 
+321:                 int fr = -1, fg = -1, fb = -1;
+322: 
+323:                 if (a1.size() == 7 && a1[0] == '#') {
+324:                         const unsigned long hv =
+325:                             strtoul(a1.c_str() + 1, nullptr, 16);
+326: 
+327:                         fr = (int)((hv >> 16) & 255);
+328:                         fg = (int)((hv >> 8) & 255);
+329:                         fb = (int)(hv & 255);
+330: 
+331:                 } else if (!a1.empty()) {
+332:                         std::string a2, a3;
+333: 
+334:                         ss >> a2 >> a3;
+335: 
+336:                         if (!a2.empty() && !a3.empty()) {
+337:                                 fr = atoi(a1.c_str());
+338:                                 fg = atoi(a2.c_str());
+339:                                 fb = atoi(a3.c_str());
+340:                         }
+341:                 }
+342: 
+343:                 if (fr < 0 || fg < 0 || fb < 0 ||
+344:                     fr > 255 || fg > 255 || fb > 255) {
+345: 
+346:                         pUI->chat()->addDebugMessage(
+347:                             "{FF0000}[Client]: Istifade: "
+348:                             "/far R G B (0-255) ve ya "
+349:                             "/far #RRGGBB ve ya /far off"
+350:                         );
+351: 
+352:                         return true;
+353:                 }
+354: 
+355:                 CCoronas::SetHeadlightRGB(
+356:                     pVeh->m_pVehicle,
+357:                     (uint8_t)fr,
+358:                     (uint8_t)fg,
+359:                     (uint8_t)fb
+360:                 );
+361: 
+362:                 pUI->chat()->addDebugMessage(
+363:                     "{00FF00}[Client]: Far rengi: #%02X%02X%02X",
+364:                     fr, fg, fb
+365:                 );
+366: 
+367:                 return true;
+368:         }
+369: 
+370:         if (cmd == "/far" || cmd == "/suret" || cmd == "/manevr" || cmd == "/tormoz")
+371:         {
+372:                 CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+373:                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+374:                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+375:                         return true;
+376:                 }
+377: 
+378:                 CVehicle* pVeh = nullptr;
+379:                 if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+380:                         CVehiclePool* pPool = pNetGame->GetVehiclePool();
+381:                         VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+382:                         if (vehID != INVALID_VEHICLE_ID) {
+383:                                 pVeh = pPool->GetAt(vehID);
+384:                         }
+385:                 }
+######## app/src/main/cpp/samp/game/vehicle.cpp : /AddComponent|RemoveComponent|ApplyEngineState|ApplyLightState|SetDoorState|m_wheelScale/ ########
+293-    return 0;
+294-}
+295-
+296:void CVehicle::AddComponent(int iComponentID)
+297-{
+298-    if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
+299-    if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
+300-
+301-    if (!CStreaming::TryLoadModel(iComponentID))
+302-        throw std::runtime_error("Model not loaded");
+303-
+304-    if (!ScriptCommand(&is_component_available, iComponentID)) {
+305-        return;
+306-    }
+307-
+308-    uint32_t dwRet;
+309-    ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
+310-}
+311-
+312-void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
+--
+484-    return GamePool_Vehicle_GetAt(m_dwGTAId) != nullptr;
+485-}
+486-
+487:void CVehicle::SetDoorState(int state)
+488-{
+489-    if (!m_pVehicle) return;
+490-
+491-    if (state)
+492-    {
+493-        m_pVehicle->m_nDoorLock = (eCarLock)2;
+494-        m_bDoorsLocked = true;
+495-    }
+496-    else
+497-    {
+498-        m_pVehicle->m_nDoorLock = (eCarLock)0;
+499-        m_bDoorsLocked = false;
+500-    }
+501-}
+502-
+503-void CVehicle::SetComponentOpenState(int iDoor, int iComponent, float fDoorOpenRatio)
+--
+518-    }
+519-}
+520-
+521:void CVehicle::RemoveComponent(int iComponentID)
+522-{
+523-    if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
+524-        return;
+525-
+526-    ScriptCommand(&remove_component, m_dwGTAId, iComponentID);
+527-}
+528-
+529-void CVehicle::SetZAngle(float fAngle)
+530-{
+531-    if (GamePool_Vehicle_GetAt(m_dwGTAId)) {
+532-        ScriptCommand(&set_car_z_angle, m_dwGTAId, fAngle);
+533-    }
+534-}
+535-
+536-bool CVehicle::IsDriverLocalPlayer()
+537-{
+--
+584-    return false;
+585-}
+586-
+587:void CVehicle::ApplyEngineState(int iState)
+588-{
+589-    if (!m_pVehicle) return;
+590-    m_iEngineState = iState;
+591-    m_pVehicle->m_nVehicleFlags.bEngineOn = iState;
+592-}
+593-
+594:void CVehicle::ApplyLightState(int iState)
+595-{
+596-    if (!m_pVehicle) return;
+597-    m_iLightState = iState;
+598-    m_pVehicle->m_nVehicleFlags.bLightsOn = iState;
+599-}
+600-
+601-void CVehicle::ProcessMarkers()
+602-{
+603-    if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId))
+604-        return;
+605-
+606-    if (m_byteObjectiveVehicle)
+607-    {
+608-        if (!m_bSpecialMarkerEnabled)
+609-        {
+610-            if (m_dwMarkerID)
+######## app/src/main/cpp/samp/game/Entity/CVehicleGTA.h : /m_anUpgrades|m_wheelScale|AddVehicleUpgrade|RemoveVehicleUpgrade|SetupSuspension|m_comp1/ ########
+166-    uint8_t m_nSecondaryColor;			// 1077-1078	;byteColor2
+167-    uint8_t m_colour3;
+168-    uint8_t m_colour4;
+169:    uint8_t m_comp1;
+170-    uint8_t m_comp2;
+171:    short  m_anUpgrades[15];
+172:    float m_wheelScale;
+173-    unsigned short m_nAlarmState;
+174-    short  m_nForcedRandomRouteSeed; // if this is non-zero the random wander gets deterministic
+175-    CPedGTA* pDriver;			// 1120-1124	;driver
+176-    CPedGTA* m_apPassengers[8];	// 1124-1152	;m_apPassengers
+177-    unsigned char  m_nNumPassengers;
+178-    unsigned char  m_nNumGettingIn;
+179-    unsigned char  m_nGettingInFlags;
+180-    unsigned char  m_nGettingOutFlags;
+181-    uint8_t             m_nMaxPassengers;
+182-    uint8_t             m_nWindowsOpenFlags; // initialised, but not used?
+183-    uint8_t             m_nNitroBoosts;
+184-    int8_t              m_vehicleSpecialColIndex;
+185-    uintptr* m_pEntityWeAreOn;
+186-    uintptr* m_pFire;
+187-    float  m_fSteerAngle;
+188-    float  m_f2ndSteerAngle; // used for steering 2nd set of wheels or elevators etc..
+--
+347-    CRideAnimData* GetRideAnimData() { return nullptr; }
+348-    int GetPassengerIndex(const CPedGTA* ped);
+349-
+350:    void AddVehicleUpgrade(int32 modelId);
+351:    void RemoveVehicleUpgrade(int32 upgradeModelIndex);
+352-};
+353-
+354-VALIDATE_SIZE(CVehicleGTA, (VER_x32 ? 0x5B4 : 0x758));
+######## FAYL app/src/main/cpp/samp/game/vehicle.cpp ########
+1: #include "../main.h"
+2: #include "game.h"
+3: #include "../net/netgame.h"
+4: #include "vehicle.h"
+5: #include "Streaming.h"
+6: #include "VehControls.h"
+7: 
+8: #include <cstdlib>
+9: #include <cstring>
+10: #include <unordered_map>
+11: 
+12: extern CGame* pGame;
+13: extern CNetGame* pNetGame;
+14: 
+15: bool bInProcessDetachTrailer = false;
+16: 
+17: // ============================================================================
+18: //  HANDLING (her masin ucun ferdi, realtime)
+19: // ============================================================================
+20: 
+21: // CVehicleGTA daxilinde handling pointerinin offseti
+22: #define VEH_HANDLING_PTR_OFFSET   (VER_x32 ? 0x384 : 0x4B0)
+23: #define VEH_HEADLIGHT_OFFSET      (VER_x32 ? 0x588 : 0x6C0)
+24: 
+25: // tHandlingData daxilinde offsetler (struktura gore: sizeof == 0xE0)
+26: #define HND_SIZE                  0xE0
+27: #define HND_MASS                  0x04   // m_fMass
+28: #define HND_ENGINE_ACCEL          0x7C   // cTransmission::m_fEngineAcceleration
+29: #define HND_MAX_VELOCITY          0x84   // cTransmission::m_fMaxGearVelocity
+30: #define HND_BRAKE_DECEL           0x94   // m_fBrakeDeceleration
+31: #define HND_STEERING_LOCK         0xA0   // m_fSteeringLock
+32: 
+33: struct HandlingEntry
+34: {
+35:     uintptr_t pOriginal; // oyunun orijinal handling pointeri
+36:     uintptr_t pOwn;      // bu masina aid kopya
+37: };
+38: 
+39: // CVehicleGTA* -> bu masinin oz handling kopyasi
+40: static std::unordered_map<uintptr_t, HandlingEntry> g_VehicleHandlings;
+41: 
+42: static inline uintptr_t* GetHandlingSlot(void* pVeh)
+43: {
+44:     return (uintptr_t*)((uintptr_t)pVeh + VEH_HANDLING_PTR_OFFSET);
+45: }
+46: 
+47: // Masinin oz handling kopyasini qaytarir (yoxdursa yaradir). Ugursuzdursa 0.
+48: static uintptr_t GetOrCreateOwnHandling(void* pVeh)
+49: {
+50:     if (!pVeh) return 0;
+51: 
+52:     uintptr_t* pSlot = GetHandlingSlot(pVeh);
+53:     uintptr_t pCurrent = *pSlot;
+54:     if (!pCurrent) return 0;
+55: 
+56:     auto it = g_VehicleHandlings.find((uintptr_t)pVeh);
+57:     if (it != g_VehicleHandlings.end())
+58:     {
+59:         // artiq oz kopyasi var ve masin hele de ondan istifade edir
+60:         if (it->second.pOwn == pCurrent)
+61:             return pCurrent;
+62: 
+63:         // oyun pointeri deyismisdir (masin yeniden yaradilib ve s.) -> kohne kopyani at
+64:         free((void*)it->second.pOwn);
+65:         g_VehicleHandlings.erase(it);
+66:     }
+67: 
+68:     uintptr_t pNew = (uintptr_t)malloc(HND_SIZE);
+69:     if (!pNew) return 0;
+70: 
+71:     memcpy((void*)pNew, (void*)pCurrent, HND_SIZE);
+72: 
+73:     HandlingEntry entry;
+74:     entry.pOriginal = pCurrent;
+75:     entry.pOwn = pNew;
+76:     g_VehicleHandlings[(uintptr_t)pVeh] = entry;
+77: 
+78:     *pSlot = pNew;
+79:     return pNew;
+80: }
+81: 
+82: // Masin silinende orijinal pointeri qaytar ve kopyani azad et
+83: static void ReleaseOwnHandling(void* pVeh)
+84: {
+85:     auto it = g_VehicleHandlings.find((uintptr_t)pVeh);
+86:     if (it == g_VehicleHandlings.end()) return;
+87: 
+88:     if (pVeh)
+89:     {
+90:         uintptr_t* pSlot = GetHandlingSlot(pVeh);
+91:         if (*pSlot == it->second.pOwn)
+92:             *pSlot = it->second.pOriginal;
+93:     }
+94: 
+95:     free((void*)it->second.pOwn);
+96:     g_VehicleHandlings.erase(it);
+97: }
+98: 
+99: static inline uintptr_t GetCurrentHandling(void* pVeh)
+100: {
+101:     if (!pVeh) return 0;
+102:     return *GetHandlingSlot(pVeh);
+103: }
+104: 
+105: // ============================================================================
+106: 
+107: CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, bool bPreloaded, bool bSiren)
+108: {
+109:     RwMatrix matEnt;
+110:     static CVehicleGTA* pCreatedTrain = nullptr;
+111: 
+112:     m_pVehicle = nullptr;
+113:     m_dwGTAId = 0;
+114:     m_pTrailer = nullptr;
+115: 
+116:     if ((iType != TRAIN_PASSENGER_LOCO) &&
+117:         (iType != TRAIN_FREIGHT_LOCO) &&
+118:         (iType != TRAIN_PASSENGER) &&
+119:         (iType != TRAIN_FREIGHT) &&
+120:         (iType != TRAIN_TRAM)) {
+121: 
+122:         if (!CStreaming::TryLoadModel(iType))
+123:             throw std::runtime_error("Model not loaded");
+124: 
+125:         ScriptCommand(&create_car, iType, fX, fY, fZ, &m_dwGTAId);
+126:         ScriptCommand(&set_car_z_angle, m_dwGTAId, fRotation);
+127:         ScriptCommand(&car_gas_tank_explosion, m_dwGTAId, 0);
+128:         ScriptCommand(&set_car_hydraulics, m_dwGTAId, 0);
+129:         ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 0);
+130: 
+131:         m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+132: 
+133:         if (m_pVehicle)
+134:         {
+135:             m_pVehicle->m_nDoorLock = (eCarLock)0;
+136:             m_bIsLocked = false;
+137: 
+138:             m_pVehicle->GetMatrix(&matEnt);
+139:             matEnt.pos.x = fX;
+140:             matEnt.pos.y = fY;
+141:             matEnt.pos.z = fZ;
+142: 
+143:             if (GetVehicleSubtype() != VEHICLE_SUBTYPE_BIKE &&
+144:                 GetVehicleSubtype() != VEHICLE_SUBTYPE_PUSHBIKE)
+145:                 matEnt.pos.z += 0.25f;
+146: 
+147:             m_pVehicle->SetMatrix((CMatrix&)matEnt);
+148:             m_bPreloaded = bPreloaded;
+149:         }
+150:     }
+151:     else if ((iType == TRAIN_PASSENGER_LOCO) ||
+152:         (iType == TRAIN_FREIGHT_LOCO) ||
+153:         (iType == TRAIN_TRAM))
+154:     {
+155:         if (iType == TRAIN_PASSENGER_LOCO) iType = 5;
+156:         else if (iType == TRAIN_FREIGHT_LOCO) iType = 3;
+157:         else if (iType == TRAIN_TRAM) iType = 9;
+158: 
+159:         uint32_t dwDirection = 0;
+160:         if (fRotation > 180.0f) {
+161:             dwDirection = 1;
+162:         }
+163: 
+164:         if (!CStreaming::TryLoadModel(TRAIN_PASSENGER_LOCO))
+165:             throw std::runtime_error("Model not loaded");
+166: 
+167:         if (!CStreaming::TryLoadModel(TRAIN_PASSENGER))
+168:             throw std::runtime_error("Model not loaded");
+169: 
+170:         if (!CStreaming::TryLoadModel(TRAIN_FREIGHT_LOCO))
+171:             throw std::runtime_error("Model not loaded");
+172: 
+173:         if (!CStreaming::TryLoadModel(TRAIN_FREIGHT))
+174:             throw std::runtime_error("Model not loaded");
+175:         if (!CStreaming::TryLoadModel(TRAIN_TRAM))
+176:             throw std::runtime_error("Model not loaded");
+177: 
+178:         ScriptCommand(&create_train, iType, fX, fY, fZ, dwDirection, &m_dwGTAId);
+179:         m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+180: 
+181:         pCreatedTrain = m_pVehicle;
+182: 
+183:         GamePrepareTrain(m_pVehicle);
+184:     }
+185:     else if ((iType == TRAIN_PASSENGER) ||
+186:         (iType == TRAIN_FREIGHT))
+187:     {
+188:         if (!pCreatedTrain)
+189:         {
+190:             m_pVehicle = nullptr;
+191:             return;
+192:         }
+193: 
+194:         m_dwGTAId = GamePool_Vehicle_GetIndex(m_pVehicle);
+195:         pCreatedTrain = m_pVehicle;
+196:     }
+197: 
+198:     m_bIsInvulnerable = false;
+199:     m_byteObjectiveVehicle = 0;
+200:     m_bSpecialMarkerEnabled = false;
+201:     m_dwMarkerID = 0;
+202:     m_iEngineState = -1;
+203:     m_iLightState = -1;
+204:     m_bDoorsLocked = false;
+205:     m_bHaveColor = false;
+206:     m_bHasBeenDriven = false;
+207:     m_dwTimeSinceLastDriven = GetTickCount();
+208:     memset(m_szPlateText, 0, sizeof(m_szPlateText));
+209: }
+210: 
+211: CVehicle::~CVehicle()
+212: {
+213:     m_pVehicle = GamePool_Vehicle_GetAt(m_dwGTAId);
+214: 
+215:     if (m_pVehicle) {
+216:         auto modelId = m_pVehicle->m_nModelIndex;
+217:         if (m_dwMarkerID)
+218:         {
+219:             pGame->DisableMarker(m_dwMarkerID);
+220:             m_dwMarkerID = 0;
+221:         }
+222: 
+223:         RemoveEveryoneFromVehicle();
+224: 
+225:         if (SirenEnabled()) EnableSiren(false);
+226: 
+227:         if (m_pTrailer) {
+228:             DetachTrailer();
+229:             m_pTrailer = nullptr;
+230:         }
+231: 
+232:         // Ferdi handling kopyasini sil, orijinal pointeri geri qaytar
+233:         ReleaseOwnHandling(m_pVehicle);
+234:         VehControls::Forget(m_pVehicle);
+235: 
+236:         int iModel = m_pVehicle->m_nModelIndex;
+237:         if (iModel == 538 || iModel == 537)
+238:         {
+239:             ScriptCommand(&destroy_train, m_dwGTAId);
+240:         }
+241:         else
+242:         {
+243:             ScriptCommand(&destroy_car, m_dwGTAId);
+244:         }
+245: 
+246:         CStreaming::RemoveModelIfNoRefs(modelId);
+247:     }
+248: }
+249: 
+250: bool CVehicle::IsRCVehicle()
+251: {
+252:     if (m_pVehicle)
+253:     {
+254:         if (GamePool_Vehicle_GetAt(m_dwGTAId))
+255:         {
+256:             int iModel = m_pVehicle->m_nModelIndex;
+257:             if (iModel == 441
+258:                 || iModel == 464
+259:                 || iModel == 465
+260:                 || iModel == 594
+261:                 || iModel == 501
+262:                 || iModel == 564) {
+263:                 return true;
+264:             }
+265:         }
+266:     }
+267: 
+268:     return false;
+269: }
+270: 
+271: float CVehicle::GetHealth()
+272: {
+273:     if (m_pVehicle) {
+274:         return m_pVehicle->fHealth;
+275:     }
+276: 
+277:     return 0.0f;
+278: }
+279: 
+280: void CVehicle::SetHealth(float fHealth)
+281: {
+282:     if (m_pVehicle) {
+283:         m_pVehicle->fHealth = fHealth;
+284:     }
+285: }
+286: 
+287: int CVehicle::GetVehicleSubtype()
+288: {
+289:     if (m_pVehicle) {
+290:         return ::GetVehicleSubtype(m_pVehicle);
+291:     }
+292: 
+293:     return 0;
+294: }
+295: 
+296: void CVehicle::AddComponent(int iComponentID)
+297: {
+298:     if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
+299:     if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
+300: 
+301:     if (!CStreaming::TryLoadModel(iComponentID))
+302:         throw std::runtime_error("Model not loaded");
+303: 
+304:     if (!ScriptCommand(&is_component_available, iComponentID)) {
+305:         return;
+306:     }
+307: 
+308:     uint32_t dwRet;
+309:     ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
+310: }
+311: 
+312: void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
+313: {
+314:     if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+315:     {
+316:         if (GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR)
+317:         {
+318:             if (bytePaintJobID <= 3) {
+319:                 if (m_dwGTAId) ScriptCommand(&change_car_skin, m_dwGTAId, bytePaintJobID);
+320:             }
+321:         }
+322:     }
+323: }
+324: 
+325: void CVehicle::SetColor(uint8_t byteColor1, uint8_t byteColor2)
+326: {
+327:     if (m_pVehicle && GamePool_Vehicle_GetAt(m_dwGTAId))
+328:     {
+329:         m_pVehicle->m_nPrimaryColor = byteColor1;
+330:         m_pVehicle->m_nSecondaryColor = byteColor2;
+331:     }
+332: 
+333:     m_byteColor1 = byteColor1;
+334:     m_byteColor2 = byteColor2;
+335:     m_bHaveColor = true;
+336: }
+337: 
+338: void CVehicle::DetachTrailer()
+339: {
+340:     bInProcessDetachTrailer = true;
+341:     if (m_pTrailer)
+342:     {
+343:         if (m_dwGTAId && GamePool_Vehicle_GetAt(m_dwGTAId))
+344:         {
+345:             if (m_pTrailer->m_pVehicle)
+346:                 ScriptCommand(&detach_trailer_from_cab, m_pTrailer->m_dwGTAId, m_dwGTAId);
+347:         }
+348:     }
+349: }
+350: 
+351: void CVehicle::SetTrailer(CVehicle* pTrailer)
+352: {
+353:     m_pTrailer = pTrailer;
+354: }
+355: 
+356: void CVehicle::LinkToInterior(int iInterior)
+357: {
+358:     if (m_pVehicle)
+359:         m_pVehicle->SetInterior(iInterior);
+360: }
+361: 
+362: void CVehicle::SetDamageStatus(uint32_t dwPanelDamageStatus, uint32_t dwDoorDamageStatus, uint8_t byteLightDamageStatus)
+363: {
+364: 
+365: }
+366: 
+367: void CVehicle::SetTireDamageStatus(uint8_t byteTireDamageStatus)
+368: {
+369: 
+370: }
+371: 
+372: void CVehicle::RemoveEveryoneFromVehicle()
+373: {
+374:     if (!m_pVehicle) return;
+375:     if (!GamePool_Vehicle_GetAt(m_dwGTAId)) return;
+376: 
+377:     if (m_pVehicle->pDriver)
+378:     {
+379:         m_pVehicle->pDriver->RemoveFromVehicle();
+380:     }
+381: 
+382:     for (int i = 0; i < 7; i++)
+383:     {
+384:         if (m_pVehicle->m_apPassengers[i] != nullptr)
+385:         {
+386:             m_pVehicle->m_apPassengers[i]->RemoveFromVehicle();
+387:         }
+388:     }
+389: }
+390: 
+391: CVehicle* CVehicle::GetTrailer()
+392: {
+393:     if (m_pVehicle)
+394:     {
+395:         CVehicleGTA* pTrailer = m_pVehicle->m_pTrailer;
+396:         if (pTrailer)
+397:         {
+398:             if (pNetGame)
+399:             {
+400:                 CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
+401:                 if (pVehiclePool) {
+402:                     VEHICLEID TrailerID = pVehiclePool->FindIDFromGtaPtr(pTrailer);
+403:                     if (TrailerID != INVALID_VEHICLE_ID)
+404:                     {
+405:                         return pVehiclePool->GetAt(TrailerID);
+406:                     }
+407:                 }
+408:             }
+409:         }
+410:     }
+411: 
+412:     return nullptr;
+413: }
+414: 
+415: CVehicle* CVehicle::GetTractor()
+416: {
+417:     if (!m_pVehicle) return nullptr;
+418: 
+419:     int iSubType = ::GetVehicleSubtype(m_pVehicle);
+420:     if (iSubType == VEHICLE_SUBTYPE_BIKE
+######## app/src/main/cpp/samp/game/vehicle.cpp : /HndExt_ApplyFileSlot|HndExt_SlotUsed|HndExt_Reset/ ########
+994-    return true;
+995-}
+996-
+997:bool HndExt_Reset(CVehicle* v)
+998-{
+999-    if (!v || !v->m_pVehicle) return false;
+1000-    std::map<CVehicleGTA*, std::vector<uint8_t>>::iterator it = g_HndxOrig.find(v->m_pVehicle);
+1001-    if (it == g_HndxOrig.end() || it->second.size() != HND_SIZE) return false;
+1002-    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
+1003-    if (!p) return false;
+1004-    memcpy((void*)(p + 4), it->second.data() + 4, HND_SIZE - 4);
+1005-    return true;
+1006-}
+1007-
+1008-// ---- slotlar 1..5 : SAMP/handling_slots.txt ----
+1009-#define HNDX_SLOTS 5
+1010-static std::vector<uint8_t> g_HndxSlots[HNDX_SLOTS + 1];
+1011-static bool g_HndxSlotsLoaded = false;
+1012-
+1013-static void HndxSlotsWrite()
+--
+1223-    }
+1224-}
+1225-
+1226:bool HndExt_SlotUsed(int slot)
+1227-{
+1228-    if (slot < 1 || slot > HNDX_SLOTS) return false;
+1229-    static bool used[HNDX_SLOTS + 1] = {};
+1230-    static bool inited = false;
+1231-    static std::chrono::steady_clock::time_point last;
+1232-    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+1233-    if (!inited || std::chrono::duration<float>(now - last).count() > 0.7f) {
+1234-        inited = true;
+1235-        last = now;
+1236-        for (int i = 1; i <= HNDX_SLOTS; ++i) {
+1237-            char nm[32];
+1238-            snprintf(nm, sizeof(nm), "hslot_%d.cfg", i);
+1239-            FILE* f = fopen(HndxPath(nm).c_str(), "rb");
+1240-            used[i] = (f != nullptr);
+1241-            if (f) fclose(f);
+1242-        }
+--
+1244-    return used[slot];
+1245-}
+1246-
+1247:bool HndExt_ApplyFileSlot(CVehicle* v, int slot, std::string& msg)
+1248-{
+1249-    msg.clear();
+1250-    if (!v || !v->m_pVehicle) { msg = "Avtomobil tapД±lmadД±"; return false; }
+1251-    if (slot < 1 || slot > HNDX_SLOTS) { msg = "YanlД±Еџ slot"; return false; }
+1252-
+1253-    char nm[32];
+1254-    snprintf(nm, sizeof(nm), "hslot_%d.cfg", slot);
+1255-    const std::string slotPath = HndxPath(nm);
+1256-    {
+1257-        FILE* f = fopen(slotPath.c_str(), "rb");
+1258-        if (!f) { msg = "Slot boЕџdur вЂ” launcher: Settings в†’ Fayl seГ§"; return false; }
+1259-        fclose(f);
+1260-    }
+1261-
+######## app/src/main/cpp/samp/net/netrpc.cpp : /RPC_ClientMessage|RPC_Chat\b|void ClientMessage|void Chat\(/ ########
+267-	return;
+268-}
+269-// 0.3.7
+270:void Chat(RPCParameters *rpcParams)
+271-{
+272-	Log::traceLastFunc("[RPC-IN] Chat");
+273-
+274-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+275-	int iBitLength = rpcParams->numberOfBitsOfData;
+276-
+277-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+278-	PLAYERID playerId;
+279-	uint8_t byteMsgLen;
+280-	char szMessage[256];
+281-	memset(szMessage, 0, sizeof(szMessage));
+282-
+283-	if (pNetGame->GetGameState() != GAMESTATE_CONNECTED) return;
+284-
+285-	bsData.Read(playerId);
+286-	bsData.Read(byteMsgLen);
+--
+304-	}
+305-}
+306-// 0.3.7
+307:void ClientMessage(RPCParameters *rpcParams)
+308-{
+309-	Log::traceLastFunc("[RPC-IN] Client message ");
+310-
+311-	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
+312-	int iBitLength = rpcParams->numberOfBitsOfData;
+313-
+314-	uint32_t dwColor, dwStrLen;
+315-	char szMsg[256];
+316-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+317-	
+318-	memset(szMsg, 0, 256);
+319-	bsData.Read(dwColor);
+320-	bsData.Read(dwStrLen);
+321-
+322-	Log::addParameter("dwColor", dwColor);
+323-	Log::addParameter("dwStrLen", dwStrLen);
+--
+1511-	// RPC_SvrStats - useless
+1512-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_GameModeRestart, GameModeRestart);				// DONE
+1513-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ConnectionRejected, ConnectionRejected);			// DONE
+1514:	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ClientMessage, ClientMessage);					// DONE
+1515-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldTime, WorldTime);							// DONE
+1516-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_Pickup, Pickup);									// DONE
+1517-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DestroyPickup, DestroyPickup);					// DONE
+1518-	// RPC_DestroyWeaponPickup - unused in 037
+1519-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScmEvent, ScmEvent);
+1520-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_Weather, Weather);								// DONE
+1521-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_SetTimeEx, SetTimeEx);							// DONE
+1522-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ToggleClock, ToggleClock);						// DONE
+1523-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_TimerUpdate, TimerUpdate);
+1524-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldPlayerAdd, WorldPlayerAdd);					// DONE
+1525-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldPlayerDeath, WorldPlayerDeath);
+1526-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldPlayerRemove, WorldPlayerRemove);			// DONE
+1527-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldVehicleAdd, WorldVehicleAdd);				// DONE
+1528-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_WorldVehicleRemove, WorldVehicleRemove);			// DONE
+1529-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_DamageVehicle, DamageVehicle);
+1530-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrSetVehicleTireStatus, SetVehicleTireStatus);
+--
+1533-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ExitVehicle, ExitVehicle);						// DONE
+1534-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ServerJoin, ServerJoin);							// DONE
+1535-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ServerQuit, ServerQuit);							// DONE
+1536:	pRakClient->RegisterAsRemoteProcedureCall(&RPC_Chat, Chat);										// DONE
+1537-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_RequestClass, RequestClass);						// DONE
+1538-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_RequestSpawn, RequestSpawn);						// DONE
+1539-	// RPC_OnPlayerEditAttachedObject
+1540-	// RPC_EditObject
+1541-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_EditAttachedObject, EditAttachedObject);
+1542-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_EditObject, EditObject);
+1543-	// RPC_EnterEditObject
+1544-	// RPC_CancelEdit
+1545-	// RPC_SetTargeting
+1546-	// RPC_ClientCheckResponse
+1547-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ShowActor, ShowActor);							// DONE
+1548-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_HideActor, HideActor);							// DONE
+1549-	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ChatBubble, ChatBubble);
+1550-}
+1551-
+1552-void UnregisterRPCs(RakClientInterface *pRakClient)
+--
+1565-	// RPC_SvrStats - useless
+1566-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_GameModeRestart);
+1567-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ConnectionRejected);
+1568:	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ClientMessage);
+1569-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldTime);
+1570-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_Pickup);
+1571-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_DestroyPickup);
+1572-	// RPC_DestroyWeaponPickup - unused in 037
+1573-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScmEvent);
+1574-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_Weather);
+1575-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_SetTimeEx);
+1576-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ToggleClock);
+1577-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_TimerUpdate);
+1578-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldPlayerAdd);
+1579-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldPlayerDeath);
+1580-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldPlayerRemove);
+1581-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldVehicleAdd);
+1582-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_WorldVehicleRemove);
+1583-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_DamageVehicle);
+1584-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrSetVehicleTireStatus);
+--
+1587-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ExitVehicle);
+1588-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ServerJoin);
+1589-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ServerQuit);
+1590:	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_Chat);
+1591-	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_RequestClass);
+######## app/src/main/cpp/samp/net/vehiclepool.cpp : /bool CVehiclePool::New/ ########
+31: bool CVehiclePool::New(NEW_VEHICLE* new_veh)
+32: {
+33:     if (m_pVehicles[new_veh->VehicleID]) {
+34:         //if (pUI) gui->chat()->addDebugMessage("Warning: vehicle %u was not deleted", new_veh->VehicleID);
+35:         Delete(new_veh->VehicleID);
+36:     }
+37: 
+38:     CVehicle* pNewVehicle = pGame->NewVehicle(
+39:             new_veh->iVehicleType,
+40:             new_veh->vecPos.x,
+41:             new_veh->vecPos.y,
+42:             new_veh->vecPos.z,
+43:             new_veh->fRotation,
+44:             new_veh->byteAddSiren);
+45: 
+46:     m_pVehicles[new_veh->VehicleID] = pNewVehicle;
+47: 
+48:     if (!m_pVehicles[new_veh->VehicleID]) return false;
+49: 
+50:     if (new_veh->byteInteriorColor1 != 0xFF || new_veh->byteInreriorColor2 != 0xFF) {
+51:         m_pVehicles[new_veh->VehicleID]->SetColor(new_veh->byteInteriorColor1, new_veh->byteInreriorColor2);
+52:     }
+53: 
+54:     m_pVehicles[new_veh->VehicleID]->SetHealth(new_veh->fHealth);
+55:     m_pGTAVehicles[new_veh->VehicleID] = m_pVehicles[new_veh->VehicleID]->m_pVehicle;
+56:     m_bVehicleSlotState[new_veh->VehicleID] = true;
+57: 
+58:     m_vecPos[new_veh->VehicleID].x = new_veh->vecPos.x;
+59:     m_vecPos[new_veh->VehicleID].y = new_veh->vecPos.y;
+60:     m_vecPos[new_veh->VehicleID].z = new_veh->vecPos.z;
+61: 
+62:     if (new_veh->byteInterior) {
+63:         m_pVehicles[new_veh->VehicleID]->LinkToInterior(new_veh->byteInterior);
+64:     }
+65: 
+66:     if(new_veh->byteTireDamageStatus)
+67:         m_pVehicles[new_veh->VehicleID]->SetWheelPoppedStatus(new_veh->byteTireDamageStatus);
+68: 
+69:     if(new_veh->dwPanelDamageStatus || new_veh->dwDoorDamageStatus || new_veh->byteLightDamageStatus)
+70:     {
+71:         m_pVehicles[new_veh->VehicleID]->UpdateDamageStatus(
+72:                 new_veh->dwPanelDamageStatus,
+73:                 new_veh->dwDoorDamageStatus,
+74:                 new_veh->byteLightDamageStatus);
+75:     }
+76: 
+77:     // Pos & Rotation
+78:     m_vecSpawnPos[new_veh->VehicleID].x = new_veh->vecPos.x;
+79:     m_vecSpawnPos[new_veh->VehicleID].y = new_veh->vecPos.y;
+80:     m_vecSpawnPos[new_veh->VehicleID].z = new_veh->vecPos.z;
+81:     m_fSpawnRotation[new_veh->VehicleID] = new_veh->fRotation;
+82: 
+83:     m_bIsActive[new_veh->VehicleID] = true;
+84:     m_bIsVehicleRespawned[new_veh->VehicleID] = false;
+85:     m_bIsWasted[new_veh->VehicleID] = false;
+86:     m_dwWastedTime[new_veh->VehicleID] = 0;
+87:     m_bIsMarker[new_veh->VehicleID] = 0;
+88: 
+89:     //CountVehicles();
+90: 
+91:     return true;
+######## app/src/main/cpp/samp/net/netgame.cpp : /RPC_ServerCommand|PLAYER_STATE_DRIVER|SendVehicleSync/ ########
+941-
+942-    bsParams.Write(iStrlen);
+943-    bsParams.Write(szCommand, iStrlen);
+944:    m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+945-}
+946-
+947-void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPosZ, uint8_t byteType, uint32_t dwColor, uint8_t byteStyle)
+948-{
+949-    if (m_dwMapIcon[byteIconID] != 0) {
+950-        DisableMapIcon(byteIconID);
+951-    }
+952-
+953-    m_dwMapIcon[byteIconID] = pGame->CreateRadarMarkerIcon(byteType, fPosX, fPosY, fPosZ, dwColor, byteStyle);
+954-}
+955-
+956-void CNetGame::DisableMapIcon(uint8_t byteIconID)
+957-{
+958-    ScriptCommand(&disable_marker, m_dwMapIcon[byteIconID]);
+959-    m_dwMapIcon[byteIconID] = 0;
+960-}
+320: 
+321:     private native void initializeSAMP();
+322: 
+323:     @Override
+324:     public void onStart() {
+325:         Log.i(TAG, "**** onStart");
+326:         super.onStart();
+327:     }
+328: 
+329:     @Override
+330:     public void onRestart() {
+331:         Log.i(TAG, "**** onRestart");
+332:         super.onRestart();
+333:     }
+334: 
+335:     @Override
+336:     public void onResume() {
+337:         Log.i(TAG, "**** onResume");
+338:         super.onResume();
+339:         //mHeightProvider.init(view);
+340:     }
+341: 
+342:     public native void onEventBackPressed();
+343: 
+344:     @Override
+345:     public void onBackPressed() {
+346:         super.onBackPressed();
+347:         onEventBackPressed();
+348:     }
+349: 
+350:     @Override
+351:     public boolean onKeyDown(int keyCode, KeyEvent event) {
+352:         if(keyCode == KeyEvent.KEYCODE_BACK)
+353:         {
+354:             onEventBackPressed();
+355:         }
+356:         return super.onKeyDown(keyCode, event);
+357:     }
+358: 
+359:     @Override
+360:     public void onPause() {
+361:         Log.i(TAG, "**** onPause");
+362:         super.onPause();
+363:     }
+364: 
+365:     @Override
+366:     public void onStop() {
+367:         Log.i(TAG, "**** onStop");
+368:         super.onStop();
+369:     }
+370: 
+371:     @Override
+372:     public void onDestroy() {
+373:         Log.i(TAG, "**** onDestroy");
+374:         stopBackgroundMusic();
+375:         try {
+376:             YoutubeTablet.release();
+377:         } catch (Throwable t) {
+378:             Log.e(TAG, "YoutubeTablet.release error: " + t);
+379:         }
+380:         super.onDestroy();
+381:     }
+382: 
+383:     @Override
+384:     public void onHeightChanged(int orientation, int height) {
+385:         //mKeyboard.onHeightChanged(height);
+386:         //mDialog.onHeightChanged(height);
+387:     }
+388: }
+######## app/src/main/java/com/samp/mobile/game/GTASA.java : /onActivityResult|startActivityForResult|ACTION_OPEN_DOCUMENT|READ_EXTERNAL/ ########
+71-
+72-    public native void main();
+73-
+74:    public void onActivityResult(int i, int i2, Intent intent)
+75-    {
+76:        super.onActivityResult(i, i2, intent);
+77-    }
+78-
+79-    public void onConfigurationChanged(Configuration configuration)
+80-    {
+81-        super.onConfigurationChanged(configuration);
+82-    }
+83-
+84-    public void onCreate(Bundle bundle)
+85-    {
+86-        if(!once)
+87-        {
+88-            once = true;
+89-        }
+90-
+91-        //if(!SignatureChecker.isSignatureValid(this, getPackageName()))
+92-        //{

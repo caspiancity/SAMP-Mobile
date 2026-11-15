@@ -6,6 +6,11 @@
 #include "playertags.h"
 #include "util/CUtil.h"
 #include "game/World.h"
+#include <cmath>
+#include <cfloat>
+#include <cstring>
+#include <cstdlib>
+#include <algorithm>
 
 extern CGame* pGame;
 extern CNetGame* pNetGame;
@@ -106,10 +111,32 @@ static void DrawAzFlag(ImDrawList* dl, ImVec2 p, float w, float h)
 	dl->AddRect(p, ImVec2(p.x + w, p.y + h), IM_COL32(0, 0, 0, 150));
 }
 
+// ===== PLAYERTAG_V4: muasir nametag =====
+ImFont* g_pNickFont = nullptr;   // imguiwrapper.cpp doldurur (nick.ttf varsa)
+
+static inline float PtClamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+
+static ImU32 PtHealthColor(float f, int a)
+{
+	// 1.0 yasil -> 0.5 sari -> 0.0 qirmizi
+	int r, g, b;
+	if (f > 0.5f) {
+		const float t = (f - 0.5f) * 2.0f;
+		r = (int)(255.0f + (88.0f - 255.0f) * t);
+		g = (int)(204.0f + (214.0f - 204.0f) * t);
+		b = (int)(64.0f + (112.0f - 64.0f) * t);
+	} else {
+		const float t = f * 2.0f;
+		r = (int)(235.0f + (255.0f - 235.0f) * t);
+		g = (int)(77.0f + (204.0f - 77.0f) * t);
+		b = (int)(77.0f + (64.0f - 77.0f) * t);
+	}
+	return IM_COL32(r, g, b, a);
+}
+
 void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick, uint32_t dwColor, float fDist, float fHealth, float fArmour, bool bAfk, bool bMicro)
 {
 	CVector vecTagPos;
-
 	vecTagPos.x = vec->x;
 	vecTagPos.y = vec->y;
 	vecTagPos.z = vec->z;
@@ -121,136 +148,101 @@ void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick
 
 	if (vecOut.z < 1.0f) return;
 
-	// name (id)
-	ImVec2 pos = ImVec2(vecOut.x, vecOut.y);
-	//pos.x -= ImGui::CalcTextSize(szNick).x / 2;
-	//ImGuiEx::AddOutlinedText(ImGui::GetBackgroundDrawList(), pos, __builtin_bswap32(dwColor | (0x000000FF)), true, szNick);
-	// AZFLAG_PATCH9: bayraq + ad, tund yarimseffaf panel icinde
-	{
-		const float fs = UISettings::fontSize() / 2;
-		const ImVec2 ts = renderer->calculateTextSize(szNick, fs);
-		const float flagH = fs * 0.95f;
-		const float flagW = flagH * 1.5f;
-		const float gap = fs * 0.35f;
-		const float pad = fs * 0.3f;
-		const float totalW = flagW + gap + ts.x;
-		const float x0 = pos.x - totalW / 2;
+	// mesafeye gore seffaflig ve olcu
+	const float maxD = (pNetGame && pNetGame->m_pNetSet) ? pNetGame->m_pNetSet->fNameTagDrawDistance : 70.0f;
+	const float fadeFrom = maxD * 0.5f;
+	float fade = 1.0f;
+	if (fDist > fadeFrom) fade = 1.0f - 0.7f * (fDist - fadeFrom) / ((maxD - fadeFrom) > 1.0f ? (maxD - fadeFrom) : 1.0f);
+	fade = PtClamp(fade, 0.3f, 1.0f);
+	const float scale = PtClamp(1.1f - fDist / (maxD * 1.5f), 0.7f, 1.0f);
 
-		ImDrawList* dl = ImGui::GetBackgroundDrawList();
-		dl->AddRectFilled(ImVec2(x0 - pad, pos.y - 1.0f), ImVec2(x0 + totalW + pad, pos.y + ts.y + 1.0f),
-		                  IM_COL32(0, 0, 0, 110), fs * 0.4f);
-		DrawAzFlag(dl, ImVec2(x0, pos.y + (ts.y - flagH) / 2), flagW, flagH);
-		renderer->drawText(ImVec2(x0 + flagW + gap, pos.y), __builtin_bswap32(dwColor | (0x000000FF)),
-		                   std::string(szNick), true, fs);
+	// "Ad (12)" -> "Ad" + "#12"
+	char name[48];
+	char idtxt[16] = "";
+	snprintf(name, sizeof(name), "%s", szNick);
+	{
+		char* p = strrchr(name, '(');
+		if (p && p > name && p[-1] == ' ') {
+			snprintf(idtxt, sizeof(idtxt), "#%d", atoi(p + 1));
+			p[-1] = '\0';
+		}
 	}
 
+	ImFont* font = g_pNickFont ? g_pNickFont : ImGui::GetFont();
+	const float fs  = (UISettings::fontSize() / 2) * scale;
+	const float fs2 = fs * 0.78f;
+	const ImVec2 nsz = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, name);
+	const ImVec2 isz = idtxt[0] ? font->CalcTextSizeA(fs2, FLT_MAX, 0.0f, idtxt) : ImVec2(0.0f, 0.0f);
 
-	// Health bar
+	const float h     = fs * 1.55f;
+	const float pad   = h * 0.38f;
+	const float flagH = fs * 0.8f;
+	const float flagW = flagH * 1.5f;
+	const float gap   = fs * 0.32f;
+	float w = pad + flagW + gap + nsz.x + pad;
+	if (idtxt[0]) w += gap + isz.x;
+
+	const float x0 = vecOut.x - w * 0.5f;
+	const float y0 = vecOut.y;
+
+	ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+	// pill panel
+	dl->AddRectFilled(ImVec2(x0, y0 + 1.5f), ImVec2(x0 + w, y0 + h + 1.5f), IM_COL32(0, 0, 0, (int)(55.0f * fade)), h * 0.5f);
+	dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(16, 18, 26, (int)(165.0f * fade)), h * 0.5f);
+	dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(255, 255, 255, (int)(34.0f * fade)), h * 0.5f);
+
+	// bayraq + ad + id
+	float cx = x0 + pad;
+	DrawAzFlag(dl, ImVec2(cx, y0 + (h - flagH) * 0.5f), flagW, flagH);
+	cx += flagW + gap;
+
+	const ImU32 base = __builtin_bswap32(dwColor | 0x000000FF);
+	const ImU32 nameCol = (base & 0x00FFFFFFu) | ((ImU32)((int)(255.0f * fade)) << 24);
+	const float ty = y0 + (h - nsz.y) * 0.5f;
+	dl->AddText(font, fs, ImVec2(cx + 1.0f, ty + 1.0f), IM_COL32(0, 0, 0, (int)(190.0f * fade)), name);
+	dl->AddText(font, fs, ImVec2(cx, ty), nameCol, name);
+	cx += nsz.x;
+	if (idtxt[0]) {
+		cx += gap;
+		dl->AddText(font, fs2, ImVec2(cx, y0 + (h - isz.y) * 0.5f), IM_COL32(170, 176, 196, (int)(220.0f * fade)), idtxt);
+	}
+
+	// AFK / mikrofon
+	if (bAfk || bMicro) {
+		const float ic = h * 0.9f;
+		if (bAfk && m_pAFKIconTexture)
+			dl->AddImage((ImTextureID)m_pAFKIconTexture->raster, ImVec2(x0 + w + gap, y0 + (h - ic) * 0.5f), ImVec2(x0 + w + gap + ic, y0 + (h + ic) * 0.5f));
+		if (bMicro && m_pMicroIconTexture)
+			dl->AddImage((ImTextureID)m_pMicroIconTexture->raster, ImVec2(x0 - gap - ic, y0 + (h - ic) * 0.5f), ImVec2(x0 - gap, y0 + (h + ic) * 0.5f));
+	}
+
+	// can / zireh
 	if (fHealth < 0.0f) return;
-	vecOut.x = (float)((int)vecOut.x);
-	vecOut.y = (float)((int)vecOut.y);
 
-	ImColor HealthBarBDRColor = ImColor(0x00, 0x64, 0x95, 0xED);
-	ImColor HealthBarColor = ImColor(0xB9, 0x22, 0x28, 0xFF);
-	ImColor HealthBarBGColor = ImColor(0x4B, 0x0B, 0x14, 0xFF);
+	float bh = UISettings::nametagBarSize().y * 0.62f * scale;
+	if (bh < 3.0f) bh = 3.0f;
+	float bw = PtClamp(w * 0.8f, UISettings::nametagBarSize().x, w);
+	const float bx = vecOut.x - bw * 0.5f;
+	float by = y0 + h + fs * 0.28f;
 
-	//float fWidth = (UISettings::fontSize() / 2) * 3;
-	//float fHeight = (UISettings::fontSize() / 2) * 0.f;
-	//float fOutline = 2.0f;
-
-	float fWidth = UISettings::nametagBarSize().x;
-	float fHeight = UISettings::nametagBarSize().y;
-	float fOutline = UISettings::outlineSize();
-
-
-	ImVec2 HealthBarBDR1;
-	ImVec2 HealthBarBDR2;
-	ImVec2 HealthBarBG1;
-	ImVec2 HealthBarBG2;
-	ImVec2 HealthBar1;
-	ImVec2 HealthBar2;
-
-	// top left
-	HealthBarBDR1.x = vecOut.x - ((fWidth / 2) + fOutline);
-	HealthBarBDR1.y = vecOut.y + ((UISettings::fontSize() / 2) * 1.2f);
-	// bottom right
-	HealthBarBDR2.x = vecOut.x + ((fWidth / 2) + fOutline);
-	HealthBarBDR2.y = vecOut.y + ((UISettings::fontSize() / 2) * 1.2f) + fHeight;
-
-	// top left
-	HealthBarBG1.x = HealthBarBDR1.x + fOutline;
-	HealthBarBG1.y = HealthBarBDR1.y + fOutline;
-	// bottom right
-	HealthBarBG2.x = HealthBarBDR2.x - fOutline;
-	HealthBarBG2.y = HealthBarBDR2.y - fOutline;
-	// top left
-	HealthBar1.x = HealthBarBG1.x;
-	HealthBar1.y = HealthBarBG1.y;
-	// bottom right
-	HealthBar2.y = HealthBarBG2.y;
-
-	if (fHealth > 100.0f)
-		fHealth = 100.0f;
-
-	fHealth *= fWidth / 100.0f;
-	fHealth -= (fWidth / 2);
-	HealthBar2.x = vecOut.x + fHealth;
-
-	float offsetY = 13.0f;//fHeight / 3;
-
-	if (fArmour > 0.0f)
+	auto bar = [&](float y, float frac, ImU32 fill)
 	{
-		HealthBarBDR1.y += offsetY;//13.0f;
-		HealthBarBDR2.y += offsetY;//13.0f;
-		HealthBarBG1.y += offsetY;//13.0f;
-		HealthBarBG2.y += offsetY;//13.0f;
-		HealthBar1.y += offsetY;//13.0f;
-		HealthBar2.y += offsetY;//13.0f;
+		dl->AddRectFilled(ImVec2(bx - 1.0f, y - 1.0f), ImVec2(bx + bw + 1.0f, y + bh + 1.0f), IM_COL32(0, 0, 0, (int)(150.0f * fade)), bh);
+		dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + bw, y + bh), IM_COL32(255, 255, 255, (int)(28.0f * fade)), bh * 0.5f);
+		if (frac > 0.0f) {
+			float fw = bw * frac;
+			if (fw < bh) fw = bh;
+			dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + fw, y + bh), fill, bh * 0.5f);
+		}
+	};
+
+	if (fArmour > 0.0f) {
+		bar(by, PtClamp(fArmour / 100.0f, 0.0f, 1.0f), IM_COL32(205, 214, 236, (int)(255.0f * fade)));
+		by += bh + 2.5f;
 	}
-
-	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
-	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
-	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
-
-	// Armour Bar
-	if (fArmour > 0.0f)
 	{
-		HealthBarBDR1.y -= offsetY;//13.0f;
-		HealthBarBDR2.y -= offsetY;//13.0f;
-		HealthBarBG1.y -= offsetY;//13.0f;
-		HealthBarBG2.y -= offsetY;//13.0f;
-		HealthBar1.y -= offsetY;//13.0f;
-		HealthBar2.y -= offsetY;//13.0f;
-
-		HealthBarColor = ImColor(200, 200, 200, 255);
-		HealthBarBGColor = ImColor(40, 40, 40, 255);
-
-		if (fArmour > 100.0f)
-			fArmour = 100.0f;
-
-		fArmour *= fWidth / 100.0f;
-		fArmour -= (fWidth / 2);
-		HealthBar2.x = vecOut.x + fArmour;
-
-		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
-		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
-		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
-	}
-
-	ImVec2 a = ImVec2(HealthBarBDR1.x - ((UISettings::fontSize() / 2) * 1.4f), HealthBarBDR1.y);
-	ImVec2 b = ImVec2(a.x + ((UISettings::fontSize() / 2) * 1.3f), a.y + ((UISettings::fontSize() / 2) * 1.3f));
-
-	// micro icon
-	if (bMicro)
-	{
-		ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)m_pMicroIconTexture->raster, a, b);
-	}
-
-	// AFK icon
-	if (bAfk)
-	{
-		ImVec2 a = ImVec2(HealthBarBDR1.x - ((UISettings::fontSize() / 2) * 1.4f), HealthBarBDR1.y);
-		ImVec2 b = ImVec2(a.x + ((UISettings::fontSize() / 2) * 1.3f), a.y + ((UISettings::fontSize() / 2) * 1.3f));
-		ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)m_pAFKIconTexture->raster, a, b);
+		const float hp = PtClamp(fHealth / 100.0f, 0.0f, 1.0f);
+		bar(by, hp, PtHealthColor(hp, (int)(255.0f * fade)));
 	}
 }

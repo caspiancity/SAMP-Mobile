@@ -1,0 +1,3461 @@
+######## app/src/main/cpp/samp/gui/gui.cpp : /^namespace mm2/ ########
+1902: namespace mm2
+1903: {
+1904:     static char  s_msg[112] = "";
+1905:     static float s_msgT = 0.0f;
+1906: 
+1907:     static void SetMsg(const std::string& m)
+1908:     {
+1909:         snprintf(s_msg, sizeof(s_msg), "%s", m.c_str());
+1910:         s_msgT = 1.0f;
+1911:     }
+1912: 
+1913:     static CVehicle* LocalVeh()
+1914:     {
+1915:         CPlayerPed* p = pGame ? pGame->FindPlayerPed() : nullptr;
+1916:         if (!p || !p->IsInVehicle() || !p->m_pPed) return nullptr;
+1917:         if (!pNetGame || !pNetGame->GetVehiclePool()) return nullptr;
+1918:         CVehiclePool* pool = pNetGame->GetVehiclePool();
+1919:         const VEHICLEID id = pool->FindIDFromGtaPtr(p->m_pPed->pVehicle);
+1920:         if (id == INVALID_VEHICLE_ID) return nullptr;
+1921:         CVehicle* v = pool->GetAt(id);
+1922:         return (v && v->m_pVehicle) ? v : nullptr;
+1923:     }
+1924: 
+1925:     struct HF { const char* key; const char* label; const char* fmt; };
+1926:     static const HF kHF[] = {
+1927:         { "mass",          "√á…ôki",                          "%.1f" },
+1928:         { "turnmass",      "Fƒ±rlanma k√ºtl…ôsi",              "%.1f" },
+1929:         { "drag",          "Hava m√ºqavim…ôti",               "%.4f" },
+1930:         { "comx",          "Aƒüƒ±rlƒ±q m…ôrk…ôzi X",             "%.3f" },
+1931:         { "comy",          "Aƒüƒ±rlƒ±q m…ôrk…ôzi Y",             "%.3f" },
+1932:         { "comz",          "Aƒüƒ±rlƒ±q m…ôrk…ôzi Z",             "%.3f" },
+1933:         { "buoyancy",      "√úzm…ô q√ºvv…ôsi",                  "%.3f" },
+1934:         { "traction",      "Yol tutu≈ü",                     "%.3f" },
+1935:         { "accel",         "T…ôcil",                         "%.4f" },
+1936:         { "maxspeed",      "Maksimum s√ºr…ôt",                "%.4f" },
+1937:         { "brake",         "Tormoz g√ºc√º",                   "%.4f" },
+1938:         { "brakebias",     "Tormoz balansƒ± (√∂n/arxa)",      "%.3f" },
+1939:         { "steering",      "S√ºkan bucaƒüƒ±",                  "%.3f" },
+1940:         { "tractionloss",  "S√ºr√º≈üm…ô itkisi",                "%.3f" },
+1941:         { "tractionbias",  "Yol tutu≈ü balansƒ± (√∂n/arxa)",   "%.3f" },
+1942:         { "suspforce",     "S√ºspansiyon g√ºc√º",              "%.3f" },
+1943:         { "suspdamp",      "S√ºspansiyon amortizatoru",      "%.3f" },
+1944:         { "suspdampspeed", "S√ºspansiyon s√ºr…ôt s√∂nm…ôsi",     "%.3f" },
+1945:         { "suspupper",     "S√ºspansiyon yuxarƒ± h…ôdd",       "%.3f" },
+1946:         { "susplower",     "S√ºspansiyon a≈üaƒüƒ± h…ôdd",        "%.3f" },
+1947:         { "suspbias",      "S√ºspansiyon balansƒ± (√∂n/arxa)", "%.3f" },
+1948:         { "suspantidive",  "Anti-dive (burun enm…ôsi)",      "%.3f" },
+1949:         { "collision",     "Toqqu≈üma z…ôr…ôri",               "%.3f" },
+1950:         { "seatoffset",    "Oturacaq m…ôsaf…ôsi",             "%.3f" },
+1951:     };
+1952:     static const int kHFN = (int)(sizeof(kHF) / sizeof(kHF[0]));
+1953: 
+1954:     struct EditCaller : public Widget
+1955:     {
+1956:         std::string key;
+1957:         std::string label;
+1958:         virtual void keyboardEvent(const std::string& input) override
+1959:         {
+1960:             CVehicle* v = LocalVeh();
+1961:             if (!v || key.empty()) { SetMsg("Avtomobil tapƒ±lmadƒ±"); return; }
+1962:             std::string t = input;
+1963:             for (size_t i = 0; i < t.size(); ++i) if (t[i] == ',') t[i] = '.';
+1964:             char* end = nullptr;
+1965:             const float f = strtof(t.c_str(), &end);
+1966:             if (end == t.c_str()) { SetMsg("Yanlƒ±≈ü d…ôy…ôr"); return; }
+1967:             if (HndExt_Set(v, key.c_str(), f)) SetMsg(label + " = " + t);
+1968:             else SetMsg("D…ôy…ôr q…ôbul edilm…ôdi");
+1969:         }
+1970:     };
+1971:     static EditCaller* s_caller = nullptr;
+1972: 
+1973:     // MMV3_LAYOUT: panelin olcusu/yeri SAMP/mm_layout.txt faylinda saxlanir
+1974:     static void LayoutLoad(float& z, float& cx, float& cy)
+1975:     {
+1976:         if (!g_pszStorage) return;
+1977:         char p[0x100];
+1978:         snprintf(p, sizeof(p), "%sSAMP/mm_layout.txt", g_pszStorage);
+1979:         FILE* f = fopen(p, "r");
+1980:         if (!f) return;
+1981:         float a = 1.0f, b = -1.0f, c = -1.0f;
+1982:         if (fscanf(f, "%f %f %f", &a, &b, &c) == 3 && a > 0.2f && a < 3.0f) { z = a; cx = b; cy = c; }
+1983:         fclose(f);
+1984:     }
+1985: 
+1986:     static void LayoutSave(float z, float cx, float cy)
+1987:     {
+1988:         if (!g_pszStorage) return;
+1989:         char p[0x100];
+1990:         snprintf(p, sizeof(p), "%sSAMP/mm_layout.txt", g_pszStorage);
+1991:         FILE* f = fopen(p, "w");
+1992:         if (!f) return;
+1993:         fprintf(f, "%.4f %.1f %.1f\n", z, cx, cy);
+1994:         fclose(f);
+1995:     }
+1996: 
+1997:     static float EaseOutBack(float t)
+1998:     {
+1999:         const float c1 = 1.0f, c3 = c1 + 1.0f;
+2000:         const float p = t - 1.0f;
+2001:         return 1.0f + c3 * p * p * p + c1 * p * p;
+2002:     }
+2003: 
+2004:     static void Hair(float x0, float x1, float y, int a = 22)
+2005:     {
+2006:         mm::s_dl->AddLine(ImVec2(x0, y), ImVec2(x1, y), mm::Col(255, 255, 255, a), mm::S(1.0f));
+2007:     }
+2008: 
+2009:     // sheshe (frosted glass) panel
+2010:     static void Glass(const mm::Rc& P, float rad)
+2011:     {
+2012:         using namespace mm;
+2013:         for (int k = 0; k < 4; ++k) {
+2014:             const float e = S(3.0f + k * 6.0f);
+2015:             Fill(Rc{ P.x - e, P.y - e + S(12.0f), P.w + 2.0f * e, P.h + 2.0f * e }, Col(0, 0, 0, 30 - k * 7), rad + e);
+2016:         }
+2017:         Fill(P, Col(26, 29, 40, 218), rad);
+2018:         s_dl->AddRectFilledMultiColor(ImVec2(P.x + rad * 0.4f, P.y + S(1.0f)), ImVec2(P.x + P.w - rad * 0.4f, P.y + P.h * 0.34f),
+2019:                                       Col(255, 255, 255, 30), Col(255, 255, 255, 30), Col(255, 255, 255, 0), Col(255, 255, 255, 0));
+2020:         Stroke(P, Col(255, 255, 255, 52), rad, S(1.0f));
+2021:     }
+2022: 
+2023:     static void EmptyState(const mm::Rc& r, const char* title, const char* sub)
+2024:     {
+2025:         using namespace mm;
+2026:         Fill(r, Col(255, 255, 255, 12), S(18.0f));
+2027:         Dot(r.x + r.w * 0.5f, r.y + r.h * 0.5f - S(34.0f), S(26.0f), Col(255, 255, 255, 18));
+2028:         TxtC(S(26.0f), Rc{ r.x + r.w * 0.5f - S(26.0f), r.y + r.h * 0.5f - S(60.0f), S(52.0f), S(52.0f) }, Col(160, 168, 190), "!", true);
+2029:         TxtC(S(21.0f), Rc{ r.x, r.y + r.h * 0.5f + S(2.0f), r.w, S(28.0f) }, Col(236, 240, 250), title, true);
+2030:         TxtC(S(14.0f), Rc{ r.x, r.y + r.h * 0.5f + S(32.0f), r.w, S(20.0f) }, Col(130, 138, 160), sub, false);
+2031:     }
+2032: 
+2033:     // iOS acari
+2034:     static bool SwitchRow(int idx, const mm::Rc& row, const char* label, const char* sub, bool on, float dt, bool canInput)
+2035:     {
+2036:         using namespace mm;
+2037:         const int id = ID_TOGGLE + idx;
+2038:         const bool tapped = Tap(id, row, canInput);
+2039:         const float p = Prs(id, dt);
+2040:         s_sw[idx] = Smooth(s_sw[idx], on ? 1.0f : 0.0f, dt, 16.0f);
+2041:         const float sw = s_sw[idx];
+2042: 
+2043:         if (p > 0.02f) Fill(row, Col(255, 255, 255, (int)(16.0f * p)), 0.0f);
+2044:         Txt(S(19.0f), row.x + S(18.0f), row.y + S(8.0f), Col(238, 241, 250), label);
+2045:         Txt(S(13.0f), row.x + S(18.0f), row.y + S(32.0f), Col(128, 136, 158), sub);
+2046: 
+2047:         const Rc tr{ row.x + row.w - S(18.0f) - S(54.0f), row.y + (row.h - S(32.0f)) * 0.5f, S(54.0f), S(32.0f) };
+2048:         Fill(tr, Col((int)Lerp(72.0f, 52.0f, sw), (int)Lerp(76.0f, 199.0f, sw), (int)Lerp(92.0f, 89.0f, sw), 255), S(16.0f));
+2049:         const float kx = tr.x + S(16.0f) + sw * (tr.w - S(32.0f));
+2050:         Dot(kx, tr.y + tr.h * 0.5f + S(1.5f), S(14.0f), Col(0, 0, 0, 50));
+2051:         Dot(kx, tr.y + tr.h * 0.5f, S(13.0f) + S(1.0f) * p, Col(255, 255, 255, 255));
+2052:         return tapped;
+2053:     }
+2054: 
+2055:     static bool SmallBtn(int id, const mm::Rc& r, const char* label, float dt, bool canInput, bool primary)
+2056:     {
+2057:         using namespace mm;
+2058:         const bool hit = Tap(id, r, canInput);
+2059:         const float p = Prs(id, dt);
+2060:         const Rc d = Shrink(r, S(1.5f) * p);
+2061:         Fill(d, primary ? Accent(0.0f, 200 + (int)(40.0f * p)) : Col(255, 255, 255, 20 + (int)(30.0f * p)), S(12.0f));
+2062:         TxtC(S(15.0f), d, Col(244, 247, 253), label, true);
+2063:         return hit;
+2064:     }
+2065: }
+2066: 
+2067: void RenderHandlingDialog()
+2068: {
+2069:     using namespace mm;
+2070: 
+2071:     static bool          s_wasOpen = false;
+2072:     static CVehicleGTA*  s_lastVeh = nullptr;
+2073:     static bool          s_eng = false, s_lig = false, s_lock = false;
+2074:     static uint8_t       s_sig = 0;
+2075:     static float         s_t = 0.0f;
+2076:     static int           s_tab = 0;
+2077:     static float         s_pill = 0.0f, s_tabAnim = 1.0f, s_tabDir = 1.0f;
+2078:     static bool          s_outDown = false;
+2079:     static int           s_slot = 1;
+2080:     // MMV3_LAYOUT
+2081:     static float         s_zoom = 1.0f, s_cx = -1.0f, s_cy = -1.0f;
+2082:     static float         s_dragDx = 0.0f, s_dragDy = 0.0f, s_rsOff = 0.0f, s_rsLeft = 0.0f, s_rsTop = 0.0f;
+2083:     static bool          s_layLoaded = false;
+2084:     static float         s_hOff = 0.0f, s_hVel = 0.0f, s_hLastY = 0.0f, s_hDownY = 0.0f;
+2085:     static bool          s_hDrag = false, s_hMoved = false;
+2086:     static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
+2087: 
+2088:     const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+2089:     float dt = std::chrono::duration<float>(now - s_last).count();
+2090:     s_last = now;
+2091:     dt = Clamp(dt, 0.0f, 0.05f);
+2092: 
+2093:     const bool want = g_bShowHandlingDlg;
+2094:     if (!want && s_t <= 0.0f) {
+2095:         s_wasOpen = false;
+2096:         s_hndRectValid = false;
+2097:         s_act = 0;
+2098:         s_hDrag = false;
+2099:         return;
+2100:     }
+2101: 
+2102:     CVehicle*    pVeh   = nullptr;
+2103:     CVehicleGTA* gtaVeh = nullptr;
+2104:     bool         noVeh  = true;
+2105:     if (want) {
+2106:         pVeh = mm2::LocalVeh();
+2107:         noVeh = (pVeh == nullptr);
+2108:         if (pVeh) {
+2109:             gtaVeh = pVeh->m_pVehicle;
+2110:             if (!s_wasOpen || gtaVeh != s_lastVeh) { s_lastVeh = gtaVeh; s_hOff = 0.0f; s_hVel = 0.0f; }
+2111:             s_eng = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+2112:             s_lig = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+2113:             { const int lk = (int)gtaVeh->m_nDoorLock; s_lock = (lk == 2 || lk == 3); }
+2114:             s_sig = VehControls::GetSignal(gtaVeh);
+2115:         }
+2116:         s_wasOpen = true;
+2117:     }
+2118: 
+2119:     ImGuiIO& io = ImGui::GetIO();
+2120:     const ImVec2 disp = io.DisplaySize;
+2121: 
+2122:     // klaviatura aciq olanda (deyer yazilir) menyu gizlenir, yuxarida kicik yazi qalir
+2123:     const bool kbOpen = pUI && pUI->keyboard() && pUI->keyboard()->visible();
+2124:     if (kbOpen && want) {
+2125:         s_hndRectValid = false;
+2126:         s_act = 0;
+2127:         s_dl = ImGui::GetForegroundDrawList();
+2128:         s_A = 1.0f;
+2129:         s_U = std::min(disp.y / 720.0f, disp.x / 880.0f);
+2130:         const Rc b{ disp.x * 0.5f - S(220.0f), S(14.0f), S(440.0f), S(44.0f) };
+2131:         Fill(b, Col(26, 29, 40, 236), S(22.0f));
+2132:         Stroke(b, Col(255, 255, 255, 46), S(22.0f), S(1.0f));
+2133:         TxtC(S(16.0f), b, Col(238, 241, 250), mm2::s_caller ? (mm2::s_caller->label + " ‚Äî yeni d…ôy…ôri yaz").c_str() : "Yeni d…ôy…ôri yaz", true);
+2134:         return;
+2135:     }
+2136: 
+2137:     s_t = Clamp(s_t + (want ? dt / 0.38f : -dt / 0.18f), 0.0f, 1.0f);
+2138:     const float open = want ? mm2::EaseOutBack(s_t) : EaseOutCubic(s_t);
+2139:     s_A = Clamp(s_t * 2.2f, 0.0f, 1.0f);
+2140:     s_tabAnim = Clamp(s_tabAnim + dt / 0.26f, 0.0f, 1.0f);
+2141:     mm2::s_msgT = Clamp(mm2::s_msgT - dt / 3.5f, 0.0f, 1.0f);
+2142: 
+2143:     const float W0 = 880.0f, H0 = 560.0f;      // MMV3_LAYOUT
+2144:     const float uBase = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+2145:     const float uFit  = std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0);
+2146:     if (!s_layLoaded) { s_layLoaded = true; mm2::LayoutLoad(s_zoom, s_cx, s_cy); }
+2147:     s_zoom = Clamp(s_zoom, 0.45f, 1.6f);
+2148: 
+2149:     // basliqdan surusdur / sag-alt kunceden olcunu deyis (evvelki kadrin sahesine gore)
+2150:     if (want && s_t > 0.8f && s_hndRectValid) {
+2151:         const MMTouch& mt = g_mmTouch;
+2152:         const Rc pp{ s_hndPos.x, s_hndPos.y, s_hndSize.x, s_hndSize.y };
+2153:         const Rc hdr{ pp.x, pp.y, pp.w - S(64.0f), S(58.0f) };
+2154:         const Rc hdl{ pp.x + pp.w - S(44.0f), pp.y + pp.h - S(44.0f), S(44.0f), S(44.0f) };
+2155:         if (mt.pressed && s_act == 0) {
+2156:             if (In(hdl, mt.x, mt.y)) {
+2157:                 s_act = ID_ZOOMP; s_rsOff = (pp.x + pp.w) - mt.x; s_rsLeft = pp.x; s_rsTop = pp.y;
+2158:             } else if (In(hdr, mt.x, mt.y)) {
+2159:                 s_act = ID_DRAG; s_dragDx = mt.x - s_cx; s_dragDy = mt.y - s_cy;
+2160:             }
+2161:         }
+2162:         if (mt.down && s_act == ID_DRAG) {
+2163:             s_cx = mt.x - s_dragDx;
+2164:             s_cy = mt.y - s_dragDy;
+2165:         } else if (mt.down && s_act == ID_ZOOMP) {
+2166:             const float wantU = (mt.x + s_rsOff - s_rsLeft) / W0;
+2167:             s_zoom = Clamp(wantU / uBase, 0.45f, 1.6f);
+2168:             const float nu = std::min(uBase * s_zoom, uFit);
+2169:             s_cx = s_rsLeft + W0 * nu * 0.5f;
+2170:             s_cy = s_rsTop  + H0 * nu * 0.5f;
+2171:         }
+2172:         if (mt.released && (s_act == ID_DRAG || s_act == ID_ZOOMP))
+2173:             mm2::LayoutSave(s_zoom, s_cx, s_cy);
+2174:     }
+2175: 
+2176:     const float u0 = std::min(uBase * s_zoom, uFit);
+2177:     s_U = u0 * (0.90f + 0.10f * open);
+2178:     if (s_cx < 0.0f || s_cy < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
+2179:     {
+2180:         const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+2181:         s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+2182:         s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+2183:     }
+2184: 
+2185:     const Rc P{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U };
+2186:     const bool canInput = want && s_t > 0.8f;
+2187:     const MMTouch& tch = g_mmTouch;
+2188: 
+2189:     s_hndRectValid = (s_t > 0.05f);
+2190:     s_hndPos  = ImVec2(P.x, P.y);
+2191:     s_hndSize = ImVec2(P.w, P.h);
+2192:     s_dl = ImGui::GetForegroundDrawList();
+2193: 
+2194:     // fonu qaraldan perde
+2195:     s_dl->AddRectFilled(ImVec2(0.0f, 0.0f), disp, IM_COL32(0, 0, 0, (int)(115.0f * Clamp(s_t, 0.0f, 1.0f))));
+2196: 
+2197:     // paneldan kenara toxunus = bagla
+2198:     if (canInput) {
+2199:         if (tch.pressed && s_act == 0 && !In(P, tch.x, tch.y)) s_outDown = true;
+2200:         if (tch.released) {
+2201:             if (s_outDown && !In(P, tch.x, tch.y)) g_bShowHandlingDlg = false;
+2202:             s_outDown = false;
+2203:         }
+2204:     }
+2205: 
+2206:     mm2::Glass(P, S(28.0f));
+2207:     // MMV3_LAYOUT: olcu tutacagi (sag-alt)
+2208:     {
+2209:         const float gx = P.x + P.w - S(14.0f), gy = P.y + P.h - S(14.0f);
+2210:         for (int k = 1; k <= 3; ++k) {
+2211:             const float d = S(4.5f) * (float)k;
+2212:             s_dl->AddLine(ImVec2(gx - d, gy), ImVec2(gx, gy - d), Col(255, 255, 255, 80), S(1.6f));
+2213:         }
+2214:     }
+2215: 
+2216:     // grabber + basliq + bagla
+2217:     Fill(Rc{ P.x + P.w * 0.5f - S(22.0f), P.y + S(9.0f), S(44.0f), S(5.0f) }, Col(255, 255, 255, 54), S(2.5f));
+2218:     TxtC(S(22.0f), Rc{ P.x, P.y + S(18.0f), P.w, S(34.0f) }, Col(244, 247, 253), "Ma≈üƒ±n menyusu", true);
+2219:     {
+2220:         const Rc cl{ P.x + P.w - S(54.0f), P.y + S(16.0f), S(36.0f), S(36.0f) };
+2221:         if (Tap(ID_CLOSE, cl, canInput)) g_bShowHandlingDlg = false;
+2222:         const float p = Prs(ID_CLOSE, dt);
+2223:         Dot(cl.x + cl.w * 0.5f, cl.y + cl.h * 0.5f, S(15.0f) - S(1.5f) * p, Col(255, 255, 255, 26 + (int)(30.0f * p)));
+2224:         const float cx = cl.x + cl.w * 0.5f, cy = cl.y + cl.h * 0.5f, k = S(5.0f);
+2225:         s_dl->AddLine(ImVec2(cx - k, cy - k), ImVec2(cx + k, cy + k), Col(236, 240, 250, 230), S(2.0f));
+2226:         s_dl->AddLine(ImVec2(cx - k, cy + k), ImVec2(cx + k, cy - k), Col(236, 240, 250, 230), S(2.0f));
+2227:     }
+2228: 
+2229:     // segmentli idareetme (iOS)
+2230:     static const char* kTabs[4] = { "Ma≈üƒ±n", "Handling", "Far", "Spidometr" };
+2231:     {
+2232:         const Rc seg{ P.x + S(24.0f), P.y + S(66.0f), P.w - S(48.0f), S(40.0f) };
+2233:         Fill(seg, Col(255, 255, 255, 18), S(13.0f));
+2234:         const float tw = seg.w / 4.0f;
+2235:         s_pill = Smooth(s_pill, (float)s_tab, dt, 16.0f);
+2236:         Fill(Rc{ seg.x + S(3.0f) + s_pill * tw, seg.y + S(3.0f), tw - S(6.0f), seg.h - S(6.0f) }, Col(255, 255, 255, 50), S(10.5f));
+2237:         for (int i = 0; i < 4; ++i) {
+2238:             const Rc ti{ seg.x + i * tw, seg.y, tw, seg.h };
+2239:             if (Tap(ID_NAV0 + i, ti, canInput) && s_tab != i) {
+2240:                 s_tabDir = (i > s_tab) ? 1.0f : -1.0f;
+2241:                 s_tab = i;
+2242:                 s_tabAnim = 0.0f;
+2243:             }
+2244:             Prs(ID_NAV0 + i, dt);
+2245:             const bool on = (s_tab == i);
+2246:             TxtC(S(16.0f), ti, on ? Col(248, 250, 255) : Col(150, 158, 180), kTabs[i], on);
+2247:         }
+2248:     }
+2249: 
+2250:     // ---- sehife mezmunu ----
+2251:     const float saveA = s_A;
+2252:     const float pe = EaseOutCubic(s_tabAnim);
+2253:     s_A = saveA * pe;
+2254:     const float cx0 = P.x + S(24.0f) + (1.0f - pe) * S(26.0f) * s_tabDir;
+2255:     const float cw  = P.w - S(48.0f);
+2256:     const float y0  = P.y + S(124.0f);
+2257:     const bool  inputPage = canInput && s_tabAnim > 0.6f;
+2258: 
+2259:     if (s_tab == 0)                                         // MASIN
+2260:     {
+2261:         if (noVeh) {
+2262:             mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobild…ô deyilsiniz", "Bu b√∂lm…ô yalnƒ±z ma≈üƒ±nƒ±n i√ßind…ô i≈ül…ôyir");
+2263:         } else {
+2264:             const Rc grp{ cx0, y0, cw, S(168.0f) };
+2265:             Fill(grp, Col(255, 255, 255, 15), S(18.0f));
+2266:             Stroke(grp, Col(255, 255, 255, 22), S(18.0f), S(1.0f));
+2267:             const char* labs[3] = { "M√ºh…ôrrik", "Fara", "Qapƒ±lar" };
+2268:             const char* subs[3] = { s_eng ? "ƒ∞≈ül…ôyir" : "S√∂nd√ºr√ºl√ºb", s_lig ? "Yanƒ±r" : "S√∂n√ºl√º", s_lock ? "Kilidli" : "A√ßƒ±q" };
+2269:             const bool  st[3]   = { s_eng, s_lig, s_lock };
+2270:             for (int i = 0; i < 3; ++i) {
+2271:                 const Rc row{ cx0, y0 + S(56.0f) * i, cw, S(56.0f) };
+2272:                 if (i > 0) mm2::Hair(row.x + S(18.0f), row.x + row.w, row.y);
+2273:                 if (mm2::SwitchRow(i, row, labs[i], subs[i], st[i], dt, inputPage) && pVeh) {
+2274:                     if (i == 0)      pVeh->ApplyEngineState(s_eng ? 0 : 1);
+2275:                     else if (i == 1) pVeh->ApplyLightState(s_lig ? 0 : 1);
+2276:                     else             pVeh->SetDoorState(s_lock ? 0 : 1);
+2277:                 }
+2278:             }
+2279:             SignalBlock(Rc{ cx0, y0 + S(186.0f), cw, S(124.0f) }, s_sig, gtaVeh, dt, inputPage);
+2280:         }
+2281:     }
+2282:     else if (s_tab == 1)                                    // HANDLING
+2283:     {
+2284:         if (noVeh) {
+2285:             mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobild…ô deyilsiniz", "Handling yalnƒ±z ma≈üƒ±nƒ±n i√ßind…ô d…ôyi≈üdirilir");
+2286:         } else {
+2287:             // slot secimi
+2288:             for (int i = 0; i < 5; ++i) {
+2289:                 const Rc c{ cx0 + S(52.0f) * i, y0, S(46.0f), S(40.0f) };
+2290:                 if (Tap(80 + i, c, inputPage)) s_slot = i + 1;
+2291:                 const bool on = (s_slot == i + 1);
+2292:                 Fill(c, on ? Accent(0.0f, 215) : Col(255, 255, 255, 18), S(12.0f));
+2293:                 char nb[4];
+2294:                 snprintf(nb, sizeof(nb), "%d", i + 1);
+2295:                 TxtC(S(18.0f), c, on ? Col(255, 255, 255) : Col(190, 198, 216), nb, true);
+2296:                 if (HndExt_SlotUsed(i + 1)) Dot(c.x + c.w - S(8.0f), c.y + S(8.0f), S(3.2f), Col(80, 220, 140, 255));
+2297:             }
+2298:             // HNDV3_UI: slot = launcherden yuklenen handling.cfg fayli
+2299:             static const char* kAct[2] = { "T…ôtbiq et", "Sƒ±fƒ±rla" };
+2300:             const float bx = cx0 + S(272.0f);
+2301:             const float bw = (cw - S(272.0f) - S(6.0f)) / 2.0f;
+2302:             for (int k = 0; k < 2; ++k) {
+2303:                 const Rc b{ bx + k * (bw + S(6.0f)), y0, bw, S(40.0f) };
+2304:                 if (mm2::SmallBtn(85 + k, b, kAct[k], dt, inputPage, k == 0) && pVeh) {
+2305:                     if (k == 0) {
+2306:                         std::string m;
+2307:                         HndExt_ApplyFileSlot(pVeh, s_slot, m);
+2308:                         mm2::SetMsg(m);
+2309:                     } else {
+2310:                         mm2::SetMsg(HndExt_Reset(pVeh) ? "Standarta qaytarƒ±ldƒ±" : "D…ôyi≈üiklik yoxdur");
+2311:                     }
+2312:                 }
+2313:             }
+2314:             if (mm2::s_msgT > 0.01f)
+2315:                 Txt(S(13.0f), cx0, y0 + S(48.0f), Col(120, 215, 160, (int)(255.0f * mm2::s_msgT)), mm2::s_msg);
+2316:             else
+2317:                 Txt(S(13.0f), cx0, y0 + S(48.0f), Col(128, 136, 158), "S…ôtr…ô toxun v…ô yeni d…ôy…ôri yaz. S√ºr√º≈üd√ºr…ôr…ôk b√ºt√ºn sah…ôl…ôri g√∂r.");
+2318: 
+2319:             // sahe siyahisi (scroll)
+2320:             const float rowH = S(46.0f);
+2321:             const Rc lr{ cx0, y0 + S(74.0f), cw, P.y + P.h - S(18.0f) - (y0 + S(74.0f)) };
+2322:             const float contentH = rowH * mm2::kHFN;
+2323:             const float maxOff = std::max(0.0f, contentH - lr.h);
+2324: 
+2325:             if (inputPage) {
+2326:                 if (tch.pressed && s_act == 0 && In(lr, tch.x, tch.y)) {
+2327:                     s_act = 95; s_hDrag = true; s_hMoved = false; s_hLastY = tch.y; s_hDownY = tch.y; s_hVel = 0.0f;
+2328:                 }
+2329:                 if (s_hDrag && s_act == 95) {
+2330:                     if (tch.down) {
+2331:                         const float dy = tch.y - s_hLastY;
+2332:                         s_hLastY = tch.y;
+2333:                         if (fabsf(tch.y - s_hDownY) > S(8.0f)) s_hMoved = true;
+2334:                         if (s_hMoved) {
+2335:                             const float over = (s_hOff < 0.0f) ? -s_hOff : (s_hOff > maxOff ? s_hOff - maxOff : 0.0f);
+2336:                             const float k = 1.0f / (1.0f + over / S(60.0f));
+2337:                             s_hOff -= dy * k;
+2338:                             s_hVel = Lerp(s_hVel, -dy / std::max(dt, 0.001f), 0.35f);
+2339:                         }
+2340:                     }
+2341:                     if (tch.released) {
+2342:                         if (!s_hMoved && In(lr, tch.x, tch.y)) {
+2343:                             const int row = (int)((tch.y - lr.y + s_hOff) / rowH);
+2344:                             if (row >= 0 && row < mm2::kHFN && pUI && pUI->keyboard()) {
+2345:                                 if (!mm2::s_caller) mm2::s_caller = new mm2::EditCaller();
+2346:                                 mm2::s_caller->key = mm2::kHF[row].key;
+2347:                                 mm2::s_caller->label = mm2::kHF[row].label;
+2348:                                 pUI->keyboard()->show(mm2::s_caller);
+2349:                                 float cur = 0.0f;
+2350:                                 if (HndExt_Get(pVeh, mm2::kHF[row].key, &cur)) {
+2351:                                     char vb[32];
+2352:                                     snprintf(vb, sizeof(vb), "%.4f", cur);
+2353:                                     pUI->keyboard()->input()->setInputString(vb);
+2354:                                 }
+2355:                             }
+2356:                             s_hVel = 0.0f;
+2357:                         }
+2358:                         s_hDrag = false;
+2359:                     }
+2360:                 }
+2361:             }
+2362:             if (!(s_hDrag && s_act == 95)) {
+2363:                 if (s_hOff < 0.0f || s_hOff > maxOff) {
+2364:                     s_hOff = Smooth(s_hOff, Clamp(s_hOff, 0.0f, maxOff), dt, 14.0f);
+2365:                     s_hVel = 0.0f;
+2366:                 } else {
+2367:                     s_hOff += s_hVel * dt;
+2368:                     s_hVel *= expf(-dt * 3.5f);
+2369:                     if (fabsf(s_hVel) < 5.0f) s_hVel = 0.0f;
+2370:                 }
+2371:             }
+2372: 
+2373:             Fill(lr, Col(255, 255, 255, 15), S(18.0f));
+2374:             Stroke(lr, Col(255, 255, 255, 22), S(18.0f), S(1.0f));
+2375:             s_dl->PushClipRect(ImVec2(lr.x, lr.y + S(1.0f)), ImVec2(lr.x + lr.w, lr.y + lr.h - S(1.0f)), true);
+2376:             for (int r = 0; r < mm2::kHFN; ++r) {
+2377:                 const float ry = lr.y - s_hOff + rowH * r;
+2378:                 if (ry + rowH < lr.y || ry > lr.y + lr.h) continue;
+2379:                 if (s_hDrag && !s_hMoved && s_act == 95 && tch.y >= ry && tch.y < ry + rowH)
+2380:                     Fill(Rc{ lr.x, ry, lr.w, rowH }, Col(255, 255, 255, 16), 0.0f);
+2381:                 if (r > 0) mm2::Hair(lr.x + S(18.0f), lr.x + lr.w, ry);
+2382:                 Txt(S(17.0f), lr.x + S(18.0f), ry + (rowH - S(17.0f)) * 0.5f, Col(228, 232, 244), mm2::kHF[r].label);
+2383:                 float cur = 0.0f;
+2384:                 char vb[40] = "-";
+2385:                 if (HndExt_Get(pVeh, mm2::kHF[r].key, &cur)) snprintf(vb, sizeof(vb), mm2::kHF[r].fmt, cur);
+2386:                 Txt(S(17.0f), lr.x + lr.w - S(40.0f) - TW(S(17.0f), vb), ry + (rowH - S(17.0f)) * 0.5f, Accent(0.0f), vb);
+2387:                 Txt(S(18.0f), lr.x + lr.w - S(26.0f), ry + (rowH - S(18.0f)) * 0.5f, Col(110, 118, 140), ">");
+2388:             }
+2389:             s_dl->PopClipRect();
+2390:             if (maxOff > 1.0f) {
+2391:                 const float th = std::max(S(26.0f), lr.h * (lr.h / contentH));
+2392:                 const float ty = lr.y + S(4.0f) + (lr.h - S(8.0f) - th) * Clamp(s_hOff / maxOff, 0.0f, 1.0f);
+2393:                 Fill(Rc{ lr.x + lr.w - S(6.0f), ty, S(3.0f), th }, Col(255, 255, 255, 60), S(1.5f));
+2394:             }
+2395:         }
+2396:     }
+2397:     else if (s_tab == 2)                                    // FAR
+2398:     {
+2399:         if (noVeh) {
+2400:             mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobild…ô deyilsiniz", "Far r…ôngi yalnƒ±z ma≈üƒ±nƒ±n i√ßind…ô d…ôyi≈üdirilir");
+2401:         } else {
+2402:             static CVehicleGTA* s_hlVeh = nullptr;
+2403:             static float s_hl[3] = { 255.0f, 255.0f, 255.0f };
+2404:             if (gtaVeh != s_hlVeh) {
+2405:                 s_hlVeh = gtaVeh;
+2406:                 uint8_t r8 = 255, g8 = 255, b8 = 255;
+2407:                 if (gtaVeh && CCoronas::GetHeadlightRGB(gtaVeh, r8, g8, b8)) { s_hl[0] = r8; s_hl[1] = g8; s_hl[2] = b8; }
+2408:                 else { s_hl[0] = s_hl[1] = s_hl[2] = 255.0f; }
+2409:             }
+2410:             static const char* kRGB[3] = { "Qƒ±rmƒ±zƒ± (R)", "Ya≈üƒ±l (G)", "Mavi (B)" };
+2411:             bool hlChanged = false;
+2412:             for (int i = 0; i < 3; ++i) {
+2413:                 const Rc row{ cx0, y0 + S(72.0f) * (float)i - S(4.0f) + S(4.0f), cw, S(66.0f) };
+2414:                 if (SliderRow(i, row, kRGB[i], &s_hl[i], 0.0f, 255.0f, dt, inputPage, "", 5.0f)) hlChanged = true;
+2415:             }
+2416:             const Rc pvr{ cx0, y0 + S(224.0f), S(150.0f), S(44.0f) };
+2417:             Fill(pvr, Col((int)s_hl[0], (int)s_hl[1], (int)s_hl[2], 255), S(12.0f));
+2418:             Stroke(pvr, Col(255, 255, 255, 60), S(12.0f), S(1.2f));
+2419:             char hx[24];
+2420:             snprintf(hx, sizeof(hx), "#%02X%02X%02X", (int)s_hl[0], (int)s_hl[1], (int)s_hl[2]);
+2421:             Txt(S(19.0f), cx0 + S(166.0f), y0 + S(234.0f), Col(228, 232, 244), hx);
+2422:             if (mm2::SmallBtn(90, Rc{ cx0 + S(300.0f), y0 + S(224.0f), S(150.0f), S(44.0f) }, "Standart", dt, inputPage, false) && gtaVeh) {
+2423:                 CCoronas::ClearHeadlightRGB(gtaVeh);
+2424:                 s_hl[0] = s_hl[1] = s_hl[2] = 255.0f;
+2425:             }
+2426:             for (int i = 0; i < VEHTUNER_COLOR_COUNT; ++i) {
+2427:                 uint8_t r, g, b;
+2428:                 VehTuner::GetPaletteColor(i, r, g, b);
+2429:                 const int col = i % 8, rowi = i / 8;
+2430:                 const float cxs = cx0 + S(24.0f) + (float)col * S(58.0f);
+2431:                 const float cys = y0 + S(320.0f) + (float)rowi * S(54.0f);
+2432:                 const Rc sq{ cxs - S(24.0f), cys - S(24.0f), S(48.0f), S(48.0f) };
+2433:                 const int sid = ID_SWATCH + std::min(i, 23);
+2434:                 if (Tap(sid, sq, inputPage) && gtaVeh) { s_hl[0] = r; s_hl[1] = g; s_hl[2] = b; hlChanged = true; }
+2435:                 const float p = Prs(sid, dt);
+2436:                 Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
+2437:             }
+2438:             if (hlChanged && gtaVeh) CCoronas::SetHeadlightRGB(gtaVeh, (uint8_t)s_hl[0], (uint8_t)s_hl[1], (uint8_t)s_hl[2]);
+2439:         }
+2440:     }
+2441:     else                                                    // SPIDOMETR
+2442:     {
+2443:         MM_SpeedoPage(cx0, cw, P, dt, inputPage);
+2444:     }
+2445:     s_A = saveA;
+2446: 
+2447:     if (!g_mmTouch.down) s_act = 0;
+2448: }
+######## app/src/main/cpp/samp/gui/gui.cpp : /SPEEDO_STYLES_PATCH: spidometr stilleri/ ########
+1282: //  SPEEDO_STYLES_PATCH: spidometr stilleri (0 = Klassik, 1 = Sport zolaq, 2 = Neon qovs)
+1283: //  Secim ve reng <storage>/hudstyle.txt faylinda saxlanir.
+1284: // ============================================================================
+1285: extern char* g_pszStorage;
+1286: 
+1287: static int s_hudStyle = 0;
+1288: 
+1289: static inline ImU32 HudA(ImU32 c, int a)
+1290: {
+1291:         if (a < 0) a = 0;
+1292:         if (a > 255) a = 255;
+1293:         return (c & 0x00FFFFFFu) | ((ImU32)a << 24);
+1294: }
+1295: 
+1296: static void HudCfgLoad()
+1297: {
+1298:         static bool s_done = false;
+1299:         if (s_done) return;
+1300:         s_done = true;
+1301:         if (!g_pszStorage) return;
+1302: 
+1303:         char path[512];
+1304:         snprintf(path, sizeof(path), "%s/hudstyle.txt", g_pszStorage);
+1305:         FILE* f = fopen(path, "r");
+1306:         if (!f) return;
+1307:         int a = 0, b = 0;
+1308:         if (fscanf(f, "%d %d", &a, &b) == 2) {
+1309:                 if (a >= 0 && a < 3) s_hudStyle = a;
+1310:                 if (b >= 0 && b < 5) s_hudColorIdx = b;
+1311:         }
+1312:         fclose(f);
+1313: }
+1314: 
+1315: static void HudCfgSave()
+1316: {
+1317:         if (!g_pszStorage) return;
+1318:         char path[512];
+1319:         snprintf(path, sizeof(path), "%s/hudstyle.txt", g_pszStorage);
+1320:         FILE* f = fopen(path, "w");
+1321:         if (!f) return;
+1322:         fprintf(f, "%d %d\n", s_hudStyle, s_hudColorIdx);
+1323:         fclose(f);
+1324: }
+1325: 
+1326: static void HudText(ImDrawList* dl, ImFont* font, float size, float x, float y, ImU32 col, const char* s, int align)
+1327: {
+1328:         const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, s);
+1329:         if (align == 1) x -= sz.x * 0.5f;
+1330:         else if (align == 2) x -= sz.x;
+1331:         dl->AddText(font, size, ImVec2(x, y), col, s);
+1332: }
+1333: 
+1334: // ox: dir = -1 sola, +1 saga
+1335: static void HudArrow(ImDrawList* dl, float cx, float cy, float s, float dir, ImU32 col)
+1336: {
+1337:         const float tail = cx - dir * s;
+1338:         const float neck = cx - dir * s * 0.1f;
+1339:         dl->AddTriangleFilled(ImVec2(cx + dir * s, cy), ImVec2(neck, cy - s * 0.85f), ImVec2(neck, cy + s * 0.85f), col);
+1340:         dl->AddRectFilled(ImVec2(std::min(tail, neck), cy - s * 0.32f), ImVec2(std::max(tail, neck), cy + s * 0.32f), col);
+1341: }
+1342: 
+1343: static void HudChip(ImDrawList* dl, ImFont* font, float x, float y, float rad, bool on, const char* t, ImU32 accent)
+1344: {
+1345:         dl->AddCircleFilled(ImVec2(x, y), rad, on ? accent : IM_COL32(60, 64, 76, 210), 20);
+1346:         HudText(dl, font, rad * 1.15f, x, y - rad * 0.58f, on ? IM_COL32(10, 12, 18, 255) : IM_COL32(170, 174, 186, 255), t, 1);
+1347: }
+1348: 
+1349: // ---- Stil 1: SPORT ZOLAQ ----
+1350: static void HudSport(ImDrawList* dl, ImFont* font, const ImVec2& disp, float u, float kmh, const char* gear,
+1351:                      bool eng, bool lig, bool unlocked, ImU32 accent, float frac, const char* odo, uint8_t sig)
+1352: {
+1353:         const float r  = 92.0f * u;
+1354:         const float pw = r * 2.8f, ph = r * 1.10f;
+1355:         const float px = disp.x * 0.66f - pw * 0.5f;
+1356:         const float py = disp.y - 14.0f * u - ph;
+1357:         const float rr = 14.0f * u;
+1358:         const bool  blink = VehControls::BlinkOn();
+1359:         const ImU32 sigOn  = IM_COL32(255, 160, 30, 255);
+1360:         const ImU32 sigOff = IM_COL32(64, 68, 80, 210);
+1361:         const ImU32 white  = IM_COL32(255, 255, 255, 255);
+1362: 
+1363:         dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(8, 10, 16, 205), rr);
+1364:         dl->AddRect(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(255, 255, 255, 30), rr, mm::kAllCorners, 1.4f * u);
+1365: 
+1366:         // seqmentli zolaq
+1367:         const int   n   = 30;
+1368:         const float gap = 2.5f * u;
+1369:         const float bx0 = px + pw * 0.05f, bw = pw * 0.90f;
+1370:         const float by  = py + ph * 0.12f, bh = ph * 0.13f;
+1371:         const float sw  = (bw - gap * (n - 1)) / (float)n;
+1372:         for (int i = 0; i < n; ++i)
+1373:         {
+1374:                 const float t = (float)i / (float)(n - 1);
+1375:                 const bool  lit = ((float)i + 0.5f) / (float)n <= frac;
+1376:                 ImU32 col = IM_COL32(48, 52, 64, 220);
+1377:                 if (lit) col = (t > 0.78f) ? IM_COL32(235, 60, 80, 255) : accent;
+1378:                 const float x = bx0 + (float)i * (sw + gap);
+1379:                 dl->AddRectFilled(ImVec2(x, by), ImVec2(x + sw, by + bh), col, 2.0f * u);
+1380:         }
+1381: 
+1382:         // suret
+1383:         char sp[8];
+1384:         snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+1385:         HudText(dl, font, ph * 0.50f, px + pw * 0.62f, py + ph * 0.34f, white, sp, 2);
+1386:         HudText(dl, font, ph * 0.15f, px + pw * 0.645f, py + ph * 0.56f, accent, "KM/H", 0);
+1387:         HudText(dl, font, ph * 0.11f, px + pw * 0.645f, py + ph * 0.76f, IM_COL32(190, 194, 208, 220), odo, 0);
+1388: 
+1389:         // vites qutusu
+1390:         const float gx0 = px + pw * 0.80f, gx1 = px + pw * 0.95f, gy0 = py + ph * 0.40f, gy1 = py + ph * 0.90f;
+1391:         dl->AddRectFilled(ImVec2(gx0, gy0), ImVec2(gx1, gy1), IM_COL32(14, 16, 24, 240), 8.0f * u);
+1392:         dl->AddRect(ImVec2(gx0, gy0), ImVec2(gx1, gy1), accent, 8.0f * u, mm::kAllCorners, 1.8f * u);
+1393:         HudText(dl, font, ph * 0.34f, (gx0 + gx1) * 0.5f, gy0 + ((gy1 - gy0) - ph * 0.34f) * 0.5f, white, gear, 1);
+1394: 
+1395:         // sinyal oxlari
+1396:         const bool lOn = (sig == VEH_SIGNAL_LEFT  || sig == VEH_SIGNAL_HAZARD) && blink;
+1397:         const bool rOn = (sig == VEH_SIGNAL_RIGHT || sig == VEH_SIGNAL_HAZARD) && blink;
+1398:         const float ay = py + ph * 0.50f;
+1399:         HudArrow(dl, px + pw * 0.08f, ay, ph * 0.12f, -1.0f, lOn ? sigOn : sigOff);
+1400:         HudArrow(dl, px + pw * 0.30f, ay, ph * 0.12f, +1.0f, rOn ? sigOn : sigOff);
+1401: 
+1402:         // M / F / Q
+1403:         const float cy = py + ph * 0.80f, cr = ph * 0.085f;
+1404:         HudChip(dl, font, px + pw * 0.08f, cy, cr, eng,      "M", accent);
+1405:         HudChip(dl, font, px + pw * 0.19f, cy, cr, lig,      "F", accent);
+1406:         HudChip(dl, font, px + pw * 0.30f, cy, cr, unlocked, "Q", accent);
+1407: }
+1408: 
+1409: // ---- Stil 2: NEON QOVS (yarimdaire) ----
+1410: static void HudNeon(ImDrawList* dl, ImFont* font, const ImVec2& disp, float u, float kmh, const char* gear,
+1411:                     bool eng, bool lig, bool unlocked, ImU32 accent, float frac, const char* odo, uint8_t sig)
+1412: {
+1413:         const float PI = 3.14159265f;
+1414:         const float r  = 92.0f * u;
+1415:         const float R  = r * 1.10f;
+1416:         const ImVec2 c(disp.x * 0.66f, disp.y - 14.0f * u - r * 0.34f);
+1417:         const float th = 8.0f * u;
+1418:         const bool  blink = VehControls::BlinkOn();
+1419:         const ImU32 sigOn  = IM_COL32(255, 160, 30, 255);
+1420:         const ImU32 sigOff = IM_COL32(64, 68, 80, 210);
+1421:         const ImU32 white  = IM_COL32(255, 255, 255, 255);
+1422:         const ImU32 bg     = IM_COL32(8, 10, 16, 175);
+1423: 
+1424:         // zemin: yarimdaire + alt zolaq
+1425:         dl->PathClear();
+1426:         dl->PathArcTo(c, R * 1.10f, PI, 2.0f * PI, 40);
+1427:         dl->PathLineTo(c);
+1428:         dl->PathFillConvex(bg);
+1429:         dl->AddRectFilled(ImVec2(c.x - R * 1.10f, c.y), ImVec2(c.x + R * 1.10f, c.y + r * 0.34f + 2.0f * u), bg);
+1430: 
+1431:         // yol
+1432:         dl->PathArcTo(c, R * 0.92f, PI, 2.0f * PI, 48);
+1433:         dl->PathStroke(IM_COL32(60, 66, 82, 200), 0, th);
+1434:         // qirmizi zona
+1435:         dl->PathArcTo(c, R * 0.92f, PI + PI * 0.8f, 2.0f * PI, 12);
+1436:         dl->PathStroke(IM_COL32(235, 60, 80, 150), 0, th * 0.5f);
+1437: 
+1438:         if (frac > 0.004f)
+1439:         {
+1440:                 for (int k = 3; k >= 1; --k) {
+1441:                         dl->PathArcTo(c, R * 0.92f, PI, PI + PI * frac, 48);
+1442:                         dl->PathStroke(HudA(accent, 16 * (4 - k)), 0, th + (float)k * 5.0f * u);
+1443:                 }
+1444:                 dl->PathArcTo(c, R * 0.92f, PI, PI + PI * frac, 48);
+1445:                 dl->PathStroke(accent, 0, th);
+1446: 
+1447:                 const float a = PI + PI * frac;
+1448:                 dl->AddCircleFilled(ImVec2(c.x + cosf(a) * R * 0.92f, c.y + sinf(a) * R * 0.92f), th * 0.85f, white, 16);
+1449:         }
+1450: 
+1451:         // xetler
+1452:         for (int i = 0; i <= 9; ++i) {
+1453:                 const float a = PI + PI * ((float)i / 9.0f);
+1454:                 dl->AddLine(ImVec2(c.x + cosf(a) * R * 0.74f, c.y + sinf(a) * R * 0.74f),
+1455:                             ImVec2(c.x + cosf(a) * R * 0.80f, c.y + sinf(a) * R * 0.80f),
+1456:                             IM_COL32(190, 194, 208, 170), 1.4f * u);
+1457:         }
+1458: 
+1459:         // suret
+1460:         char sp[8];
+1461:         snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+1462:         HudText(dl, font, R * 0.52f, c.x, c.y - R * 0.66f, white, sp, 1);
+1463:         HudText(dl, font, R * 0.14f, c.x, c.y - R * 0.13f, accent, "KM/H", 1);
+1464: 
+1465:         // vites (sol) ve yol sayaci (sag)
+1466:         HudText(dl, font, R * 0.26f, c.x - R * 0.55f, c.y - R * 0.32f, white, gear, 1);
+1467:         HudText(dl, font, R * 0.12f, c.x + R * 0.55f, c.y - R * 0.20f, IM_COL32(190, 194, 208, 220), odo, 1);
+1468: 
+1469:         // alt zolaq: sinyal oxlari + M F Q
+1470:         const bool lOn = (sig == VEH_SIGNAL_LEFT  || sig == VEH_SIGNAL_HAZARD) && blink;
+1471:         const bool rOn = (sig == VEH_SIGNAL_RIGHT || sig == VEH_SIGNAL_HAZARD) && blink;
+1472:         const float by = c.y + r * 0.17f;
+1473:         HudArrow(dl, c.x - R * 0.55f, by, r * 0.11f, -1.0f, lOn ? sigOn : sigOff);
+1474:         HudArrow(dl, c.x + R * 0.55f, by, r * 0.11f, +1.0f, rOn ? sigOn : sigOff);
+1475:         HudChip(dl, font, c.x - R * 0.24f, by, r * 0.085f, eng,      "M", accent);
+1476:         HudChip(dl, font, c.x,             by, r * 0.085f, lig,      "F", accent);
+1477:         HudChip(dl, font, c.x + R * 0.24f, by, r * 0.085f, unlocked, "Q", accent);
+1478: }
+1479: 
+1480: // ---- /mm -> Spidometr sehifesi ----
+1481: static void HudPreview(int style, const mm::Rc& pv)
+1482: {
+1483:         using namespace mm;
+1484:         const float PI = 3.14159265f;
+1485:         const ImU32 white = Col(255, 255, 255, 235);
+1486: 
+1487:         if (style == 0)
+1488:         {
+1489:                 const float cx = pv.x + pv.w * 0.5f, cy = pv.y + pv.h * 0.52f, rad = std::min(pv.w, pv.h) * 0.40f;
+1490:                 const float a0 = PI * 0.75f, sw = PI * 1.5f;
+1491:                 s_dl->PathArcTo(ImVec2(cx, cy), rad, a0, a0 + sw, 28);
+1492:                 s_dl->PathStroke(Col(70, 76, 92, 220), 0, S(3.0f));
+1493:                 s_dl->PathArcTo(ImVec2(cx, cy), rad, a0, a0 + sw * 0.62f, 28);
+1494:                 s_dl->PathStroke(Accent(0.0f), 0, S(3.0f));
+1495:                 s_dl->AddLine(ImVec2(cx, cy), ImVec2(cx + cosf(a0 + sw * 0.62f) * rad * 0.8f, cy + sinf(a0 + sw * 0.62f) * rad * 0.8f), white, S(1.6f));
+1496:         }
+1497:         else if (style == 1)
+1498:         {
+1499:                 const int   n = 14;
+1500:                 const float gap = S(2.0f), bx = pv.x + pv.w * 0.1f, bw = pv.w * 0.8f, by = pv.y + pv.h * 0.18f, bh = pv.h * 0.12f;
+1501:                 const float sw = (bw - gap * (n - 1)) / (float)n;
+1502:                 for (int k = 0; k < n; ++k)
+1503:                         Fill(Rc{ bx + (float)k * (sw + gap), by, sw, bh }, k < 9 ? Accent(0.0f) : Col(50, 54, 66, 220), S(1.5f));
+1504:                 TxtC(pv.h * 0.38f, Rc{ pv.x, pv.y + pv.h * 0.38f, pv.w * 0.72f, pv.h * 0.5f }, white, "128", true);
+1505:                 Fill(Rc{ pv.x + pv.w * 0.76f, pv.y + pv.h * 0.50f, pv.w * 0.16f, pv.h * 0.32f }, Col(255, 255, 255, 18), S(4.0f));
+1506:         }
+1507:         else
+1508:         {
+1509:                 const float cx = pv.x + pv.w * 0.5f, cy = pv.y + pv.h * 0.80f, rad = std::min(pv.w * 0.38f, pv.h * 0.62f);
+1510:                 s_dl->PathArcTo(ImVec2(cx, cy), rad, PI, 2.0f * PI, 28);
+1511:                 s_dl->PathStroke(Col(70, 76, 92, 220), 0, S(3.5f));
+1512:                 s_dl->PathArcTo(ImVec2(cx, cy), rad, PI, PI + PI * 0.6f, 28);
+1513:                 s_dl->PathStroke(Accent(0.0f), 0, S(3.5f));
+1514:                 TxtC(pv.h * 0.30f, Rc{ pv.x, cy - pv.h * 0.42f, pv.w, pv.h * 0.30f }, white, "128", true);
+1515:         }
+1516: }
+1517: 
+1518: static void MM_SpeedoPage(float cx0, float cw, const mm::Rc& P, float dt, bool canInput)
+1519: {
+1520:         using namespace mm;
+1521:         HudCfgLoad();
+1522: 
+1523:         static const char* kNames[3] = { "Klassik dair…ô", "Sport zolaq", "Neon q√∂vs" };
+1524:         static const char* kDescs[3] = { "MTA √ºslubunda dair…ôvi ibr…ô v…ô r…ôq…ôml…ôr",
+1525:                                          "Seqmentli i≈üƒ±q zolaƒüƒ±, iri r…ôq…ôm v…ô di≈üli qutusu",
+1526:                                          "Yarƒ±mdair…ô neon q√∂vs, sad…ô v…ô m√ºasir" };
+1527: 
+1528:         for (int i = 0; i < 3; ++i)
+1529:         {
+1530:                 const Rc row{ cx0, P.y + S(124.0f + 112.0f * (float)i), cw, S(100.0f) };
+1531:                 const int id = 93 + i;
+1532:                 if (Tap(id, row, canInput) && s_hudStyle != i) { s_hudStyle = i; HudCfgSave(); }
+1533: 
+1534:                 const float p = Prs(id, dt);
+1535:                 const bool on = (s_hudStyle == i);
+1536:                 const Rc d = Shrink(row, S(1.5f) * p);
+1537:                 Fill(d, Col(27, 30, 40, 255), S(10.0f));
+1538:                 if (on) Stroke(d, Accent(0.0f, 200), S(10.0f), S(1.6f));
+1539: 
+1540:                 const Rc pv{ d.x + S(14.0f), d.y + S(12.0f), S(170.0f), d.h - S(24.0f) };
+1541:                 Fill(pv, Col(10, 12, 18, 255), S(8.0f));
+1542:                 HudPreview(i, pv);
+1543: 
+1544:                 TxtB(S(19.0f), d.x + S(204.0f), d.y + S(24.0f), Col(238, 241, 248), kNames[i]);
+1545:                 Txt(S(13.0f), d.x + S(204.0f), d.y + S(54.0f), Col(124, 132, 152), kDescs[i]);
+1546:                 if (on) Txt(S(13.0f), d.x + S(204.0f), d.y + S(74.0f), Accent(0.0f), "Se√ßilib");
+1547:         }
+1548: 
+1549:         Txt(S(16.0f), cx0, P.y + S(470.0f), Col(214, 220, 232), "R…ông");
+1550:         for (int i = 0; i < 5; ++i)
+1551:         {
+1552:                 const float cxs = cx0 + S(120.0f) + (float)i * S(54.0f), cys = P.y + S(480.0f);
+1553:                 const Rc sq{ cxs - S(22.0f), cys - S(22.0f), S(44.0f), S(44.0f) };
+1554:                 const int sid = ID_SWATCH + i;
+1555:                 if (Tap(sid, sq, canInput)) { s_hudColorIdx = i; HudCfgSave(); }
+1556: 
+1557:                 const float p = Prs(sid, dt);
+1558:                 Dot(cxs, cys, S(18.0f) - S(2.0f) * p, HudA(kHudPalette[i], (int)(255.0f * s_A)));
+1559:                 if (s_hudColorIdx == i) s_dl->AddCircle(ImVec2(cxs, cys), S(23.0f), Col(255, 255, 255, 230), 28, S(2.2f));
+1560:         }
+1561:         Txt(S(12.0f), cx0, P.y + S(524.0f), Col(124, 132, 152), "ƒ∞pucu: s√ºr…ôt g√∂st…ôricisin…ô uzun basaraq da r…ôngi d…ôyi≈ü…ô bil…ôrsiniz.");
+1562: }
+1563: 
+1564: static void DrawGauge(ImDrawList* dl, float cx, float cy, float r, bool on, const char* label, ImU32 accent, float u)
+1565: {
+1566:         const ImU32 bg = IM_COL32(20, 22, 30, 190);
+1567:         dl->AddCircleFilled(ImVec2(cx, cy), r, bg, 36);
+1568:         dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(255, 255, 255, 30), 36, 1.4f * u);
+1569: 
+1570:         // doldurma qovsu: on = 3/4 hiss, off = qisa
+1571:         const float startA = -3.14159f * 0.5f - 1.0f;
+1572:         const float endA   = startA + (on ? 5.0f : 0.9f);
+1573:         dl->PathArcTo(ImVec2(cx, cy), r - 3.0f * u, startA, endA, 28);
+1574:         dl->PathStroke(on ? accent : IM_COL32(110, 114, 126, 220), 0, 3.0f * u);
+1575: 
+1576:         ImFont* f = ImGui::GetFont();
+1577:         const float ts = 10.5f * u;
+1578:         const float tw = f->CalcTextSizeA(ts, FLT_MAX, 0.0f, label).x;
+1579:         dl->AddText(f, ts, ImVec2(cx - tw * 0.5f, cy - ts * 0.5f), on ? IM_COL32(240,243,250,255) : IM_COL32(150,154,166,255), label);
+1580: }
+1581: 
+1582: #include <cmath>
+1583: #include <cstdio>
+1584: 
+1585: // ============================================================================
+1586: //  MTA stilli dairevi speedometr. Sinyal UI legv edilib (hele ki).
+1587: //  Uzun basma = reng deyisimi (kHudPalette). Benzin dairesi YOXDUR:
+1588: //  client-de yanacaq melumati yoxdur (serverin textdrawidir).
+1589: // ============================================================================
+1590: void RenderVehicleHud()
+1591: {
+1592:         HudCfgLoad();
+1593:         if (g_bHideAllUI || g_bShowHandlingDlg) return;
+1594: 
+1595:         CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+1596:         if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) return;
+1597: 
+1598:         CVehicle* pVeh = nullptr;
+1599:         if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+1600:                 CVehiclePool* pPool = pNetGame->GetVehiclePool();
+1601:                 VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+1602:                 if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+1603:         }
+1604:         if (!pVeh || !pVeh->m_pVehicle) return;
+1605:         CVehicleGTA* gtaVeh = pVeh->m_pVehicle;
+1606: 
+1607:         ImGuiIO& io = ImGui::GetIO();
+1608:         const ImVec2 disp = io.DisplaySize;
+1609:         const float u = disp.y / 720.0f;
+1610:         ImDrawList* dl = ImGui::GetForegroundDrawList();
+1611:         ImFont* font = ImGui::GetFont();
+1612: 
+1613:         const float r = 92.0f * u;
+1614:         const ImVec2 c(disp.x * 0.66f, disp.y - r - 14.0f * u);
+1615: 
+1616:         // uzun basma ile reng deyisimi
+1617:         const bool inRect = g_mmTouch.x >= c.x - r && g_mmTouch.x <= c.x + r &&
+1618:                             g_mmTouch.y >= c.y - r && g_mmTouch.y <= c.y + r;
+1619:         if (g_mmTouch.down && inRect) {
+1620:                 s_hudHolding = true;
+1621:                 s_hudHoldT += 1.0f / 60.0f;
+1622:                 if (s_hudHoldT > 0.55f) { s_hudColorIdx = (s_hudColorIdx + 1) % 5; s_hudHoldT = 0.0f; }
+1623:         } else {
+1624:                 s_hudHolding = false;
+1625:                 s_hudHoldT = 0.0f;
+1626:         }
+1627:         const ImU32 accent = kHudPalette[s_hudColorIdx];
+1628: 
+1629:         // ---- melumat ----
+1630:         const float mvx = gtaVeh->m_vecMoveSpeed.x, mvy = gtaVeh->m_vecMoveSpeed.y, mvz = gtaVeh->m_vecMoveSpeed.z;
+1631:         const float kmh = sqrtf(mvx * mvx + mvy * mvy + mvz * mvz) * 180.0f;
+1632:         const float curSpd = gtaVeh->m_pHandlingData ? gtaVeh->m_pHandlingData->m_transmissionData.m_fCurrentSpeed : 0.0f;
+1633: 
+1634:         char gear[4];
+1635:         if (kmh < 1.5f)         snprintf(gear, sizeof(gear), "N");
+1636:         else if (curSpd < -0.01f) snprintf(gear, sizeof(gear), "R");
+1637:         else                    snprintf(gear, sizeof(gear), "%d", gtaVeh->m_nCurrentGear < 1 ? 1 : (int)gtaVeh->m_nCurrentGear);
+1638: 
+1639:         const bool eng = gtaVeh->m_nVehicleFlags.bEngineOn != 0;
+1640:         const bool lig = gtaVeh->m_nVehicleFlags.bLightsOn != 0;
+1641:         const int  lk  = (int)gtaVeh->m_nDoorLock;
+1642:         const bool locked = (lk == 2 || lk == 3);
+1643: 
+1644:         static float s_dialShown = 0.0f;
+1645:         float f = kmh / 270.0f;
+1646:         if (f > 1.0f) f = 1.0f;
+1647:         s_dialShown += (f - s_dialShown) * 0.2f;
+1648: 
+1649:         // yol sayaci (sessiya, metr)
+1650:         static CVehicleGTA* s_odoVeh = nullptr;
+1651:         static double s_odo = 0.0;
+1652:         if (s_odoVeh != gtaVeh) { s_odoVeh = gtaVeh; s_odo = 0.0; }
+1653:         s_odo += (double)(kmh / 3.6f) * (double)io.DeltaTime;
+1654:         char odo[16];
+1655:         snprintf(odo, sizeof(odo), "%07d", (int)(s_odo > 9999999.0 ? 9999999.0 : s_odo));
+1656: 
+1657:         auto ctext = [&](float x, float y, float size, ImU32 col, const char* s) {
+1658:                 const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, s);
+1659:                 dl->AddText(font, size, ImVec2(x - sz.x * 0.5f, y), col, s);
+1660:         };
+1661: 
+1662:         // ---- cizim ----
+1663:         {
+1664:                 static int s_savedClr = -1;
+1665:                 if (s_savedClr != s_hudColorIdx) { if (s_savedClr != -1) HudCfgSave(); s_savedClr = s_hudColorIdx; }
+1666:         }
+1667:         if (s_hudStyle == 1) { HudSport(dl, font, disp, u, kmh, gear, eng, lig, !locked, accent, s_dialShown, odo, VehControls::GetSignal(gtaVeh)); return; }
+1668:         if (s_hudStyle == 2) { HudNeon (dl, font, disp, u, kmh, gear, eng, lig, !locked, accent, s_dialShown, odo, VehControls::GetSignal(gtaVeh)); return; }
+1669: 
+1670:         const float a0 = 3.14159265f * 0.75f;
+1671:         const float sweep = 3.14159265f * 1.5f;
+1672: 
+1673:         dl->AddCircleFilled(c, r * 1.04f, IM_COL32(8, 10, 16, 170), 48);
+1674:         dl->AddCircle(c, r * 1.04f, IM_COL32(255, 255, 255, 28), 48, 1.4f * u);
+1675: 
+1676:         // esas qovs
+1677:         dl->PathArcTo(c, r * 0.92f, a0, a0 + sweep, 48);
+1678:         dl->PathStroke(IM_COL32(70, 76, 92, 200), 0, 5.0f * u);
+1679:         // qirmizi zona
+1680:         dl->PathArcTo(c, r * 0.92f, a0 + sweep * 0.78f, a0 + sweep, 16);
+1681:         dl->PathStroke(IM_COL32(235, 60, 80, 235), 0, 5.0f * u);
+1682:         // dolu hisse
+1683:         if (s_dialShown > 0.003f) {
+1684:                 dl->PathArcTo(c, r * 0.92f, a0, a0 + sweep * s_dialShown, 48);
+1685:                 dl->PathStroke(accent, 0, 5.0f * u);
+1686:         }
+1687: 
+1688:         // kicik cizgiler
+1689:         for (int k = 0; k <= 27; ++k) {
+1690:                 if (k % 3 == 0) continue;
+1691:                 const float a = a0 + sweep * (k / 27.0f);
+1692:                 dl->AddLine(ImVec2(c.x + cosf(a) * r * 0.84f, c.y + sinf(a) * r * 0.84f),
+1693:                             ImVec2(c.x + cosf(a) * r * 0.88f, c.y + sinf(a) * r * 0.88f),
+1694:                             IM_COL32(150, 154, 168, 180), 1.0f * u);
+1695:         }
+1696:         // boyuk cizgiler + reqemler (h…ôr biri 30 km/h)
+1697:         for (int i = 0; i <= 9; ++i) {
+1698:                 const float a = a0 + sweep * (i / 9.0f);
+1699:                 const float ca = cosf(a), sa = sinf(a);
+1700:                 dl->AddLine(ImVec2(c.x + ca * r * 0.80f, c.y + sa * r * 0.80f),
+1701:                             ImVec2(c.x + ca * r * 0.88f, c.y + sa * r * 0.88f),
+1702:                             IM_COL32(215, 219, 232, 230), 1.8f * u);
+1703:                 char lb[8];
+1704:                 snprintf(lb, sizeof(lb), "%d", i * 30);
+1705:                 const float ts = 9.5f * u;
+1706:                 const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.0f, lb);
+1707:                 dl->AddText(font, ts, ImVec2(c.x + ca * r * 0.67f - tsz.x * 0.5f, c.y + sa * r * 0.67f - tsz.y * 0.5f),
+1708:                             IM_COL32(200, 204, 218, 230), lb);
+1709:         }
+1710: 
+1711:         // ibre
+1712:         const float na = a0 + sweep * s_dialShown;
+1713:         dl->AddLine(ImVec2(c.x + cosf(na) * r * 0.20f, c.y + sinf(na) * r * 0.20f),
+1714:                     ImVec2(c.x + cosf(na) * r * 0.80f, c.y + sinf(na) * r * 0.80f),
+1715:                     IM_COL32(255, 255, 255, 240), 2.4f * u);
+1716: 
+1717:         // merkez: pill…ô (viteS)
+1718:         dl->AddCircleFilled(c, r * 0.22f, IM_COL32(14, 16, 24, 240), 28);
+1719:         dl->AddCircle(c, r * 0.22f, accent, 28, 1.8f * u);
+1720:         ctext(c.x, c.y - r * 0.13f, r * 0.26f, IM_COL32(255, 255, 255, 255), gear);
+1721: 
+1722:         // gostericiler (M = motor, F = fara, Q = qapi)
+1723:         auto chip = [&](float x, float y, bool on, const char* t) {
+1724:                 const float cr = 9.0f * u;
+1725:                 dl->AddCircleFilled(ImVec2(x, y), cr, on ? accent : IM_COL32(60, 64, 76, 210), 20);
+1726:                 const float ts = 9.0f * u;
+1727:                 const ImVec2 s = font->CalcTextSizeA(ts, FLT_MAX, 0.0f, t);
+1728:                 dl->AddText(font, ts, ImVec2(x - s.x * 0.5f, y - s.y * 0.5f),
+1729:                             on ? IM_COL32(10, 12, 18, 255) : IM_COL32(170, 174, 186, 255), t);
+1730:         };
+1731:         chip(c.x - r * 0.36f, c.y - r * 0.50f, eng, "M");
+1732:         chip(c.x,             c.y - r * 0.58f, lig, "F");
+1733:         chip(c.x + r * 0.36f, c.y - r * 0.50f, !locked, "Q");
+1734: 
+1735:         // sur'et
+1736:         char sp[8];
+1737:         snprintf(sp, sizeof(sp), "%d", (int)(kmh + 0.5f));
+1738:         ctext(c.x, c.y + r * 0.22f, r * 0.42f, IM_COL32(255, 255, 255, 255), sp);
+1739:         ctext(c.x, c.y + r * 0.66f, r * 0.14f, accent, "KM/H");
+1740:         ctext(c.x, c.y + r * 0.80f, r * 0.12f, IM_COL32(190, 194, 208, 220), odo);
+1741: }
+1742: 
+######## app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp : /^namespace VehControls/ ########
+263: namespace VehControls
+264: {
+265:     static std::unordered_map<CVehicleGTA*, uint8_t> s_signals;
+266:     static std::unordered_map<CVehicleGTA*, uint32_t> s_sigCt;   // AZ_PATCH3: masinin yaranma vaxti
+267:     // Eyni adresde BASQA masin yaranibsa kohne sinyali at
+268:     static void Prune(CVehicleGTA* veh)
+269:     {
+270:         auto c = s_sigCt.find(veh);
+271:         if (c != s_sigCt.end() && c->second != (uint32_t)veh->m_nCreationTime) {
+272:             s_signals.erase(veh);
+273:             s_sigCt.erase(c);
+274:         }
+275:     }
+276: 
+277:     bool BlinkOn()
+278:     {
+279:         using namespace std::chrono;
+280:         const long long ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+281:         return ((ms / 330) & 1) == 0;
+282:     }
+283: 
+284:     uint8_t GetSignal(CVehicleGTA* veh) { if (veh) Prune(veh); auto it = s_signals.find(veh);
+285:         return it == s_signals.end() ? (uint8_t)0 : it->second;
+286:     }
+287: 
+288:     void SetSignal(CVehicleGTA* veh, uint8_t mode)
+289:     {
+290:         if (!veh) return;
+291:         if (mode == 0) { s_signals.erase(veh); s_sigCt.erase(veh); }
+292:         else { s_signals[veh] = mode; s_sigCt[veh] = (uint32_t)veh->m_nCreationTime; }
+293:     }
+294: 
+295:     void ToggleSignal(CVehicleGTA* veh, uint8_t mode)
+296:     {
+297:         SetSignal(veh, GetSignal(veh) == mode ? (uint8_t)0 : mode);
+298:     }
+299: 
+300:     void Forget(CVehicleGTA* veh) { s_signals.erase(veh); s_sigCt.erase(veh); }
+301: 
+302:     // ms_lightsOn / m_renderLights indeksleri: 0 = surucu terefi on, 1 = sernisin terefi on,
+303:     //                                           2 = surucu terefi arxa, 3 = sernisin terefi arxa
+304:     static void ComputeSides(uint8_t mode, bool& left, bool& right)
+305:     {
+306:         left  = (mode == VEH_SIGNAL_HAZARD) || (mode == VEH_SIGNAL_LEFT);
+307:         right = (mode == VEH_SIGNAL_HAZARD) || (mode == VEH_SIGNAL_RIGHT);
+308:         if (g_sigSwapSides) std::swap(left, right);
+309:     }
+310: 
+311:     // DoVehicleLights hook-undan (PreRender): oyunun oz "bu lampa yanir" bayraqlari
+312:     void ApplyRenderLightBits(CVehicleGTA* veh) { if (!veh) return; Prune(veh); if (s_signals.empty()) return;
+313:         auto it = s_signals.find(veh);
+314:         if (it == s_signals.end()) return;
+315: 
+316:         if (!g_sigLamp) return;
+317: 
+318:         bool l, r;
+319:         ComputeSides(it->second, l, r);
+320:         const uint8_t on = BlinkOn() ? 1 : 0;
+321:         if (l) { veh->m_renderLights.m_bLeftFront  = on; veh->m_renderLights.m_bLeftRear  = on; }
+322:         if (r) { veh->m_renderLights.m_bRightFront = on; veh->m_renderLights.m_bRightRear = on; }
+323:     }
+324: 
+325:     // CVehicleModelInfo::SetupLightFlags-dan SONRA: render zamani lampa materiallarinin yanma massivi
+326:     void ApplyLampArray(CVehicleGTA* veh)
+327:     {
+328: #if !VER_x32
+329:         if (s_signals.empty() || !veh) return;
+330:         auto it = s_signals.find(veh);
+331:         if (it == s_signals.end()) return;
+332: 
+333:         if (!g_sigLamp) return;
+334: 
+335:         bool l, r;
+336:         ComputeSides(it->second, l, r);
+337:         const uint8_t on = BlinkOn() ? 1 : 0;
+338:         uint8_t* lamps = reinterpret_cast<uint8_t*>(g_libGTASA + 0xB8DB40);   // CVehicleModelInfo::ms_lightsOn (libGTASA nm)
+339:         if (l) { lamps[0] = on; lamps[2] = on; }
+340:         if (r) { lamps[1] = on; lamps[3] = on; }
+341: #else
+342:         (void)veh;
+343: #endif
+344:     }
+345: 
+346:     void RenderSignals(CVehicleGTA* veh) { if (!veh) return; Prune(veh); if (s_signals.empty()) return;
+347: 
+348:         auto it = s_signals.find(veh);
+349:         if (it == s_signals.end()) return;
+350:         if (!g_sigCorona) return;      // lampanin ozu yanir; ayri corona yalniz /sinyalayar korona ile
+351:         if (!BlinkOn()) return;
+352: 
+353:         auto* pModelInfo = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+354:         if (!pModelInfo || !pModelInfo->m_pVehicleStruct) return;
+355:         const CVector* dummy = pModelInfo->m_pVehicleStruct->m_avDummyPos;
+356: 
+357:         const uint8_t mode = it->second;
+358: 
+359:         for (int side = 0; side < 2; ++side)          // 0 = sol, 1 = sag
+360:         {
+361:             const bool wanted = (mode == VEH_SIGNAL_HAZARD) ||
+362:                                 (mode == VEH_SIGNAL_LEFT  && side == 0) ||
+363:                                 (mode == VEH_SIGNAL_RIGHT && side == 1);
+364:             if (!wanted) continue;
+365: 
+366:             for (int end = 0; end < 2; ++end)         // 0 = on, 1 = arxa
+367:             {
+368:                 CVector v(dummy[end == 0 ? 0 : 1]);
+369:                 if (fabsf(v.x) < 0.05f) continue;     // dummy yoxdur (motosiklet, qayiq ve s.)
+370: 
+371:                 if (!side) v.x = -v.x;                // oyunun oz mentiqi ile eyni
+372: 
+373:                 // lampanin ozunun yerinde qal, yalniz korpusun icinde itmesin deye azca xaric…ô / on-arxaya c…ôk
+374:                 v.x += (v.x >= 0.0f ? 0.03f : -0.03f);
+375:                 v.y += (end == 0 ? 0.06f : -0.06f);
+376: 
+377:                 CCoronas::RegisterCorona(
+378:                         (uint32)((uintptr)&veh->m_placement.m_vPosn.y + 40 + end * 2 + side),
+379:                         veh,
+380:                         255, 150, 20, 255,
+381:                         &v,
+382:                         end == 0 ? 0.55f : 0.60f,
+383:                         60.f,
+384:                         eCoronaType::CORONATYPE_HEADLIGHT,
+385:                         eCoronaFlareType::FLARETYPE_NONE,
+386:                         false,
+387:                         false,
+388:                         0,
+389:                         0.0f,
+390:                         false,
+391:                         0.6f,                         // nearClip: koronani kameraya dogru cekir -> korpusun icinde gizlenmir
+392:                         0,
+393:                         15.0f,
+394:                         false,
+395:                         false
+396:                 );
+397:             }
+398:         }
+399:     }
+400: }
+401: 
+402: // Render zamani lampa materiallarinin yanma massivini (ms_lightsOn) sinyala gore deyisir
+403: void (*CVehicleModelInfo__SetupLightFlags)(CVehicleGTA* veh);
+404: void CVehicleModelInfo__SetupLightFlags_hook(CVehicleGTA* veh)
+405: {
+406:     CVehicleModelInfo__SetupLightFlags(veh);
+407:     VehControls::ApplyLampArray(veh);
+408: }
+409: 
+410: void CVehicleGTA::InjectHooks() {
+411:     // var
+412:     CHook::Write(g_libGTASA + (VER_x32 ? 0x675F10 : 0x849EA8), &CVehicleGTA::m_aSpecialColModel);
+413: 
+414:     CHook::Redirect("_ZN8CVehicle25RenderDriverAndPassengersEv", &RenderDriverAndPassengers_hook);
+415:     CHook::Redirect("_ZN8CVehicle9SetDriverEP4CPed", &SetDriver_hook);
+416: 
+417:     CHook::Redirect("_ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh", &CVehicle__DoTailLightEffect);
+418:     CHook::InlineHook("_ZN8CVehicle15DoVehicleLightsER7CMatrixj", &CVehicle__DoVehicleLights_hook, &CVehicle__DoVehicleLights);
+419:     CHook::Redirect("_ZN8CVehicle22GetVehicleLightsStatusEv", &CVehicle__GetVehicleLightsStatus_hook);
+420:     CHook::InlineHook("_ZN17CVehicleModelInfo15SetupLightFlagsEP8CVehicle", &CVehicleModelInfo__SetupLightFlags_hook, &CVehicleModelInfo__SetupLightFlags);
+421:     AzPlate::InstallHooks();
+422: }
+423: 
+424: bool CVehicleGTA::IsRCVehicleModelID() {
+425:     switch (m_nModelIndex) {
+426:         case 441:
+427:         case 464:
+428:         case 465:
+429:         case 594:
+430:         case 501:
+431:         case 564:
+432:             return true;
+433: 
+434:         default:
+435:             break;
+436:     }
+437:     return false;
+438: }
+######## app/src/main/cpp/samp/game/Coronas.cpp : /s_HeadlightOverride|GetHeadlightRGB|ClearHeadlightRGB/ ########
+48-                                     int32 _param_not_used, float angle, bool longDistance, float nearClip,
+49-                                     uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+50-{
+51:    const auto& ho = CCoronas::s_HeadlightOverride;
+52-
+53-    if (ho.active && !ho.inTail
+54-        && (coronaType == eCoronaType::CORONATYPE_HEADLIGHT || coronaType == eCoronaType::CORONATYPE_HEADLIGHTLINE)
+55-        && attachTo != nullptr
+56-        && static_cast<const void*>(attachTo) == ho.vehicle)
+57-    {
+58-        red   = ho.r;
+59-        green = ho.g;
+60-        blue  = ho.b;
+61-    }
+62-
+63-    CCoronas__RegisterCorona_Type(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType,
+64-                                  flareType, enableReflection, checkObstacles, _param_not_used, angle,
+65-                                  longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+--
+109-    };
+110-}
+111-
+112:void CCoronas::ClearHeadlightRGB(const void* veh) {
+113-    g_hlColors.erase(veh);
+114-}
+115-
+116:bool CCoronas::GetHeadlightRGB(
+117-    const void* veh,
+118-    uint8& r,
+119-    uint8& g,
+120-    uint8& b
+121-) {
+122-    if (!veh || g_hlColors.empty())
+123-        return false;
+124-
+125-    auto it = g_hlColors.find(veh);
+126-
+127-    if (it == g_hlColors.end())
+128-        return false;
+129-
+130-    if (it->second.ct !=
+--
+177-        uint8 cr = 0, cg = 0, cb = 0;
+178-
+179-        bool have =
+180:            CCoronas::GetHeadlightRGB(veh, cr, cg, cb);
+181-
+182-        if (!have) {
+183:            const auto& ho = CCoronas::s_HeadlightOverride;
+184-
+185-            if (ho.active && !ho.inTail && ho.vehicle == veh) {
+186-                cr = ho.r;
+187-                cg = ho.g;
+188-                cb = ho.b;
+189-                have = true;
+190-            }
+191-        }
+192-
+193-        if (have) {
+194-            const int mx = std::max(
+195-                (int)r,
+196-                std::max((int)g, (int)bl)
+197-            );
+######## app/src/main/cpp/samp/game/Coronas.h : /s_HeadlightOverride|GetHeadlightRGB|ClearHeadlightRGB/ ########
+45-
+46-    // FAR RENGI konteksti (struct sinifin XARICINDE tanimlanib, clang ucun vacibdir).
+47-    // CVehicleGTA.cpp -> DoVehicleLights hook-u doldurur, Coronas.cpp -> RegisterCorona hook-u oxuyur.
+48:    static inline CoronaHeadlightOverride s_HeadlightOverride{};
+49-
+50-    // HEADLIGHT_RGB_PATCH: masin ucun serbest far rengi
+51-    // (CCoronas::Set... UI ve /far istifade edir)
+52-    static void SetHeadlightRGB(const void* veh, uint8 r, uint8 g, uint8 b);
+53:    static void ClearHeadlightRGB(const void* veh);
+54:    static bool GetHeadlightRGB(const void* veh, uint8& r, uint8& g, uint8& b);
+55-
+56-public:
+57-    static void InjectHooks();
+58-
+59-    static void Init();
+60-    static void Shutdown();
+61-    static void Update();
+62-    static void Render();
+63-    static void RenderReflections();
+64-    static void RenderSunReflection();
+65-    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector& posn,
+66-                               float radius, float farClip, RwTexture* texture, eCoronaFlareType flareType, bool enableReflection, bool checkObstacles, int32 _param_not_used,
+67-                               float angle, bool longDistance, float nearClip, uint8 fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay);
+68-    static void RegisterCorona(uint32 id, CEntityGTA* attachTo, uint8 red, uint8 green, uint8 blue, uint8 alpha, const CVector* posn,
+######## app/src/main/cpp/samp/game/Vehtuner.cpp : /s_HeadlightOverride|GetHeadlightRGB|ClearHeadlightRGB/ ########
+220-        }
+221-    }
+222-
+223:    bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b)
+224-    {
+225-        if (!veh) return false;
+226-        std::lock_guard<std::mutex> lk(g_mutex);
+227-        if (g_entries.empty()) return false;
+228-
+229-        Entry* e = Find(veh);
+230-        if (!e) return false;
+231-
+232-        const uint8_t id = e->tune.headlight;
+233-        if (id == 0 || id >= VEHTUNER_COLOR_COUNT) return false;
+234-
+235-        r = kPalette[id][0];
+236-        g = kPalette[id][1];
+237-        b = kPalette[id][2];
+######## app/src/main/cpp/samp/game/Vehtuner.h : /s_HeadlightOverride|GetHeadlightRGB|ClearHeadlightRGB/ ########
+48-    void Reset(CVehicleGTA* veh);
+49-
+50-    // Far rengi (DoVehicleLights hook-u istifade edir). Override yoxdursa false.
+51:    bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b);
+52-
+53-    // UI ucun palitra rengi (0 = "standart" ucun boz numune).
+54-    void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b);
+55-}
+######## FAYL app/src/main/cpp/samp/game/vehicle_tuning.h ########
+1: #pragma once
+2: // ============================================================================
+3: //  vehicle_tuning.h  (YENI FAYL -> game/ qovluguna qoy)
+4: //
+5: //  Ferdi (yalniz bir masina aid) handling + far rengi sistemi.
+6: //  Kohne CVehicle::SetMaxSpeed/SetHeadlightColor ... funksiyalari artiq
+7: //  ISTIFADE OLUNMUR (silmek olar, amma silmek mecburi deyil).
+8: // ============================================================================
+9: #include <cstdint>
+10: 
+11: struct CVehicleGTA;
+12: 
+13: // Butun handling deyerleri "faiz"dir: 100 = standart.
+14: // Bu, oyunun daxili vahidlerinden asili olmadan duzgun isleyir.
+15: struct VehicleTuning
+16: {
+17:     float   speedPct  = 100.0f;   // maks. suret      (50 .. 250)
+18:     float   accelPct  = 100.0f;   // tecil            (30 .. 300)
+19:     float   brakePct  = 100.0f;   // tormoz           (30 .. 300)
+20:     float   steerPct  = 100.0f;   // sukan bucagi     (50 .. 150)
+21:     float   massPct   = 100.0f;   // kutle            (30 .. 300)
+22:     uint8_t headlight = 0;        // 0 = standart, 1..15 = palitra rengi
+23: };
+24: 
+25: constexpr int HEADLIGHT_COLOR_COUNT = 16;
+26: 
+27: namespace CVehicleTuning
+28: {
+29:     // Masinin hazirki tenzimlemesi (yoxdursa standart).
+30:     VehicleTuning Get(CVehicleGTA* veh);
+31: 
+32:     // Canli tetbiq edir (hem handling, hem far rengi). Tekrar-tekrar cagirmaq tehlukesizdir.
+33:     void Set(CVehicleGTA* veh, const VehicleTuning& t);
+34: 
+35:     // Hamisini standarta qaytarir.
+36:     void Reset(CVehicleGTA* veh);
+37: 
+38:     // Far rengi (DoVehicleLights hook-u istifade edir). Override yoxdursa false.
+39:     bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b);
+40: 
+41:     // UI ucun palitra rengi (0 = "standart" ucun boz numune).
+42:     void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b);
+43: }
+######## FAYL app/src/main/cpp/samp/game/Vehtuner.h ########
+1: #pragma once
+2: // ============================================================================
+3: //  VehTuner.h  (YENI FAYL -> game/ qovluguna qoy)
+4: //
+5: //  Ferdi (yalniz bir masina aid) handling + far rengi sistemi.
+6: //  Kohne CVehicle::SetMaxSpeed/SetHeadlightColor ... funksiyalari artiq
+7: //  ISTIFADE OLUNMUR (silmek olar, amma silmek mecburi deyil).
+8: // ============================================================================
+9: #include <cstdint>
+10: 
+11: struct CVehicleGTA;
+12: 
+13: // Butun handling deyerleri "faiz"dir: 100 = standart.
+14: // Bu, oyunun daxili vahidlerinden asili olmadan duzgun isleyir.
+15: struct VehTune
+16: {
+17:     // --- Muherrik ---
+18:     float   speedPct    = 100.0f;   // maks. suret                    (50 .. 250)
+19:     float   accelPct    = 100.0f;   // tecil = yerinden goturme       (30 .. 400)
+20:     float   inertiaPct  = 100.0f;   // muherrik ataleti (az = tez)    (20 .. 300)
+21:     float   massPct     = 100.0f;   // kutle                          (30 .. 300)
+22:     float   dragPct     = 100.0f;   // hava muqavimeti                (20 .. 300)
+23:     // --- Idareetme ---
+24:     float   brakePct    = 100.0f;   // tormoz                         (30 .. 300)
+25:     float   steerPct    = 100.0f;   // sukan bucagi                   (50 .. 150)
+26:     float   tractionPct = 100.0f;   // yapisma (traction)             (50 .. 200)
+27:     float   tracLossPct = 100.0f;   // s√ºr√ºsme itkisi (traction loss) (20 .. 200)
+28:     float   turnPct     = 100.0f;   // firlanma ataleti (kutleye elave)(30 .. 300)
+29:     // --- Asma / zerbe ---
+30:     float   suspForcePct = 100.0f;  // asma gucu                      (30 .. 300)
+31:     float   suspDampPct  = 100.0f;  // asma sonduruculeri             (30 .. 300)
+32:     float   collisionPct = 100.0f;  // toqqu≈üma zererƒ±                (10 .. 300)
+33:     // --- Far ---
+34:     uint8_t headlight   = 0;        // 0 = standart, 1..15 = palitra rengi
+35: };
+36: 
+37: constexpr int VEHTUNER_COLOR_COUNT = 16;
+38: 
+39: namespace VehTuner
+40: {
+41:     // Masinin hazirki tenzimlemesi (yoxdursa standart).
+42:     VehTune Get(CVehicleGTA* veh);
+43: 
+44:     // Canli tetbiq edir (hem handling, hem far rengi). Tekrar-tekrar cagirmaq tehlukesizdir.
+45:     void Set(CVehicleGTA* veh, const VehTune& t);
+46: 
+47:     // Hamisini standarta qaytarir.
+48:     void Reset(CVehicleGTA* veh);
+49: 
+50:     // Far rengi (DoVehicleLights hook-u istifade edir). Override yoxdursa false.
+51:     bool GetHeadlightRGB(CVehicleGTA* veh, uint8_t& r, uint8_t& g, uint8_t& b);
+52: 
+53:     // UI ucun palitra rengi (0 = "standart" ucun boz numune).
+54:     void GetPaletteColor(int id, uint8_t& r, uint8_t& g, uint8_t& b);
+55: }
+######## FAYL app/src/main/cpp/samp/game/tHandlingData.h ########
+1: //
+2: // Created by x1y2z on 09.04.2023.
+3: //
+4: 
+5: #pragma once
+6: 
+7: #include "game/Core/Vector.h"
+8: #include "cTransmission.h"
+9: #include "Enums/eVehicleHandlingModelFlags.h"
+10: #include "Enums/eVehicleHandlingFlags.h"
+11: 
+12: 
+13: enum eVehicleLightsSize : uint8_t {
+14:     LIGHTS_LONG,
+15:     LIGHTS_SMALL,
+16:     LIGHTS_BIG,
+17:     LIGHTS_TALL
+18: };
+19: 
+20: struct tHandlingData
+21: {
+22:     int32_t       m_nVehicleId;
+23:     float         m_fMass; // 1.0 to 50000.0
+24:     float         m_fMassRecpr; // = 1.f / m_fMass
+25:     float         m_fTurnMass;
+26:     float         m_fDragMult;
+27:     CVector       m_vecCentreOfMass;   // x, y, z - 1.0 to 50000.0
+28:     uint8_t       m_nPercentSubmerged; // 10 to 120 (> 100% vehicle sinks)
+29:     uint8_t       pad0[3];
+30:     float         m_fBuoyancyConstant;
+31:     float         m_fTractionMultiplier; // 0.5 to 2.0
+32:     cTransmission m_transmissionData;
+33:     float         m_fBrakeDeceleration; // 0.1 to 10.0
+34:     float         m_fBrakeBias;         // 0.0 > x > 1.0
+35:     bool          m_bABS;               // 0/1
+36:     char          field_9D;
+37:     char          field_9E;
+38:     char          field_9F;
+39:     float         m_fSteeringLock; // 10.0 to 40.0
+40:     float         m_fTractionLoss;
+41:     float         m_fTractionBias;
+42:     float         m_fSuspensionForceLevel;     // not [L/M/H]
+43:     float         m_fSuspensionDampingLevel;   // not [L/M/H]
+44:     float         m_fSuspensionHighSpdComDamp; // often zero - 200.0 or more for bouncy vehicles
+45:     float         m_fSuspensionUpperLimit;
+46:     float         m_fSuspensionLowerLimit;
+47:     float         m_fSuspensionBiasBetweenFrontAndRear;
+48:     float         m_fSuspensionAntiDiveMultiplier;
+49:     float         m_fCollisionDamageMultiplier; // 0.2 to 5.0
+50:     union {
+51:         eVehicleHandlingModelFlags m_nModelFlags;
+52:         struct {
+53:             uint32_t m_bIsVan : 1;
+54:             uint32_t m_bIsBus : 1;
+55:             uint32_t m_bIsLow : 1;
+56:             uint32_t m_bIsBig : 1;
+57:             uint32_t m_bReverseBonnet : 1;
+58:             uint32_t m_bHangingBoot : 1;
+59:             uint32_t m_bTailgateBoot : 1;
+60:             uint32_t m_bNoswingBoot : 1;
+61: 
+62:             uint32_t m_bNoDoors : 1;
+63:             uint32_t m_bTandemSeats : 1;
+64:             uint32_t m_bSitInBoat : 1;
+65:             uint32_t m_bConvertible : 1;
+66:             uint32_t m_bNoExhaust : 1;
+67:             uint32_t m_bDoubleExhaust : 1;
+68:             uint32_t m_bNo1fpsLookBehind : 1;
+69:             uint32_t m_bForceDoorCheck : 1;
+70: 
+71:             uint32_t m_bAxleFNotlit : 1;
+72:             uint32_t m_bAxleFSolid : 1;
+73:             uint32_t m_bAxleFMcpherson : 1;
+74:             uint32_t m_bAxleFReverse : 1;
+75:             uint32_t m_bAxleRNotlit : 1;
+76:             uint32_t m_bAxleRSolid : 1;
+77:             uint32_t m_bAxleRMcpherson : 1;
+78:             uint32_t m_bAxleRReverse : 1;
+79: 
+80:             uint32_t m_bIsBike : 1;
+81:             uint32_t m_bIsHeli : 1;
+82:             uint32_t m_bIsPlane : 1;
+83:             uint32_t m_bIsBoat : 1;
+84:             uint32_t m_bBouncePanels : 1;
+85:             uint32_t m_bDoubleRwheels : 1;
+86:             uint32_t m_bForceGroundClearance : 1;
+87:             uint32_t m_bIsHatchback : 1;
+88:         };
+89:     };
+90:     union {
+91:         eVehicleHandlingFlags m_nHandlingFlags;
+92:         struct {
+93:             uint32_t m_b1gBoost : 1;
+94:             uint32_t m_b2gBoost : 1;
+95:             uint32_t m_bNpcAntiRoll : 1;
+96:             uint32_t m_bNpcNeutralHandl : 1;
+97:             uint32_t m_bNoHandbrake : 1;
+98:             uint32_t m_bSteerRearwheels : 1;
+99:             uint32_t m_bHbRearwheelSteer : 1;
+100:             uint32_t m_bAltSteerOpt : 1;
+101: 
+102:             uint32_t m_bWheelFNarrow2 : 1;
+103:             uint32_t m_bWheelFNarrow : 1;
+104:             uint32_t m_bWheelFWide : 1;
+105:             uint32_t m_bWheelFWide2 : 1;
+106:             uint32_t m_bWheelRNarrow2 : 1;
+107:             uint32_t m_bWheelRNarrow : 1;
+108:             uint32_t m_bWheelRWide : 1;
+109:             uint32_t m_bWheelRWide2 : 1;
+110: 
+111:             uint32_t m_bHydraulicGeom : 1;
+112:             uint32_t m_bHydraulicInst : 1;
+113:             uint32_t m_bHydraulicNone : 1;
+114:             uint32_t m_bNosInst : 1;
+115:             uint32_t m_bOffroadAbility : 1;
+116:             uint32_t m_bOffroadAbility2 : 1;
+117:             uint32_t m_bHalogenLights : 1;
+118:             uint32_t m_bProcRearwheelFirst : 1;
+119:             uint32_t m_bUseMaxspLimit : 1;
+120: 
+121:             uint32_t m_bLowRider : 1;
+122:             uint32_t m_bStreetRacer : 1;
+123:             uint32_t m_bSwingingChassis : 1;
+124:         };
+125:     };
+126:     float              m_fSeatOffsetDistance; // // ped seat position offset towards centre of car
+127:     uint32_t           m_nMonetaryValue;      // 1 to 100000
+128:     eVehicleLightsSize m_nFrontLights;
+129:     eVehicleLightsSize m_nRearLights;
+130:     uint8_t            m_nAnimGroup;
+131:     uint8_t            pad2;
+132: 
+133:     cTransmission& GetTransmission() { return m_transmissionData; }
+134: 
+135:     int InitFromData(int id, const char *line);
+136: };
+137: static_assert(sizeof(tHandlingData) == 0xE0, "Invalid size tHandlingData");
+138: 
+######## app/src/main/cpp/samp/game/Entity/CVehicleGTA.h : /m_aSuspension|SuspensionLines|m_fSuspensionLowerLimit|wheel|Wheel/ ########
+52-            uint32_t bNpcAntiRoll : 1;
+53-            uint32_t bNpcNeutralHandl : 1;
+54-            uint32_t bNoHandbrake : 1;
+55:            uint32_t bSteerRearwheels : 1;
+56:            uint32_t bHbRearwheelSteer : 1;
+57-            uint32_t bAltSteerOpt : 1;
+58:            uint32_t bWheelFNarrow2 : 1;
+59:            uint32_t bWheelFNarrow : 1;
+60:            uint32_t bWheelFWide : 1;
+61:            uint32_t bWheelFWide2 : 1;
+62:            uint32_t bWheelRNarrow2 : 1;
+63:            uint32_t bWheelRNarrow : 1;
+64:            uint32_t bWheelRWide : 1;
+65:            uint32_t bWheelRWide2 : 1;
+66-            uint32_t bHydraulicGeom : 1;
+67-            uint32_t bHydraulicInst : 1;
+68-            uint32_t bHydraulicNone : 1;
+69-            uint32_t bNosInst : 1;
+70-            uint32_t bOffroadAbility : 1;
+71-            uint32_t bOffroadAbility2 : 1;
+72-            uint32_t bHalogenLights : 1;
+73:            uint32_t bProcRearwheelFirst : 1;
+74-            uint32_t bUseMaxspLimit : 1;
+75-            uint32_t bLowRider : 1;
+76-            uint32_t bStreetRacer : 1;
+77-            uint32_t bSwingingChassis : 1;
+78-        } handlingFlags;
+79-    };
+80-#if VER_x32
+81-    uint8_t AutoPilot[152];
+82-#else
+83-    uint32_t padflagsx64;
+84-    uint8_t AutoPilot[0xA8];
+85-#endif
+86-    union
+87-    {
+--
+136-            uint32_t bNeverUseSmallerRemovalRange : 1;// Some vehicles (like planes) we don't want to remove just behind the camera.
+137-            uint32_t bIsRCVehicle : 1; // Is this a remote controlled (small) vehicle. True whether the player or AI controls it.
+138-
+139:            uint32_t bAlwaysSkidMarks : 1; // This vehicle leaves skidmarks regardless of the wheels' states.
+140-            uint32_t bEngineBroken : 1; // Engine doesn't work. Player can get in but the vehicle won't drive
+141-            uint32_t bVehicleCanBeTargetted : 1;// The ped driving this vehicle can be targetted, (for Torenos plane mission)
+142-            uint32_t bPartOfAttackWave : 1; // This car is used in an attack during a gang war
+143-            uint32_t bWinchCanPickMeUp : 1; // This car cannot be picked up by any ropes.
+144-            uint32_t bImpounded : 1; // Has this vehicle been in a police impounding garage
+145-            uint32_t bVehicleCanBeTargettedByHS : 1;// Heat seeking missiles will not target this vehicle.
+146-            uint32_t bSirenOrAlarm : 1; // Set to TRUE if siren or alarm active, else FALSE
+147-
+148-            uint32_t bHasGangLeaningOn : 1;
+149-            uint32_t bGangMembersForRoadBlock : 1;// Will generate gang members if NumPedsForRoadBlock > 0
+150-            uint32_t bDoesProvideCover : 1; // If this is false this particular vehicle can not be used to take cover behind.
+151-            uint32_t bMadDriver : 1; // This vehicle is driving like a lunatic
+152-            uint32_t bUpgradedStereo : 1; // This vehicle has an upgraded stereo
+153-            uint32_t bConsideredByPlayer : 1; // This vehicle is considered by the player to enter
+--
+169-    uint8_t m_comp1;
+170-    uint8_t m_comp2;
+171-    short  m_anUpgrades[15];
+172:    float m_wheelScale;
+######## app/src/main/cpp/samp/net/netrpc.cpp : /^void ClientMessage\(/ ########
+######## app/src/main/cpp/samp/net/netgame.cpp : /void CNetGame::SendChat(Command|Message)/ ########
+919-    m_pRakClient->RPC(&RPC_DialogResponse, &bsSend, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+920-}
+921-
+922:void CNetGame::SendChatMessage(const char* szMsg)
+923-{
+924-    if (GetGameState() != GAMESTATE_CONNECTED) return;
+925-
+926-    RakNet::BitStream bsSend;
+927-    uint8_t byteTextLen = strlen(szMsg);
+928-
+929-    bsSend.Write(byteTextLen);
+930-    bsSend.Write(szMsg, byteTextLen);
+931-
+932-    m_pRakClient->RPC(&RPC_Chat, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+933-}
+934-
+935:void CNetGame::SendChatCommand(const char* szCommand)
+936-{
+937-    if (GetGameState() != GAMESTATE_CONNECTED) return;
+938-
+939-    RakNet::BitStream bsParams;
+940-    int iStrlen = strlen(szCommand);
+941-
+942-    bsParams.Write(iStrlen);
+943-    bsParams.Write(szCommand, iStrlen);
+944-    m_pRakClient->RPC(&RPC_ServerCommand, &bsParams, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+945-}
+946-
+947-void CNetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPosZ, uint8_t byteType, uint32_t dwColor, uint8_t byteStyle)
+948-{
+949-    if (m_dwMapIcon[byteIconID] != 0) {
+######## app/src/main/cpp/samp/net/playerbubblepool.cpp : /cp1251|Cp1251|CP1251|Utf8To|ToUtf8|utf8_to/ ########
+89-    }
+90-
+91-    PlayerBubbleStruct* playerBubbleStruct = new PlayerBubbleStruct;
+92:    //Utils::cpToUtf8(m_pPlayerBubble[playerId]->szText, text);
+93-    std::string GText = Encoding::cp2utf(text);
+94-    strcpy(playerBubbleStruct->szText, GText.c_str());
+95-
+96-    playerBubbleStruct->fDistance = distance;
+97-    playerBubbleStruct->uiExpireTime = GetTickCount() + time;
+98-    playerBubbleStruct->dwLineCount = WrapText(playerBubbleStruct->szText, 36, 12) - 1;
+99-    playerBubbleStruct->uiColor = color;
+100-
+101-    m_pPlayerBubble[playerId] = playerBubbleStruct;
+102-    m_bSlotState[playerId] = true;
+103-
+104-    return m_pPlayerBubble[playerId];
+105-}
+106-
+######## app/src/main/cpp/samp/vendor/encoding/encoding.cpp : /cp1251|Cp1251|CP1251|Utf8To|ToUtf8|utf8_to/ ########
+24-	size_t len = s.size();
+25-	const char* buff = s.c_str();
+26-	char* output = new char[len];
+27:	convert_utf8_to_windows1251(buff, output, len);
+28-	std::string ns(output);
+29-	return ns;
+30-}
+31-
+32:bool Encoding::convert_utf8_to_windows1251(const char* utf8, char* windows1251, size_t n)
+33-{
+34-	int i = 0;
+35-	int j = 0;
+36-	for (; i < (int)n && utf8[i] != 0; ++i) {
+37-		char prefix = utf8[i];
+38-		char suffix = utf8[i + 1];
+39-		if ((prefix & 0x80) == 0) {
+40-			windows1251[j] = (char)prefix;
+41-			++j;
+42-		}
+43-		else if ((~prefix) & 0x20) {
+44-			int first5bit = prefix & 0x1F;
+45-			first5bit <<= 6;
+46-			int sec6bit = suffix & 0x3F;
+######## app/src/main/cpp/samp/vendor/encoding/encoding.h : /cp1251|Cp1251|CP1251|Utf8To|ToUtf8|utf8_to/ ########
+82-		{0xBF, 0x0457} // CYRILLIC SMALL LETTER YI
+83-	};
+84-
+85:	static bool convert_utf8_to_windows1251(const char* utf8, char* windows1251, size_t n);
+86-};
+######## app/src/main/cpp/samp/gui/samp_widgets/chat.cpp : /ProcessClientCommands/ ########
+143: bool ProcessClientCommands(const std::string& input)
+144: {
+145:         if (input.empty() || input[0] != '/') return false;
+146: 
+147:         std::stringstream ss(input);
+148:         std::string cmd;
+149:         ss >> cmd;
+150: 
+151:         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+152: 
+153:         // ===== Lua =====
+154:         if (cmd == "/luareload") {
+155:                 bool ok = LuaManager::Init();
+156:                 pUI->chat()->addDebugMessage(ok ? "{00FF00}[Lua]: yuklendi" : "{FF0000}[Lua]: xeta");
+157:                 return true;
+158:         }
+159: 
+160:         {
+161:                 std::string luaArgs;
+162:                 std::getline(ss, luaArgs);
+163:                 size_t lp = luaArgs.find_first_not_of(" \t");
+164:                 luaArgs = (lp == std::string::npos) ? "" : luaArgs.substr(lp);
+165: 
+166:                 if (LuaManager::OnCommand(cmd, luaArgs)) return true;
+167: 
+168:                 // stream-i basa qaytar ki, asagidaki C++ komandalari duzgun isleye
+169:                 ss.clear();
+170:                 ss.str(input);
+171:                 ss >> cmd;
+172:                 std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+173:         }
+174:         // ===============
+175: 
+176:         if (cmd == "/yt") {
+177:                 std::string rest;
+178:                 std::getline(ss, rest);
+179:                 size_t p = rest.find_first_not_of(" \t");
+180:                 rest = (p == std::string::npos) ? "" : rest.substr(p);
+181:                 if (pJavaWrapper) pJavaWrapper->YtCommand(rest.c_str());
+182:                 return true;
+183:         }
+184: 
+185:         if (cmd == "/radar") {   // FAR_RGB_PATCH
+186:                 g_bHideMinimap = !g_bHideMinimap;
+187:                 pUI->chat()->addDebugMessage(
+188:                     "{00FF00}[Client]: Minimap: %s",
+189:                     g_bHideMinimap ? "gizli" : "aciq"
+190:                 );
+191:                 return true;
+192:         }
+193: 
+194:         if (cmd == "/gizle") {
+195:                 g_bHideAllUI = !g_bHideAllUI;
+196:                 if (!g_bHideAllUI) {
+197:                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz aktiv edildi.");
+198:                 }
+199:                 return true;
+200:         }
+201: 
+202:         if (cmd == "/mm") {   // MM_NO_VEHICLE_PATCH: artiq masinsiz da acilir
+203:                 g_bShowHandlingDlg = !g_bShowHandlingDlg;
+204:                 return true;
+205:         }
+206: 
+207:         if (cmd == "/sinyalayar")
+208:         {
+209:                 std::string a;
+210:                 ss >> a;
+211:                 std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+212:                 if (a == "ters") {
+213:                         VehControls::g_sigSwapSides = !VehControls::g_sigSwapSides;
+214:                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
+215:                 } else if (a == "lampa") {
+216:                         VehControls::g_sigLamp = !VehControls::g_sigLamp;
+217:                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal lampa parildamasi: %s", VehControls::g_sigLamp ? "aciq" : "bagli");
+218:                 } else if (a == "korona") {
+219:                         VehControls::g_sigCorona = !VehControls::g_sigCorona;
+220:                         pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
+221:                 } else {
+222:                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona|lampa]");
+223:                 }
+224:                 return true;
+225:         }
+226: 
+227:         if (cmd == "/sinyal")
+228:         {
+229:                 CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
+230:                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+231:                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+232:                         return true;
+233:                 }
+234: 
+235:                 CVehicle* pVeh = nullptr;
+236:                 if (pNetGame && pNetGame->GetVehiclePool() && pLocalPlayer->m_pPed) {
+237:                         CVehiclePool* pPool = pNetGame->GetVehiclePool();
+238:                         VEHICLEID vehID = pPool->FindIDFromGtaPtr(pLocalPlayer->m_pPed->pVehicle);
+239:                         if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
+240:                 }
+241:                 if (!pVeh || !pVeh->m_pVehicle) {
+242:                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+243:                         return true;
+244:                 }
+245: 
+246:                 std::string arg;
+247:                 ss >> arg;
+248:                 std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+249: 
+250:                 int mode = -1;
+251:                 if (arg == "sol")                          mode = VEH_SIGNAL_LEFT;
+252:                 else if (arg == "sag")                     mode = VEH_SIGNAL_RIGHT;
+253:                 else if (arg == "avariya")                 mode = VEH_SIGNAL_HAZARD;
+254:                 else if (arg == "off" || arg == "0")       mode = VEH_SIGNAL_OFF;
+255: 
+256:                 if (mode < 0) {
+257:                         pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyal [sol|sag|avariya|off]");
+258:                         return true;
+259:                 }
+260: 
+261:                 VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
+262:                 pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
+263:                 return true;
+264:         }
+265: 
+266:         if (cmd == "/far")
+267:         {
+268:                 CPlayerPed* pLocalPlayer =
+269:                     pGame ? pGame->FindPlayerPed() : nullptr;
+270: 
+271:                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
+272:                         pUI->chat()->addDebugMessage(
+273:                             "{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!"
+274:                         );
+275:                         return true;
+276:                 }
+277: 
+278:                 CVehicle* pVeh = nullptr;
+279: 
+280:                 if (pNetGame &&
+281:                     pNetGame->GetVehiclePool() &&
+282:                     pLocalPlayer->m_pPed) {
+######## app/src/main/cpp/samp/gui/samp_widgets/keyboard.cpp : /KeyboardLayout::Row::Key::draw/ ########
+377: void KeyboardLayout::Row::Key::draw(ImGuiRenderer* renderer)
+378: {
+379: 	if (focused()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0xF5, 0x91, 0x32), true);
+380: 
+381: 	switch (m_extendedKey)
+382: 	{
+383: 		case ExtendedKey::SHIFT_ON:
+384: 			renderer->drawTriangle(
+385: 					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
+386: 					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
+387: 					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
+388: 					ImColor(1.0f, 1.0f, 1.0f), true
+389: 			);
+390: 			renderer->drawRect(
+391: 					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
+392: 					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
+393: 					ImColor(1.0f, 1.0f, 1.0f), true
+394: 			);
+395: 			break;
+396: 
+397: 		case ExtendedKey::SHIFT_OFF:
+398: 			renderer->drawTriangle(
+399: 					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
+400: 					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
+401: 					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
+402: 					ImColor(0xF5, 0x91, 0x32), true
+403: 			);
+404: 			renderer->drawRect(
+405: 					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
+406: 					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
+407: 					ImColor(0xF5, 0x91, 0x32), true
+408: 			);
+409: 			break;
+410: 
+411: 		case ExtendedKey::BACKSPACE:
+412: 			static ImVec2 points[5];
+413: 			points[0] = ImVec2(absolutePosition().x + width() * 0.35f, absolutePosition().y + height() * 0.50f);
+414: 			points[1] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.25f);
+415: 			points[2] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.25f);
+416: 			points[3] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.65f);
+417: 			points[4] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.65f);
+418: 			renderer->drawConvexPolyFilled(points, 5, ImColor(1.0f, 1.0f, 1.0f));
+419: 			break;
+420: 
+421: 		case ExtendedKey::SPACE:
+422: 			renderer->drawRect(
+423: 					ImVec2(absolutePosition().x + width() * 0.07f, absolutePosition().y + height() * 0.35f),
+424: 					ImVec2(absolutePosition().x + width() * 0.93f, absolutePosition().y + height() * 0.65f),
+425: 					ImColor(1.0f, 1.0f, 1.0f), true
+426: 			);
+427: 			break;
+428: 
+429: 		case ExtendedKey::SEND:
+430: 			renderer->drawTriangle(
+431: 					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.25f),
+432: 					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.75f),
+433: 					ImVec2(absolutePosition().x + width() * 0.7f, absolutePosition().y + height() * 0.50f),
+434: 					ImColor(1.0f, 1.0f, 1.0f), true
+435: 			);
+436: 			break;
+437: 	}
+438: 
+439: 	Widget::draw(renderer);
+440: }
+441: 
+442: void KeyboardLayout::Row::Key::touchPopEvent()
+443: {
+444: 	Keyboard* keyboard = dynamic_cast<Keyboard*>(this->parent()->parent()->parent());
+445: 
+446: 	switch (m_extendedKey)
+447: 	{
+448: 		case ExtendedKey::BACKSPACE:
+449: 			keyboard->input()->popCharFromInput();
+450: 			break;
+451: 
+452: 		case ExtendedKey::SPACE:
+453: 			keyboard->input()->addCharToInput(' ');
+454: 			break;
+455: 
+456: 		case ExtendedKey::SEND:
+457: 			keyboard->send();
+458: 			break;
+459: 
+460: 		case ExtendedKey::SHIFT_ON:
+461: 			keyboard->changeCase(KeyCase::UPPER);
+462: 			break;
+463: 
+464: 		case ExtendedKey::SHIFT_OFF:
+465: 			keyboard->changeCase(KeyCase::LOWER);
+466: 			break;
+467: 
+468: 		case ExtendedKey::LANG_AZE:
+469: 			keyboard->setActiveLayout(KeyboardLayout::Type::AZE_LOWER);
+470: 			break;
+471: 
+472: 		case ExtendedKey::LANG_ENG:
+473: 			keyboard->setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
+474: 			break;
+475: 
+476: 		case ExtendedKey::NUM:
+477: 			keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
+478: 			break;
+479: 
+480: 		case ExtendedKey::NONE:
+481: 			if (m_isStringValue)
+482: 				keyboard->input()->addStringToInput(m_valueStr);
+483: 			else
+484: 				keyboard->input()->addCharToInput(m_value);
+485: 			break;
+486: 	}
+487: }
+488: 
+489: /* KeyboardLayoutLowerENG */
+490: 
+491: KeyboardLayoutLowerENG::KeyboardLayoutLowerENG() : KeyboardLayout() {}
+492: 
+493: void KeyboardLayoutLowerENG::performLayout()
+494: {
+495: 	m_rows[0]->setPadding(0.0f);
+496: 	m_rows[0]->setSpacing(0.0f);
+497: 	m_rows[0]->addKey(std::string("q"), 'q');
+498: 	m_rows[0]->addKey(std::string("w"), 'w');
+499: 	m_rows[0]->addKey(std::string("e"), 'e');
+500: 	m_rows[0]->addKey(std::string("r"), 'r');
+501: 	m_rows[0]->addKey(std::string("t"), 't');
+502: 	m_rows[0]->addKey(std::string("y"), 'y');
+503: 	m_rows[0]->addKey(std::string("u"), 'u');
+504: 	m_rows[0]->addKey(std::string("i"), 'i');
+505: 	m_rows[0]->addKey(std::string("o"), 'o');
+506: 	m_rows[0]->addKey(std::string("p"), 'p');
+507: 
+508: 	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+509: 	float padding = keySize.x / 2;
+510: 	m_rows[1]->setPadding(0.0f);
+511: 	m_rows[1]->setSpacing(0.0f);
+512: 	m_rows[1]->setPaddingLeft(padding);
+513: 	m_rows[1]->setPaddingRight(padding);
+514: 	m_rows[1]->addKey(std::string("a"), 'a');
+515: 	m_rows[1]->addKey(std::string("s"), 's');
+516: 	m_rows[1]->addKey(std::string("d"), 'd');
+517: 	m_rows[1]->addKey(std::string("f"), 'f');
+518: 	m_rows[1]->addKey(std::string("g"), 'g');
+519: 	m_rows[1]->addKey(std::string("h"), 'h');
+520: 	m_rows[1]->addKey(std::string("j"), 'j');
+521: 	m_rows[1]->addKey(std::string("k"), 'k');
+522: 	m_rows[1]->addKey(std::string("l"), 'l');
+523: 
+524: 	m_rows[2]->setPadding(0.0f);
+525: 	m_rows[2]->setSpacing(0.0f);
+526: 	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+527: 	m_rows[2]->addKey(std::string("z"), 'z');
+528: 	m_rows[2]->addKey(std::string("x"), 'x');
+529: 	m_rows[2]->addKey(std::string("c"), 'c');
+530: 	m_rows[2]->addKey(std::string("v"), 'v');
+531: 	m_rows[2]->addKey(std::string("b"), 'b');
+532: 	m_rows[2]->addKey(std::string("n"), 'n');
+533: 	m_rows[2]->addKey(std::string("m"), 'm');
+534: 	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+535: 
+536: 	m_rows[3]->setPadding(0.0f);
+537: 	m_rows[3]->setSpacing(0.0f);
+538: 	m_rows[3]->addKey(ExtendedKey::NUM);
+539: 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+540: 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+541: 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+542: 	m_rows[3]->addKey(std::string("/"), '/');
+543: 	m_rows[3]->addKey(std::string("?"), '?');
+544: 	m_rows[3]->addKey(std::string("."), '.');
+545: 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+546: 
+547: 	KeyboardLayout::performLayout();
+548: }
+549: 
+550: /* KeyboardLayoutUpperENG */
+551: 
+552: KeyboardLayoutUpperENG::KeyboardLayoutUpperENG() : KeyboardLayout() {}
+553: 
+554: void KeyboardLayoutUpperENG::performLayout()
+555: {
+556: 	m_rows[0]->setPadding(0.0f);
+557: 	m_rows[0]->setSpacing(0.0f);
+558: 	m_rows[0]->addKey(std::string("Q"), 'Q');
+559: 	m_rows[0]->addKey(std::string("W"), 'W');
+560: 	m_rows[0]->addKey(std::string("E"), 'E');
+561: 	m_rows[0]->addKey(std::string("R"), 'R');
+562: 	m_rows[0]->addKey(std::string("T"), 'T');
+563: 	m_rows[0]->addKey(std::string("Y"), 'Y');
+564: 	m_rows[0]->addKey(std::string("U"), 'U');
+565: 	m_rows[0]->addKey(std::string("I"), 'I');
+566: 	m_rows[0]->addKey(std::string("O"), 'O');
+567: 	m_rows[0]->addKey(std::string("P"), 'P');
+568: 
+569: 	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+570: 	float padding = keySize.x / 2;
+571: 	m_rows[1]->setPadding(0.0f);
+572: 	m_rows[1]->setSpacing(0.0f);
+573: 	m_rows[1]->setPaddingLeft(padding);
+574: 	m_rows[1]->setPaddingRight(padding);
+575: 	m_rows[1]->addKey(std::string("A"), 'A');
+576: 	m_rows[1]->addKey(std::string("S"), 'S');
+577: 	m_rows[1]->addKey(std::string("D"), 'D');
+578: 	m_rows[1]->addKey(std::string("F"), 'F');
+579: 	m_rows[1]->addKey(std::string("G"), 'G');
+580: 	m_rows[1]->addKey(std::string("H"), 'H');
+581: 	m_rows[1]->addKey(std::string("J"), 'J');
+582: 	m_rows[1]->addKey(std::string("K"), 'K');
+583: 	m_rows[1]->addKey(std::string("L"), 'L');
+584: 
+585: 	m_rows[2]->setPadding(0.0f);
+586: 	m_rows[2]->setSpacing(0.0f);
+587: 	m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+588: 	m_rows[2]->addKey(std::string("Z"), 'Z');
+589: 	m_rows[2]->addKey(std::string("X"), 'X');
+590: 	m_rows[2]->addKey(std::string("C"), 'C');
+591: 	m_rows[2]->addKey(std::string("V"), 'V');
+592: 	m_rows[2]->addKey(std::string("B"), 'B');
+593: 	m_rows[2]->addKey(std::string("N"), 'N');
+594: 	m_rows[2]->addKey(std::string("M"), 'M');
+595: 	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+596: 
+597: 	m_rows[3]->setPadding(0.0f);
+598: 	m_rows[3]->setSpacing(0.0f);
+599: 	m_rows[3]->addKey(ExtendedKey::NUM);
+600: 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+601: 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+602: 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+603: 	m_rows[3]->addKey(std::string("/"), '/');
+604: 	m_rows[3]->addKey(std::string("?"), '?');
+605: 	m_rows[3]->addKey(std::string("."), '.');
+606: 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+607: 
+608: 	KeyboardLayout::performLayout();
+609: }
+610: 
+611: /* KeyboardLayoutLowerAZE (Az…ôrbaycan klaviaturasƒ± - Ki√ßik h…ôrfl…ôr v…ô x√ºsusi h…ôrfl…ôr) */
+612: 
+613: KeyboardLayoutLowerAZE::KeyboardLayoutLowerAZE() : KeyboardLayout() {}
+614: 
+615: void KeyboardLayoutLowerAZE::performLayout()
+616: {
+617: 	m_rows[0]->setPadding(0.0f);
+618: 	m_rows[0]->setSpacing(0.0f);
+619: 	m_rows[0]->addKey("q", "q");
+620: 	m_rows[0]->addKey("w", "w");
+621: 	m_rows[0]->addKey("e", "e");
+622: 	m_rows[0]->addKey("r", "r");
+623: 	m_rows[0]->addKey("t", "t");
+624: 	m_rows[0]->addKey("y", "y");
+625: 	m_rows[0]->addKey("u", "u");
+626: 	m_rows[0]->addKey("ƒ±", "ƒ±");
+627: 	m_rows[0]->addKey("o", "o");
+628: 	m_rows[0]->addKey("p", "p");
+629: 	m_rows[0]->addKey("√º", "√º");
+630: 
+631: 	m_rows[1]->setPadding(0.0f);
+632: 	m_rows[1]->setSpacing(0.0f);
+633: 	m_rows[1]->addKey("a", "a");
+634: 	m_rows[1]->addKey("s", "s");
+635: 	m_rows[1]->addKey("d", "d");
+636: 	m_rows[1]->addKey("f", "f");
+637: 	m_rows[1]->addKey("g", "g");
+638: 	m_rows[1]->addKey("h", "h");
+639: 	m_rows[1]->addKey("j", "j");
+640: 	m_rows[1]->addKey("k", "k");
+641: 	m_rows[1]->addKey("l", "l");
+642: 	m_rows[1]->addKey("≈ü", "≈ü");
+643: 	m_rows[1]->addKey("√∂", "√∂");
+644: 
+645: 	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
+646: 	m_rows[2]->setPadding(0.0f);
+647: 	m_rows[2]->setSpacing(0.0f);
+648: 	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+649: 	m_rows[2]->addKey("z", "z");
+650: 	m_rows[2]->addKey("x", "x");
+651: 	m_rows[2]->addKey("c", "c");
+652: 	m_rows[2]->addKey("v", "v");
+653: 	m_rows[2]->addKey("b", "b");
+654: 	m_rows[2]->addKey("n", "n");
+655: 	m_rows[2]->addKey("m", "m");
+656: 	m_rows[2]->addKey("…ô", "…ô");
+657: 	m_rows[2]->addKey("√ß", "√ß");
+658: 	m_rows[2]->addKey("ƒü", "ƒü");
+659: 	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+660: 
+661: 	m_rows[3]->setPadding(0.0f);
+662: 	m_rows[3]->setSpacing(0.0f);
+663: 	m_rows[3]->addKey(ExtendedKey::NUM);
+664: 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+665: 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+666: 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+667: 	m_rows[3]->addKey(std::string("/"), '/');
+668: 	m_rows[3]->addKey(std::string("?"), '?');
+669: 	m_rows[3]->addKey(std::string("."), '.');
+670: 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+671: 
+672: 	KeyboardLayout::performLayout();
+673: }
+674: 
+675: /* KeyboardLayoutUpperAZE (Az…ôrbaycan klaviaturasƒ± - B√∂y√ºk h…ôrfl…ôr) */
+676: 
+677: KeyboardLayoutUpperAZE::KeyboardLayoutUpperAZE() : KeyboardLayout() {}
+678: 
+679: void KeyboardLayoutUpperAZE::performLayout()
+680: {
+681: 	m_rows[0]->setPadding(0.0f);
+682: 	m_rows[0]->setSpacing(0.0f);
+683: 	m_rows[0]->addKey("Q", "Q");
+684: 	m_rows[0]->addKey("W", "W");
+685: 	m_rows[0]->addKey("E", "E");
+686: 	m_rows[0]->addKey("R", "R");
+687: 	m_rows[0]->addKey("T", "T");
+688: 	m_rows[0]->addKey("Y", "Y");
+689: 	m_rows[0]->addKey("U", "U");
+690: 	m_rows[0]->addKey("ƒ∞", "ƒ∞"); // 'ƒ±' h…ôrfinin b√∂y√ºk formasƒ± ƒ∞
+691: 	m_rows[0]->addKey("O", "O");
+692: 	m_rows[0]->addKey("P", "P");
+693: 	m_rows[0]->addKey("√ú", "√ú");
+694: 
+695: 	m_rows[1]->setPadding(0.0f);
+696: 	m_rows[1]->setSpacing(0.0f);
+697: 	m_rows[1]->addKey("A", "A");
+698: 	m_rows[1]->addKey("S", "S");
+699: 	m_rows[1]->addKey("D", "D");
+700: 	m_rows[1]->addKey("F", "F");
+701: 	m_rows[1]->addKey("G", "G");
+702: 	m_rows[1]->addKey("H", "H");
+703: 	m_rows[1]->addKey("J", "J");
+704: 	m_rows[1]->addKey("K", "K");
+705: 	m_rows[1]->addKey("L", "L");
+706: 	m_rows[1]->addKey("≈û", "≈û");
+707: 	m_rows[1]->addKey("√ñ", "√ñ");
+708: 
+709: 	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
+710: 	m_rows[2]->setPadding(0.0f);
+711: 	m_rows[2]->setSpacing(0.0f);
+712: 	m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+713: 	m_rows[2]->addKey("Z", "Z");
+714: 	m_rows[2]->addKey("X", "X");
+715: 	m_rows[2]->addKey("C", "C");
+716: 	m_rows[2]->addKey("V", "V");
+717: 	m_rows[2]->addKey("B", "B");
+718: 	m_rows[2]->addKey("N", "N");
+719: 	m_rows[2]->addKey("M", "M");
+720: 	m_rows[2]->addKey("∆è", "∆è");
+721: 	m_rows[2]->addKey("√á", "√á");
+722: 	m_rows[2]->addKey("ƒû", "ƒû");
+723: 	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+724: 
+725: 	m_rows[3]->setPadding(0.0f);
+726: 	m_rows[3]->setSpacing(0.0f);
+727: 	m_rows[3]->addKey(ExtendedKey::NUM);
+728: 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+729: 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+730: 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+731: 	m_rows[3]->addKey(std::string("/"), '/');
+732: 	m_rows[3]->addKey(std::string("?"), '?');
+733: 	m_rows[3]->addKey(std::string("."), '.');
+734: 	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+735: 
+736: 	KeyboardLayout::performLayout();
+737: }
+738: 
+739: /* KeyboardLayoutNUM */
+740: 
+741: KeyboardLayoutNUM::KeyboardLayoutNUM() : KeyboardLayout() {}
+742: 
+743: void KeyboardLayoutNUM::performLayout()
+744: {
+745: 	m_rows[0]->setPadding(0.0f);
+746: 	m_rows[0]->setSpacing(0.0f);
+747: 	m_rows[0]->addKey(std::string("1"), '1');
+748: 	m_rows[0]->addKey(std::string("2"), '2');
+749: 	m_rows[0]->addKey(std::string("3"), '3');
+750: 	m_rows[0]->addKey(std::string("4"), '4');
+751: 	m_rows[0]->addKey(std::string("5"), '5');
+752: 	m_rows[0]->addKey(std::string("6"), '6');
+753: 	m_rows[0]->addKey(std::string("7"), '7');
+754: 	m_rows[0]->addKey(std::string("8"), '8');
+755: 	m_rows[0]->addKey(std::string("9"), '9');
+756: 	m_rows[0]->addKey(std::string("0"), '0');
+757: 
+758: 	m_rows[1]->setPadding(0.0f);
+759: 	m_rows[1]->setSpacing(0.0f);
+760: 	m_rows[1]->addKey(std::string("@"), '@');
+761: 	m_rows[1]->addKey(std::string("#"), '#');
+762: 	m_rows[1]->addKey(std::string("$"), '$');
+763: 	m_rows[1]->addKey(std::string("%"), '%');
+764: 	m_rows[1]->addKey(std::string("\""), '\"');
+765: 	m_rows[1]->addKey(std::string("*"), '*');
+766: 	m_rows[1]->addKey(std::string("("), '(');
+767: 	m_rows[1]->addKey(std::string(")"), ')');
+768: 	m_rows[1]->addKey(std::string("-"), '-');
+769: 	m_rows[1]->addKey(std::string("_"), '_');
+770: 
+771: 	m_rows[2]->setPadding(0.0f);
+772: 	m_rows[2]->setSpacing(0.0f);
+773: 	m_rows[2]->addKey(std::string("."), '.');
+774: 	m_rows[2]->addKey(std::string(":"), ':');
+775: 	m_rows[2]->addKey(std::string(";"), ';');
+776: 	m_rows[2]->addKey(std::string("+"), '+');
+777: 	m_rows[2]->addKey(std::string("="), '=');
+778: 	m_rows[2]->addKey(std::string("<"), '<');
+779: 	m_rows[2]->addKey(std::string(">"), '>');
+780: 	m_rows[2]->addKey(std::string("["), '[');
+781: 	m_rows[2]->addKey(std::string("]"), ']');
+782: 	m_rows[2]->addKey(ExtendedKey::BACKSPACE);
+783: 
+784: 	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+785: 
+786: 	m_rows[3]->setPadding(0.0f);
+787: 	m_rows[3]->setSpacing(0.0f);
+788: 	m_rows[3]->addKey(ExtendedKey::NUM);
+789: 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+790: 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+791: 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
+792: 	m_rows[3]->addKey(std::string("/"), '/');
+793: 	m_rows[3]->addKey(std::string("?"), '?');
+794: 	m_rows[3]->addKey(std::string("!"), '!');
+795: 	m_rows[3]->addKey(ExtendedKey::SEND);
+796: 
+797: 	KeyboardLayout::performLayout();
+798: }
+799: 
+800: KeyboardHistory::KeyboardHistory()
+801: {
+802: 	m_index = 0;
+803: 	m_count = 0;
+804: 	m_vMessages.resize(KEYBOARD_MAX_HISTORY_MESSAGES);
+805: }
+806: 
+807: void KeyboardHistory::add(const std::string& input)
+808: {
+809: 	for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 2; i > 0; i--)
+810: 	{
+811: 		std::string str = m_vMessages[i];
+812: 		m_vMessages[i] = m_vMessages[i - 1];
+813: 		m_vMessages[i - 1] = str;
+814: 	}
+815: 
+816: 	m_vMessages[0] = input;
+817: 	if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) m_count++;
+818: }
+819: 
+820: void KeyboardHistory::reset()
+821: {
+822: 	m_index = 0;
+823: }
+824: 
+825: const std::string KeyboardHistory::next()
+826: {
+######## FAYL app/src/main/cpp/samp/gui/widgets/button.h ########
+1: #pragma once
+2: 
+3: #include <functional>
+4: 
+5: class Button : public Widget
+6: {
+7: public:
+8: 	Button(const std::string& caption, float font_size = 0.0f);
+9: 
+10: 	const std::string& caption() const { return m_label->text(); }
+11: 	void setCaption(const std::string& caption) { m_label->setText(caption); }
+12: 
+13: 	std::function<void()> callback() { return m_callback; }
+14: 	void setCallback(const std::function<void()>& callback) { m_callback = callback; }
+15: 	
+16: 	void setColor(const ImColor& color) { m_color = color; }
+17: 	void setColorFocused(const ImColor& color) { m_colorFocused = color; }
+18: 	void setCaptionColor(const ImColor& color) { m_label->setColor(color); }
+19: 
+20: 	virtual void performLayout() override;
+21: 
+22: 	virtual void draw(ImGuiRenderer* renderer) override;
+23: 
+24: 	virtual void touchPopEvent() override;
+25: 
+26: private:
+27: 	Label* m_label;
+28: 	std::function<void()> m_callback;
+29: 
+30: 	ImColor m_color;
+31: 	ImColor m_colorFocused;
+32: };
+33: 
+34: class CButton : public Widget
+35: {
+36: public:
+37: 	CButton(const std::string& caption, float font_size = 0.0f);
+38: 
+39: 	const std::string& caption() const { return m_label->text(); }
+40: 	void setCaption(const std::string& caption) { m_label->setText(caption); }
+41: 
+42: 	std::function<void()> callback() { return m_callback; }
+43: 	void setCallback(const std::function<void()>& callback) { m_callback = callback; }
+44: 
+45: 	void setColor(const ImColor& color) { m_color = color; }
+46: 	void setColorFocused(const ImColor& color) { m_colorFocused = color; }
+47: 
+48: 	virtual void performLayout() override;
+49: 
+50: 	virtual void draw(ImGuiRenderer* renderer) override;
+51: 
+52: 	virtual void touchPopEvent() override;
+53: 
+54: private:
+55: 	Label* m_label;
+56: 	std::function<void()> m_callback;
+57: 
+58: 	ImColor m_color;
+59: 	ImColor m_colorFocused;
+60: };
+61: 
+62: //>> Button
+63: class OButton : public Widget
+64: {
+65: public:
+66: 	OButton(const std::string& caption, float font_size = 0.0f);
+67: 
+68: 	const std::string& caption() const { return m_label->text(); }
+69: 	void setCaption(const std::string& caption) { m_label->setText(caption); }
+70: 
+71: 	std::function<void()> callback() { return m_callback; }
+72: 	void setCallback(const std::function<void()>& callback) { m_callback = callback; }
+73: 
+74: 	void setColor(const ImColor& color) { m_color = color; }
+75: 	void setColorFocused(const ImColor& color) { m_colorFocused = color; }
+76: 
+77: 	virtual void performLayout() override;
+78: 
+79: 	virtual void draw(ImGuiRenderer* renderer) override;
+80: 
+81: 	virtual void touchPopEvent() override;
+82: 
+83: private:
+84: 	Label* m_label;
+85: 	std::function<void()> m_callback;
+86: 
+87: 	ImColor m_color;
+88: 	ImColor m_colorFocused;
+89: };
+######## FAYL app/src/main/cpp/samp/gui/widget.h ########
+1: #pragma once
+2: 
+3: #include <vector>
+4: #include <string>
+5: 
+6: enum class TouchType
+7: {
+8: 	push,
+9: 	move,
+10: 	pop,
+11: 	none
+12: };
+13: 
+14: class Widget
+15: {
+16: public:
+17: 	Widget();
+18: 
+19: 	/* parent */
+20: 	Widget* parent() const { return m_parent; }
+21: 	void setParent(Widget* parent) { m_parent = parent; }
+22: 
+23: 	/* visible */
+24: 	bool visible() { return m_visible; }
+25: 	void setVisible(bool visible) { m_visible = visible; }
+26: 
+27: 	/* size */
+28: 	const ImVec2& size() const { return m_size; }
+29: 	void setSize(const ImVec2& size);
+30: 	float width() const { return m_size.x; }
+31: 	void setWidth(float width);
+32: 	float height() const { return m_size.y; }
+33: 	void setHeight(float height);
+34: 
+35: 	/* min/max size */
+36: 	const ImVec2& maxSize() const { return m_maxSize; }
+37: 	void setMaxSize(const ImVec2& max_size) { m_maxSize = max_size; }
+38: 	const ImVec2& minSize() const { return m_minSize; }
+39: 	void setMinSize(const ImVec2& min_size) { m_minSize = min_size; }
+40: 	void setFixedSize(const ImVec2& fixed_size) { m_size = m_minSize = m_maxSize = fixed_size; }
+41: 
+42: 	/* position */
+43: 	const ImVec2& position() const { return m_position; }
+44: 	void setPosition(const ImVec2& position);
+45: 	const ImVec2& absolutePosition() const { return m_absolutePosition; }
+46: 
+47: 	/* children */
+48: 	int childCount() { return m_children.size(); }
+49: 	const std::vector<Widget*>& children() { return m_children; }
+50: 	void addChild(int index, Widget* widget);
+51: 	void addChild(Widget* widget);
+52: 	void removeChild(int index);
+53: 	void removeChild(const Widget* widget);
+54: 	Widget* childAt(int index) const { return m_children[index]; }
+55: 	int childIndex(Widget* widget) const;
+56: 
+57: 	bool focused() { return m_focused; }
+58: 	bool active() { return m_active; }
+59: 
+60: 	/* touch */
+61: 	bool contains(const ImVec2& pos) const;
+62: 	virtual void touchEvent(const ImVec2& pos, TouchType type);
+63: 
+64: 	/* draw/perform */
+65: 	virtual void draw(ImGuiRenderer* renderer);
+66: 	virtual void performLayout();
+67: 
+68: 	/* Ì‡Ê‡ÚËÂ Ì‡ ‚Ë‰ÊÂÚ */
+69: 	virtual void touchPushEvent() {}
+70: 	/* ËÁÏÂÌÂÌËÂ ÔÓÁËˆËË ÍÛÒÓ‡ (ÔË ÛÒÎÓ‚ËË ˜ÚÓ ÓÌ ·˚Î Ì‡Ê‡Ú) */
+71: 	virtual void touchMoveEvent(const ImVec2& delta) {}
+72: 	/* ÓÚÊ‡ÚËÂ ‚Ë‰ÊÂÚ‡ (ÔË ÛÒÎÓ‚ËË ˜ÚÓ ÓÌ ·˚Î Ì‡Ê‡Ú) */
+73: 	virtual void touchPopEvent() {}
+74: 
+75: 	/* ‚Ë‰ÊÂÚ ÒÚ‡ÌÓ‚ËÚÒˇ ‡ÍÚË‚Ì˚Ï */
+76: 	virtual void activateEvent(bool active) {}
+77: 	/* ÙÓÍÛÒ Ì‡ ‚Ë‰ÊÂÚÂ */
+78: 	virtual void focuseEvent(bool event) {}
+79: 	/* ‚‚Â‰ÂÌ ÚÂÍÒÚ */
+80: 	virtual void keyboardEvent(const std::string& input) {}
+81: 
+82: protected:
+83: 	virtual ~Widget();
+84: 
+85: private:
+86: 	void updateAbsolutePosition();
+87: 
+88: 	void setActive(bool active);
+89: 	void setFocus(bool focus);
+90: 
+91: private:
+92: 	Widget* m_parent;
+93: 	bool m_visible;
+94: 	ImVec2 m_position;
+95: 	ImVec2 m_size;
+96: 	ImVec2 m_maxSize;
+97: 	ImVec2 m_minSize;
+98: 
+99: 	ImVec2 m_absolutePosition;
+100: 
+101: 	bool m_focused;
+102: 	bool m_active;
+103: 	ImVec2 m_pushAbsolutePos;
+104: 	ImVec2 m_moveDelta;
+105: 
+106: 	std::vector<Widget*> m_children;
+107: };
+######## FAYL app/src/main/cpp/samp/gui/imguirenderer.h ########
+1: #pragma once
+2: 
+3: #define IMGUI_DEFINE_MATH_OPERATORS
+4: #include "../vendor/imgui/imgui.h"
+5: #include "../vendor/imgui/imgui_internal.h"
+6: #include <string>
+7: 
+8: /*
+9: 	Œ·ÂÚÍ‡ Ì‡‰ ImGui
+10: */
+11: 
+12: class ImGuiRenderer
+13: {
+14: public:
+15: 	ImGuiRenderer(ImDrawList* draw_list, ImFont* font);
+16: 	virtual ~ImGuiRenderer() {};
+17: 
+18: 	void drawLine(const ImVec2& a, const ImVec2& b, const ImColor& color, float thickness = 1.0f);
+19: 	void drawRect(const ImVec2& a, const ImVec2& b, const ImColor& color, bool fill = false, float thickness = 1.0f);
+20: 	void drawRectFilledMulticolor(const ImVec2& a, const ImVec2& b,
+21: 		const ImColor& col_upr_left, const ImColor& col_upr_right,
+22: 		const ImColor& col_bot_right, const ImColor& col_bot_left);
+23: 	void drawTriangle(const ImVec2& a, const ImVec2& b, const ImVec2& c, const ImColor& color, bool fill = false, float thickness = 1.0f);
+24: 	void drawConvexPolyFilled(ImVec2* points, int num_points	, const ImColor& color);
+25: 	void drawText(const ImVec2& pos, const ImColor& color, const std::string& text, bool outlined = false, float font_size = 0.0f);
+26: 	void drawImage(const ImVec2& a, const ImVec2& b, ImTextureID texture);
+27: 
+28: 	void pushClipRect(const ImVec2& min, const ImVec2& max, bool intersect = false);
+29: 	void popClipRect();
+30: 
+31: 	ImVec2 calculateTextSize(const std::string& text, float font_size = 0.0f);
+32: 
+33: 	ImColor RenderTextAndGetLastColor(const float font_size, uint8_t outline, ImVec2 pos, ImColor col, const char *szStr);
+34: 	ImVec2 CalcTextSizeWithoutTags(const float font_size, const char* szStr);
+35: 
+36: private:
+37: 	// low-level
+38: 	ImVec2 calculateTextSize(const char* begin, const char* end, float font_size = 0.0f);
+39: 	void drawText(const ImVec2& pos, const ImColor& color, const char* begin, const char* end = nullptr, bool outlined = false, float font_size = 0.0f);
+40: 	bool processInlineHexColor(const char* start, const char* end, ImVec4& color);
+41: 
+42: private:
+43: 	ImDrawList* m_drawList;
+44: 	ImFont* m_font;
+45: };
+######## FAYL app/src/main/cpp/samp/settings.h ########
+1: #pragma once
+2: 
+3: #define MAX_SETTINGS_STRING	0x7F
+4: 
+5: struct stSettings
+6: {
+7: 	// client
+8: 	char szNickName[24+1];
+9: 	char szHost[MAX_SETTINGS_STRING+1];
+10: 	int iPort;
+11: 	char szPassword[MAX_SETTINGS_STRING+1];
+12:     char szVersion[MAX_SETTINGS_STRING+1];
+13: 
+14: 	// debug
+15: 	bool bDebug;
+16: 	bool bOnline;
+17: 	bool bAutoAim;
+18: 
+19: 	// gui
+20: 	char szFont[40];
+21: 	float fFontSize;
+22: 	int iFontOutline;
+23: 	float fChatPosX;
+24: 	float fChatPosY;
+25: 	float fChatSizeX;
+26: 	float fChatSizeY;
+27: 	int iChatMaxMessages;
+28: 	float fSpawnScreenPosX;
+29: 	float fSpawnScreenPosY;
+30: 	float fSpawnScreenSizeX;
+31: 	float fSpawnScreenSizeY;
+32: 	float fHealthBarWidth;
+33: 	float fHealthBarHeight;
+34: 	float fScoreBoardSizeX;
+35: 	float fScoreBoardSizeY;
+36: 	bool bPassengerUseTexture;
+37: 	float fPassengerTextureSize;
+38: 	float fPassengerTextureX;
+39: 	float fPassengerTextureY;
+40: 	bool bVoiceChatEnable;
+41: 	int iVoiceChatKey;
+42: 	float fVoiceChatSize;
+43: 	float fVoiceChatPosX;
+44: 	float fVoiceChatPosY;
+45: 
+46: 	bool iAndroidKeyboard;
+47: 	bool iCutout;
+48: 	bool iFPSCounter;
+49: 	bool iHPArmourText;
+50: 	bool iOutfitGuns;
+51: 	bool iPCMoney;
+52: 	bool iRadarRect;
+53: 	bool iSkyBox;
+54: 	bool iSnow;
+55: 	bool iFirstPerson;
+56: 
+57: 	int iFPSCount;
+58: 
+59: 	bool iDialog;
+60: };
+61: 
+62: class CSettings
+63: {
+64: public:
+65: 	CSettings();
+66: 	~CSettings();
+67: 
+68: 	stSettings& Get() { return m_Settings; }
+69: 
+70:     const stSettings& GetReadOnly();
+71:     stSettings& GetWrite();
+72: 	
+73: private:
+74: 	struct stSettings m_Settings;
+75: };
+######## FAYL app/src/main/cpp/samp/playertags.cpp ########
+1: #include "main.h"
+2: #include "game/game.h"
+3: #include "game/RW/RenderWare.h"
+4: #include "net/netgame.h"
+5: #include "gui/gui.h"
+6: #include "playertags.h"
+7: #include "util/CUtil.h"
+8: #include "game/World.h"
+9: 
+10: extern CGame* pGame;
+11: extern CNetGame* pNetGame;
+12: 
+13: CPlayerTags::CPlayerTags()
+14: {
+15: 	FLog("Loading AFK icon..");
+16: 	m_pAFKIconTexture = CUtil::LoadTextureFromDB("samp", "afk_icon");
+17:     FLog("Loading AFK icon1..");
+18: 	m_pMicroIconTexture = CUtil::LoadTextureFromDB("samp", "afk_icon");
+19:     FLog("Loading AFK icon2..");
+20: }
+21: 
+22: CPlayerTags::~CPlayerTags() {}
+23: 
+24: void CPlayerTags::Render(ImGuiRenderer* renderer)
+25: {
+26: 	CVector vecPos;
+27: 	RwMatrix matLocal, matPlayer;
+28: 	int dwHitEntity;
+29: 	char szNickBuf[64];
+30: 
+31:     static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0));
+32: 
+33: 	if (pNetGame && pNetGame->m_pNetSet->bShowNameTags)
+34: 	{
+35: 		CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+36:         matLocal = pGame->FindPlayerPed()->m_pPed->GetMatrix().ToRwMatrix();
+37: 
+38: 		for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
+39: 		{
+40: 			if (pPlayerPool->GetSlotState(playerId) == true)
+41: 			{
+42: 				CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
+43: 
+44: 				if (pRemotePlayer && pRemotePlayer->IsActive() && pRemotePlayer->m_bShowNameTag && !pRemotePlayer->IsNPC())
+45: 				{
+46: 					CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
+47: 
+48: 					if (pPlayerPed && pPlayerPed->m_pPed->GetDistanceFromCamera() <= pNetGame->m_pNetSet->fNameTagDrawDistance)
+49: 					{
+50: 						/*if (pRemotePlayer->GetState() == PLAYER_STATE_DRIVER &&
+51: 							pRemotePlayer->m_pCurrentVehicle &&
+52: 							pRemotePlayer->m_pCurrentVehicle->IsRCVehicle())
+53: 						{
+54: 							pRemotePlayer->m_pCurrentVehicle->GetMatrix(&matPlayer);
+55: 							vecPos.x = matPlayer.pos.x;
+56: 							vecPos.y = matPlayer.pos.y;
+57: 							vecPos.z = matPlayer.pos.z;
+58: 						}
+59: 						else
+60: 						{*/
+61: 							if (!pPlayerPed->m_pPed->IsAdded()) continue;
+62: 							vecPos.x = 0.0f;
+63: 							vecPos.y = 0.0f;
+64: 							vecPos.z = 0.0f;
+65: 							pPlayerPed->GetBonePosition(8, &vecPos);
+66: 						//}
+67: 
+68: 						CAMERA_AIM* pCam = GameGetInternalAim();
+69: 						dwHitEntity = 0;
+70: 
+71: 						if (pNetGame->m_pNetSet->bNameTagLOS)
+72: 						{
+73: 							dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
+74: 						}
+75: 
+76: 						if (!pNetGame->m_pNetSet->bNameTagLOS || dwHitEntity && !pRemotePlayer->IsNPC())
+77: 						{
+78: 							sprintf(szNickBuf, "%s (%d)", pPlayerPool->GetPlayerName(playerId), playerId);
+79: 							this->Draw(renderer,&vecPos, szNickBuf,
+80: 								pRemotePlayer->GetPlayerColor(),
+81: 								pPlayerPed->m_pPed->GetDistanceFromCamera(),
+82: 								pRemotePlayer->m_fReportedHealth,
+83: 								pRemotePlayer->m_fReportedArmour,
+84: 								pRemotePlayer->m_bIsAFK,
+85: 								false);
+86: 						}
+87: 					}
+88: 				}
+89: 			}
+90: 		}
+91: 	}
+92: }
+93: 
+94: // ===== AZFLAG_PATCH9 =====
+95: static void DrawAzFlag(ImDrawList* dl, ImVec2 p, float w, float h)
+96: {
+97: 	float s = h / 3.0f;
+98: 	dl->AddRectFilled(p, ImVec2(p.x + w, p.y + s), IM_COL32(0, 181, 226, 255));
+99: 	dl->AddRectFilled(ImVec2(p.x, p.y + s), ImVec2(p.x + w, p.y + 2 * s), IM_COL32(239, 51, 64, 255));
+100: 	dl->AddRectFilled(ImVec2(p.x, p.y + 2 * s), ImVec2(p.x + w, p.y + h), IM_COL32(80, 158, 47, 255));
+101: 	ImVec2 c(p.x + w * 0.44f, p.y + h * 0.5f);
+102: 	float r = h * 0.2f;
+103: 	dl->AddCircleFilled(c, r, IM_COL32(255, 255, 255, 255), 14);
+104: 	dl->AddCircleFilled(ImVec2(c.x + r * 0.35f, c.y), r * 0.8f, IM_COL32(239, 51, 64, 255), 14);
+105: 	dl->AddCircleFilled(ImVec2(c.x + r * 1.55f, c.y), r * 0.28f, IM_COL32(255, 255, 255, 255), 8);
+106: 	dl->AddRect(p, ImVec2(p.x + w, p.y + h), IM_COL32(0, 0, 0, 150));
+107: }
+108: 
+109: void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick, uint32_t dwColor, float fDist, float fHealth, float fArmour, bool bAfk, bool bMicro)
+110: {
+111: 	CVector vecTagPos;
+112: 
+113: 	vecTagPos.x = vec->x;
+114: 	vecTagPos.y = vec->y;
+115: 	vecTagPos.z = vec->z;
+116: 	vecTagPos.z += 0.25f + (fDist * 0.0475f);
+117: 
+118: 	CVector vecOut;
+119: 	// CSprite::CalcScreenCoors
+120: 	((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + (VER_x32 ? 0x005C57E8 + 1 : 0x6E9DF8)))(&vecTagPos, &vecOut, 0, 0, 0, 0);
+121: 
+122: 	if (vecOut.z < 1.0f) return;
+123: 
+124: 	// name (id)
+125: 	ImVec2 pos = ImVec2(vecOut.x, vecOut.y);
+126: 	//pos.x -= ImGui::CalcTextSize(szNick).x / 2;
+127: 	//ImGuiEx::AddOutlinedText(ImGui::GetBackgroundDrawList(), pos, __builtin_bswap32(dwColor | (0x000000FF)), true, szNick);
+128: 	// AZFLAG_PATCH9: bayraq + ad, tund yarimseffaf panel icinde
+129: 	{
+130: 		const float fs = UISettings::fontSize() / 2;
+131: 		const ImVec2 ts = renderer->calculateTextSize(szNick, fs);
+132: 		const float flagH = fs * 0.95f;
+133: 		const float flagW = flagH * 1.5f;
+134: 		const float gap = fs * 0.35f;
+135: 		const float pad = fs * 0.3f;
+136: 		const float totalW = flagW + gap + ts.x;
+137: 		const float x0 = pos.x - totalW / 2;
+138: 
+139: 		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+140: 		dl->AddRectFilled(ImVec2(x0 - pad, pos.y - 1.0f), ImVec2(x0 + totalW + pad, pos.y + ts.y + 1.0f),
+141: 		                  IM_COL32(0, 0, 0, 110), fs * 0.4f);
+142: 		DrawAzFlag(dl, ImVec2(x0, pos.y + (ts.y - flagH) / 2), flagW, flagH);
+143: 		renderer->drawText(ImVec2(x0 + flagW + gap, pos.y), __builtin_bswap32(dwColor | (0x000000FF)),
+144: 		                   std::string(szNick), true, fs);
+145: 	}
+146: 
+147: 
+148: 	// Health bar
+149: 	if (fHealth < 0.0f) return;
+150: 	vecOut.x = (float)((int)vecOut.x);
+151: 	vecOut.y = (float)((int)vecOut.y);
+152: 
+153: 	ImColor HealthBarBDRColor = ImColor(0x00, 0x64, 0x95, 0xED);
+154: 	ImColor HealthBarColor = ImColor(0xB9, 0x22, 0x28, 0xFF);
+155: 	ImColor HealthBarBGColor = ImColor(0x4B, 0x0B, 0x14, 0xFF);
+156: 
+157: 	//float fWidth = (UISettings::fontSize() / 2) * 3;
+158: 	//float fHeight = (UISettings::fontSize() / 2) * 0.f;
+159: 	//float fOutline = 2.0f;
+160: 
+161: 	float fWidth = UISettings::nametagBarSize().x;
+162: 	float fHeight = UISettings::nametagBarSize().y;
+163: 	float fOutline = UISettings::outlineSize();
+164: 
+165: 
+166: 	ImVec2 HealthBarBDR1;
+167: 	ImVec2 HealthBarBDR2;
+168: 	ImVec2 HealthBarBG1;
+169: 	ImVec2 HealthBarBG2;
+170: 	ImVec2 HealthBar1;
+171: 	ImVec2 HealthBar2;
+172: 
+173: 	// top left
+174: 	HealthBarBDR1.x = vecOut.x - ((fWidth / 2) + fOutline);
+175: 	HealthBarBDR1.y = vecOut.y + ((UISettings::fontSize() / 2) * 1.2f);
+176: 	// bottom right
+177: 	HealthBarBDR2.x = vecOut.x + ((fWidth / 2) + fOutline);
+178: 	HealthBarBDR2.y = vecOut.y + ((UISettings::fontSize() / 2) * 1.2f) + fHeight;
+179: 
+180: 	// top left
+181: 	HealthBarBG1.x = HealthBarBDR1.x + fOutline;
+182: 	HealthBarBG1.y = HealthBarBDR1.y + fOutline;
+183: 	// bottom right
+184: 	HealthBarBG2.x = HealthBarBDR2.x - fOutline;
+185: 	HealthBarBG2.y = HealthBarBDR2.y - fOutline;
+186: 	// top left
+187: 	HealthBar1.x = HealthBarBG1.x;
+188: 	HealthBar1.y = HealthBarBG1.y;
+189: 	// bottom right
+190: 	HealthBar2.y = HealthBarBG2.y;
+191: 
+192: 	if (fHealth > 100.0f)
+193: 		fHealth = 100.0f;
+194: 
+195: 	fHealth *= fWidth / 100.0f;
+196: 	fHealth -= (fWidth / 2);
+197: 	HealthBar2.x = vecOut.x + fHealth;
+198: 
+199: 	float offsetY = 13.0f;//fHeight / 3;
+200: 
+201: 	if (fArmour > 0.0f)
+202: 	{
+203: 		HealthBarBDR1.y += offsetY;//13.0f;
+204: 		HealthBarBDR2.y += offsetY;//13.0f;
+205: 		HealthBarBG1.y += offsetY;//13.0f;
+206: 		HealthBarBG2.y += offsetY;//13.0f;
+207: 		HealthBar1.y += offsetY;//13.0f;
+208: 		HealthBar2.y += offsetY;//13.0f;
+209: 	}
+210: 
+211: 	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
+212: 	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
+213: 	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
+214: 
+215: 	// Armour Bar
+216: 	if (fArmour > 0.0f)
+217: 	{
+218: 		HealthBarBDR1.y -= offsetY;//13.0f;
+219: 		HealthBarBDR2.y -= offsetY;//13.0f;
+220: 		HealthBarBG1.y -= offsetY;//13.0f;
+221: 		HealthBarBG2.y -= offsetY;//13.0f;
+222: 		HealthBar1.y -= offsetY;//13.0f;
+223: 		HealthBar2.y -= offsetY;//13.0f;
+224: 
+225: 		HealthBarColor = ImColor(200, 200, 200, 255);
+226: 		HealthBarBGColor = ImColor(40, 40, 40, 255);
+227: 
+228: 		if (fArmour > 100.0f)
+229: 			fArmour = 100.0f;
+230: 
+231: 		fArmour *= fWidth / 100.0f;
+232: 		fArmour -= (fWidth / 2);
+233: 		HealthBar2.x = vecOut.x + fArmour;
+234: 
+235: 		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
+236: 		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
+237: 		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
+238: 	}
+239: 
+240: 	ImVec2 a = ImVec2(HealthBarBDR1.x - ((UISettings::fontSize() / 2) * 1.4f), HealthBarBDR1.y);
+241: 	ImVec2 b = ImVec2(a.x + ((UISettings::fontSize() / 2) * 1.3f), a.y + ((UISettings::fontSize() / 2) * 1.3f));
+242: 
+243: 	// micro icon
+244: 	if (bMicro)
+245: 	{
+246: 		ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)m_pMicroIconTexture->raster, a, b);
+247: 	}
+248: 
+249: 	// AFK icon
+250: 	if (bAfk)
+251: 	{
+252: 		ImVec2 a = ImVec2(HealthBarBDR1.x - ((UISettings::fontSize() / 2) * 1.4f), HealthBarBDR1.y);
+253: 		ImVec2 b = ImVec2(a.x + ((UISettings::fontSize() / 2) * 1.3f), a.y + ((UISettings::fontSize() / 2) * 1.3f));
+254: 		ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)m_pAFKIconTexture->raster, a, b);
+255: 	}
+256: }
+######## FAYL app/src/main/cpp/samp/java/jniutil.h ########
+1: #pragma once
+2: 
+3: #include "main.h"
+4: 
+5: #define EXCEPTION_CHECK(env) \
+6: 	if ((env)->ExceptionCheck()) \
+7: 	{ \
+8: 		(env)->ExceptionDescribe(); \
+9: 		(env)->ExceptionClear(); \
+10: 		return; \
+11: 	}
+12: 
+13: class CJavaWrapper
+14: {
+15: public:
+16:     CJavaWrapper(JNIEnv *env, jobject activity);
+17:     ~CJavaWrapper() {};
+18:     
+19:     const char* GetClipboardString();
+20:     void SetPauseState(bool pause);
+21:     void ShowLoadingScreen();
+22:     void HideLoadingScreen();
+23:     void ShowTab();
+24:     void HideTab();
+25:     void SetTab(int id, char* names, int score, int pings);
+26:     void ClearTab();
+27:     
+28:     void ShowKeyboard();
+29:     void HideKeyboard();
+30: 
+31: 	void exitGame();
+32: 
+33:     jbyteArray as_byte_array(unsigned char* buf, int len) {
+34:         JNIEnv* p;
+35:         javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+36: 		jbyteArray array = p->NewByteArray (len);
+37: 		p->SetByteArrayRegion (array, 0, len, reinterpret_cast<jbyte*>(buf));
+38: 		return array;
+39: 	}
+40: 
+41:     void ShowDialog(int dialogStyle, int dialogID, char* title, char* text, char* button1, char* button2);
+42: 
+43: 	void ShowEditObject();
+44: 	void HideEditObject();
+45: 
+46: 	void YtCommand(const char* arg);
+47: 
+48:     jobject activity;
+49:     jmethodID s_setPauseState;
+50:     jmethodID s_showLoadingScreen;
+51:     jmethodID s_hideLoadingScreen;
+52:     jmethodID s_ShowDialog;
+53:     jmethodID s_showTab;
+54:     jmethodID s_setTab;
+55:     jmethodID s_clearTab;
+56:     jmethodID s_hideTab;
+57:     jmethodID s_showInputLayout;
+58:     jmethodID s_hideInputLayout;
+59: 	jmethodID s_exitGame;
+60: 	jmethodID s_showEditObject;
+61: 	jmethodID s_hideEditObject;
+62: 	jmethodID s_ytCommand;
+63: };
+######## FAYL app/src/main/cpp/samp/java/jniutil.cpp ########
+1: #include "jniutil.h"
+2: #include "game/game.h"
+3: extern CGame *pGame;
+4: 
+5: CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
+6: {
+7:     this->activity = env->NewGlobalRef(activity);
+8: 
+9:     jclass clas = env->GetObjectClass(activity);
+10:     if(!clas)
+11:     {
+12:         FLog("no clas");
+13:         return;
+14:     }
+15: 
+16:     s_showTab = env->GetMethodID(clas, "showTab", "()V");
+17:     s_hideTab = env->GetMethodID(clas, "hideTab", "()V");
+18:     s_clearTab = env->GetMethodID(clas, "clearTab", "()V");
+19:     s_setTab = env->GetMethodID(clas, "setTab", "(ILjava/lang/String;II)V");
+20: 
+21:     s_showLoadingScreen = env->GetMethodID(clas, "showLoadingScreen", "()V");
+22:     s_hideLoadingScreen = env->GetMethodID(clas, "hideLoadingScreen", "()V");
+23: 
+24:     s_setPauseState = env->GetMethodID(clas, "setPauseState", "(Z)V");
+25:     
+26:     s_ShowDialog = env->GetMethodID(clas, "showDialog", "(II[B[B[B[B)V");
+27: 
+28: 	s_showInputLayout = env->GetMethodID(clas, "showKeyboard", "()V");
+29:     s_hideInputLayout = env->GetMethodID(clas, "hideKeyboard", "()V");
+30: 
+31:     s_exitGame = env->GetMethodID(clas, "exitGame", "()V");
+32: 
+33:     s_showEditObject = env->GetMethodID(clas, "showEditObject", "()V");
+34:     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
+35: 
+36:     s_ytCommand = env->GetMethodID(clas, "ytCommand", "([B)V");
+37: 
+38:     env->DeleteLocalRef(clas);
+39: }
+40: 
+41: void CJavaWrapper::ShowKeyboard()
+42: {
+43:     JNIEnv* p;
+44:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+45:     p->CallVoidMethod(activity, s_showInputLayout);
+46:     EXCEPTION_CHECK(p);
+47: }
+48: 
+49: void CJavaWrapper::HideKeyboard()
+50: {
+51:     JNIEnv* p;
+52:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+53:     p->CallVoidMethod(activity, s_hideInputLayout);
+54:     EXCEPTION_CHECK(p);
+55: }
+56: 
+57: void CJavaWrapper::ShowLoadingScreen()
+58: {
+59:     JNIEnv* p;
+60:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+61:     p->CallVoidMethod(activity, s_showLoadingScreen);
+62:     EXCEPTION_CHECK(p);
+63: }
+64: 
+65: void CJavaWrapper::HideLoadingScreen()
+66: {
+67:     JNIEnv* p;
+68:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+69:     p->CallVoidMethod(activity, s_hideLoadingScreen);
+70:     EXCEPTION_CHECK(p);
+71: }
+72: 
+73: void CJavaWrapper::SetPauseState(bool pause)
+74: {
+75:     JNIEnv* p;
+76:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+77:     p->CallVoidMethod(activity, s_setPauseState, pause);
+78:     EXCEPTION_CHECK(p);
+79: }
+80: 
+81: void CJavaWrapper::SetTab(int id, char* names, int score, int pings)
+82: {
+83:     JNIEnv* global_env;
+84:     javaVM->GetEnv((void**)&global_env, JNI_VERSION_1_6);
+85: 
+86: 	if (!global_env)
+87: 	{
+88: 		LOGI("No env");
+89: 		return;
+90: 	}
+91: 
+92: 	jclass strClass = global_env->FindClass("java/lang/String"); 
+93: 	jmethodID ctorID = global_env->GetMethodID(strClass, "<init>", "([BLjava/lang/String;)V"); 
+94: 	jstring encoding = global_env->NewStringUTF("UTF-8"); 
+95: 
+96: 	jbyteArray bytes = global_env->NewByteArray(strlen(names)); 
+97: 	global_env->SetByteArrayRegion(bytes, 0, strlen(names), (jbyte*)names); 
+98: 	jstring str1 = (jstring)global_env->NewObject(strClass, ctorID, bytes, encoding);
+99: 
+100:     global_env->CallVoidMethod(activity, s_setTab, id, str1, score, pings);
+101: 
+102:     EXCEPTION_CHECK(global_env);
+103: }
+104: 
+105: void CJavaWrapper::ShowTab()
+106: {
+107:     JNIEnv* p;
+108:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+109:     p->CallVoidMethod(activity, s_showTab);
+110:     EXCEPTION_CHECK(p);
+111: }
+112: 
+113: void CJavaWrapper::HideTab()
+114: {
+115:     JNIEnv* p;
+116:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+117:     p->CallVoidMethod(activity, s_hideTab);
+118:     EXCEPTION_CHECK(p);
+119: }
+120: 
+121: void CJavaWrapper::ClearTab()
+122: {
+123:     JNIEnv* p;
+124:     javaVM->GetEnv((void**)&p, JNI_VERSION_1_6);
+125:     p->CallVoidMethod(activity, s_clearTab);
+126:     EXCEPTION_CHECK(p);
+127: }
+128: 
+129: void CJavaWrapper::ShowDialog(int dialogStyle, int dialogID, char* title, char* text, char* button1, char* button2)
+130: {
+131: 	JNIEnv* env;
+132:     javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+133: 
+134: 	if (!env)
+135: 	{
+136: 		FLog("No env");
+137: 		return;
+138: 	}
+139: 
+140: 	std::string sTitle(title);
+141: 	std::string sText(text);
+142: 	std::string sButton1(button1);
+143: 	std::string sButton2(button2);
+144: 
+145: 	jbyteArray jstrTitle = as_byte_array((unsigned char*)sTitle.c_str(), sTitle.length());
+146: 	jbyteArray jstrText = as_byte_array((unsigned char*)sText.c_str(), sText.length());
+147: 	jbyteArray jstrButton1 = as_byte_array((unsigned char*)sButton1.c_str(), sButton1.length());
+148: 	jbyteArray jstrButton2 = as_byte_array((unsigned char*)sButton2.c_str(), sButton2.length());
+149: 
+150: 	env->CallVoidMethod(activity, s_ShowDialog, dialogID, dialogStyle, jstrTitle, jstrText, jstrButton1, jstrButton2);
+151: 
+152: 	EXCEPTION_CHECK(env);
+153: }
+154: 
+155: void CJavaWrapper::exitGame() {
+156: 
+157:     JNIEnv* env;
+158:     javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+159: 
+160:     if (!env)
+161:     {
+162:         FLog("No env");
+163:         return;
+164:     }
+165: 
+166:     env->CallVoidMethod(this->activity, this->s_exitGame);
+167: }
+168: 
+169: void CJavaWrapper::ShowEditObject() {
+170: 
+171:     JNIEnv* env;
+172:     javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+173: 
+174:     if (!env)
+175:     {
+176:         FLog("No env");
+177:         return;
+178:     }
+179: 
+180:     env->CallVoidMethod(this->activity, this->s_showEditObject);
+181: }
+182: 
+183: void CJavaWrapper::HideEditObject() {
+184: 
+185:     JNIEnv* env;
+186:     javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+187: 
+188:     if (!env)
+189:     {
+190:         FLog("No env");
+191:         return;
+192:     }
+193: 
+194:     env->CallVoidMethod(this->activity, this->s_hideEditObject);
+195: }
+196: 
+197: void CJavaWrapper::YtCommand(const char* arg)
+198: {
+199:     JNIEnv* env;
+200:     javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+######## FAYL app/src/main/java/com/samp/mobile/game/SAMP.java ########
+1: package com.samp.mobile.game;
+2: 
+3: import android.app.Activity;
+4: import android.media.MediaPlayer;
+5: import android.os.Bundle;
+6: import android.util.Log;
+7: import android.view.KeyEvent;
+8: import android.view.inputmethod.InputMethodManager;
+9: import android.widget.Toast;
+10: 
+11: import com.google.firebase.crashlytics.FirebaseCrashlytics;
+12: import com.joom.paranoid.Obfuscate;
+13: import com.samp.mobile.game.ui.AttachEdit;
+14: import com.samp.mobile.game.ui.CustomKeyboard;
+15: import com.samp.mobile.game.ui.LoadingScreen;
+16: import com.samp.mobile.game.ui.dialog.DialogManager;
+17: import com.samp.mobile.launcher.util.SharedPreferenceCore;
+18: import com.samp.mobile.launcher.util.SignatureChecker;
+19: 
+20: import java.io.BufferedReader;
+21: import java.io.File;
+22: import java.io.FileInputStream;
+23: import java.io.InputStreamReader;
+24: import java.io.UnsupportedEncodingException;
+25: import java.nio.charset.StandardCharsets;
+26: import java.util.List;
+27: 
+28: @Obfuscate
+29: public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightProvider.HeightListener {
+30:     private static final String TAG = "SAMP";
+31:     private static SAMP instance;
+32: 
+33:     private CustomKeyboard mKeyboard;
+34:     private DialogManager mDialog;
+35:     private HeightProvider mHeightProvider;
+36: 
+37:     private AttachEdit mAttachEdit;
+38:     private LoadingScreen mLoadingScreen;
+39: 
+40:     /** Arxa fon musiqisi: 3 slot, settings.ini-nin [music] b√∂lm…ôsind…ôn oxunur. */
+41:     private final MediaPlayer[] mMusicPlayers = new MediaPlayer[3];
+42: 
+43:     public native void sendDialogResponse(int i, int i2, int i3, byte[] str);
+44: 
+45:     public static SAMP getInstance() {
+46:         return instance;
+47:     }
+48: 
+49:     private void showTab()
+50:     {
+51: 
+52:     }
+53: 
+54:     private void hideTab()
+55:     {
+56: 
+57:     }
+58: 
+59:     private void setTab(int id, String name, int score, int ping)
+60:     {
+61: 
+62:     }
+63: 
+64:     private void clearTab()
+65:     {
+66: 
+67:     }
+68: 
+69:     private void showLoadingScreen()
+70:     {
+71: 
+72:     }
+73: 
+74:     private void hideLoadingScreen()
+75:     {
+76:         runOnUiThread(new Runnable() {
+77:             @Override
+78:             public void run() {
+79:                 mLoadingScreen.hide();
+80:             }
+81:         });
+82:     }
+83: 
+84:     public void setPauseState(boolean pause) {
+85:         runOnUiThread(new Runnable() {
+86:             @Override
+87:             public void run() {
+88:                 if (pause) {
+89:                     mDialog.hideWithoutReset();
+90:                     mAttachEdit.hideWithoutReset();
+91:                 }
+92:                 else {
+93:                     if(mDialog.isShow)
+94:                         mDialog.showWithOldContent();
+95:                     if(mAttachEdit.isShow)
+96:                         mAttachEdit.showWithoutReset();
+97:                 }
+98:             }
+99:         });
+100:     }
+101: 
+102:     public void exitGame(){
+103:         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(false);
+104: 
+105:         finishAndRemoveTask();
+106:         System.exit(0);
+107:     }
+108: 
+109:     public void showDialog(int dialogId, int dialogTypeId, byte[] bArr, byte[] bArr2, byte[] bArr3, byte[] bArr4) {
+110:         final String caption = new String(bArr, StandardCharsets.UTF_8);
+111:         final String content = new String(bArr2, StandardCharsets.UTF_8);
+112:         final String leftBtnText = new String(bArr3, StandardCharsets.UTF_8);
+113:         final String rightBtnText = new String(bArr4, StandardCharsets.UTF_8);
+114:         runOnUiThread(() -> { this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText); });
+115:     }
+116: 
+117:     /** /yt komandasi (C++ -> JNI -> buraya). Imza: ([B)V */
+118:     public void ytCommand(final byte[] data) {
+119:         String s = "";
+120:         try {
+121:             if (data != null) s = new String(data, "UTF-8");
+122:         } catch (Exception e) {
+123:             s = "";
+124:         }
+125:         final String arg = s;
+126:         final Activity a = this;
+127:         runOnUiThread(new Runnable() {
+128:             @Override
+129:             public void run() {
+130:                 try {
+131:                     YoutubeTablet.command(a, arg);
+132:                 } catch (Throwable t) {
+133:                     Log.e(TAG, "ytCommand error: " + t);
+134:                 }
+135:             }
+136:         });
+137:     }
+138: 
+139:     // ============================== ARXA FON MUSƒ∞Qƒ∞Sƒ∞ ==============================
+140: 
+141:     private File musicIniFile() {
+142:         File d = getExternalFilesDir(null);
+143:         File base = d != null ? d : getFilesDir();
+144:         return new File(base, "SAMP/settings.ini");
+145:     }
+146: 
+147:     /** settings.ini-ni sade oxuyur (LobbyActivity.IniFile-a bencer, serbest, bu fayl ozu yazmir). */
+148:     private String iniGet(List<String> lines, String sec, String key, String def) {
+149:         String cur = "";
+150:         for (String l : lines) {
+151:             String t = l.trim();
+152:             if (t.startsWith("[") && t.endsWith("]")) { cur = t.substring(1, t.length() - 1).trim(); continue; }
+153:             if (!cur.equalsIgnoreCase(sec)) continue;
+154:             int eq = l.indexOf('=');
+155:             if (eq < 0) continue;
+156:             String k = l.substring(0, eq).trim();
+157:             if (k.equalsIgnoreCase(key)) return l.substring(eq + 1).trim();
+158:         }
+159:         return def;
+160:     }
+161: 
+162:     private void startBackgroundMusic() {
+163:         stopBackgroundMusic();
+164:         try {
+165:             File ini = musicIniFile();
+166:             if (!ini.exists()) return;
+167: 
+168:             java.util.List<String> lines = new java.util.ArrayList<>();
+169:             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(ini), "UTF-8"));
+170:             String l;
+171:             while ((l = br.readLine()) != null) lines.add(l);
+172:             br.close();
+173: 
+174:             File base = getExternalFilesDir(null);
+175:             if (base == null) base = getFilesDir();
+176: 
+177:             String[] slotKeys = { "slot1", "slot2", "slot3" };
+178:             String[] volKeys  = { "slot1vol", "slot2vol", "slot3vol" };
+179: 
+180:             for (int i = 0; i < 3; i++) {
+181:                 String rel = iniGet(lines, "music", slotKeys[i], "");
+182:                 if (rel == null || rel.trim().isEmpty()) continue;
+183: 
+184:                 File f = new File(base, rel.trim());
+185:                 if (!f.exists()) {
+186:                     Log.w(TAG, "music slot " + (i + 1) + " not found: " + f.getAbsolutePath());
+187:                     continue;
+188:                 }
+189: 
+190:                 int volPct = parseIntSafe(iniGet(lines, "music", volKeys[i], "40"), 40);
+191:                 float vol = Math.max(0f, Math.min(100f, (float) volPct)) / 100f;
+192: 
+193:                 try {
+194:                     MediaPlayer mp = new MediaPlayer();
+195:                     mp.setDataSource(f.getAbsolutePath());
+196:                     mp.setLooping(true);
+197:                     mp.setVolume(vol, vol);
+198:                     mp.prepare();
+199:                     mp.start();
+200:                     mMusicPlayers[i] = mp;
+201:                 } catch (Throwable t) {
+202:                     Log.e(TAG, "music slot " + (i + 1) + " play error: " + t);
+203:                 }
+204:             }
+205:         } catch (Throwable t) {
+206:             Log.e(TAG, "startBackgroundMusic error: " + t);
+207:         }
+208:     }
+209: 
+210:     private void stopBackgroundMusic() {
+211:         for (int i = 0; i < mMusicPlayers.length; i++) {
+212:             if (mMusicPlayers[i] != null) {
+213:                 try {
+214:                     if (mMusicPlayers[i].isPlaying()) mMusicPlayers[i].stop();
+215:                     mMusicPlayers[i].release();
+216:                 } catch (Throwable ignored) { }
+217:                 mMusicPlayers[i] = null;
+218:             }
+219:         }
+220:     }
+221: 
+222:     private static int parseIntSafe(String s, int def) {
+223:         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; }
+224:     }
+225: 
+226:     private native void onInputEnd(byte[] str);
+227:     @Override
+228:     public void OnInputEnd(String str)
+229:     {
+230:         byte[] toReturn = null;
+231:         try
+232:         {
+233:             toReturn = str.getBytes("windows-1251");
+234:         }
+235:         catch(UnsupportedEncodingException e)
+236:         {
+237: 
+238:         }
+239: 
+240:         try {
+241:             onInputEnd(toReturn);
+242:         }
+243:         catch (UnsatisfiedLinkError e5) {
+244:             Log.e(TAG, e5.getMessage());
+245:         }
+246:     }
+247: 
+248:     private void showKeyboard()
+249:     {
+250:         runOnUiThread(new Runnable() {
+251:             @Override
+252:             public void run() {
+253:                 Log.d("AXL", "showKeyboard()");
+254:                 mKeyboard.ShowInputLayout();
+255:             }
+256:         });
+257:     }
+258: 
+259:     private void hideKeyboard()
+260:     {
+261:         runOnUiThread(new Runnable() {
+262:             @Override
+263:             public void run() {
+264:                 mKeyboard.HideInputLayout();
+265:             }
+266:         });
+267:     }
+268: 
+269:     private void showEditObject()
+270:     {
+271:         runOnUiThread(new Runnable() {
+272:             @Override
+273:             public void run() {
+274:                 mAttachEdit.show();
+275:             }
+276:         });
+277:     }
+278: 
+279:     private void hideEditObject()
+280:     {
+281:         runOnUiThread(new Runnable() {
+282:             @Override
+283:             public void run() {
+284:                 mAttachEdit.hide();
+285:             }
+286:         });
+287:     }
+288: 
+289:     @Override
+290:     public void onCreate(Bundle savedInstanceState) {
+291:         Log.i(TAG, "**** onCreate");
+292:         super.onCreate(savedInstanceState);
+293: 
+294:         //if(!SignatureChecker.isSignatureValid(this, getPackageName()))
+295:         //{
+296:             //Toast.makeText(this, "Use original launcher! No remake", Toast.LENGTH_LONG).show();
+297:             //return;
+298:         //}
+299: 
+300:         //mHeightProvider = new HeightProvider(this);
+301: 
+302:         mKeyboard = new CustomKeyboard(this);
+303: 
+304:         mDialog = new DialogManager(this);
+305: 
+306:         mAttachEdit = new AttachEdit(this);
+307: 
+308:         mLoadingScreen = new LoadingScreen(this);
+309: 
+310:         instance = this;
+311: 
+312:         try {
+313:             initializeSAMP();
+314:         } catch (UnsatisfiedLinkError e5) {
+315:             Log.e(TAG, e5.getMessage());
+316:         }
+317: 
+318:         startBackgroundMusic();
+319:     }
+320: 
+7:    <uses-permission android:name="INSTALL_PACKAGES" />
+8:    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+9:    <uses-permission android:name="android.permission.WAKE_LOCK" />
+10:    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+11:    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+12:    <uses-permission android:name="android.permission.INTERNET" />
+13:    <uses-permission android:name="android.permission.VIBRATE" />
+14:    <uses-permission android:name="android.permission.ACCESS_ALL_DOWNLOADS" />
+15:    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+16:    <uses-permission android:name="com.android.vending.CHECK_LICENSE" />
+17:    <uses-permission android:name="android.permission.BLUETOOTH" />
+18:    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+19:    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+20:    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+21:    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+22:    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+23:    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+39:    <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" />
+40:    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+41:    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />

@@ -34,6 +34,8 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
     s_ytCommand = env->GetMethodID(clas, "ytCommand", "([B)V");
+    s_pickFile = env->GetMethodID(clas, "pickHandlingFile", "(ILjava/lang/String;)V");   // PICKFILE_V5
+    if (env->ExceptionCheck()) { env->ExceptionClear(); s_pickFile = nullptr; }
 
     env->DeleteLocalRef(clas);
 }
@@ -209,5 +211,17 @@ void CJavaWrapper::YtCommand(const char* arg)
     jbyteArray bytes = as_byte_array((unsigned char*)s.c_str(), s.length());
     env->CallVoidMethod(this->activity, this->s_ytCommand, bytes);
     env->DeleteLocalRef(bytes);
+    EXCEPTION_CHECK(env);
+}
+
+void CJavaWrapper::PickHandlingFile(int slot, const char* destPath)
+{
+    JNIEnv* env = nullptr;
+    javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (!env || !s_pickFile) return;
+
+    jstring js = env->NewStringUTF(destPath ? destPath : "");
+    env->CallVoidMethod(activity, s_pickFile, slot, js);
+    env->DeleteLocalRef(js);
     EXCEPTION_CHECK(env);
 }

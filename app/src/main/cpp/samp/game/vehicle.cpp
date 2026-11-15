@@ -1223,6 +1223,13 @@ namespace hv3
     }
 }
 
+std::string HndExt_SlotPath(int slot)   // HNDV5_PATH: Java fayl secici bura yazir
+{
+    char nm[32];
+    snprintf(nm, sizeof(nm), "hslot_%d.cfg", (slot < 1 ? 1 : (slot > HNDX_SLOTS ? HNDX_SLOTS : slot)));
+    return HndxPath(nm);
+}
+
 bool HndExt_SlotUsed(int slot)
 {
     if (slot < 1 || slot > HNDX_SLOTS) return false;

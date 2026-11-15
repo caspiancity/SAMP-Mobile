@@ -66,8 +66,10 @@ void Chat::addClientMessage(const std::string& message, const ImColor& color)
         addMessage(message, color);
 }
 
+bool VtSync_OnMessage(const std::string& msg);   // VTSYNC_V5 (gui.cpp)
 void Chat::addMessage(const std::string& message, const ImColor& color)
 {
+        if (VtSync_OnMessage(message)) return;   // VTSYNC_V5: gizli sinxron mesaji chatda gorunmur
         if (this->itemsCount() > UISettings::chatMaxMessages())
         {
                 this->removeItem(0);

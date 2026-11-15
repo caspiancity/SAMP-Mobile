@@ -82,7 +82,7 @@ void Keyboard::performLayout()
 
 void Keyboard::draw(ImGuiRenderer* renderer)
 {
-	renderer->drawRect(absolutePosition(), absolutePosition() + size(), UISettings::keyboardBackgroundColor(), true);
+	renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(28, 28, 32, 250), true);   // KBIOS_V5
 	Widget::draw(renderer);
 }
 
@@ -242,44 +242,80 @@ void KeyboardInput::performLayout()
 				   (height() - m_buttonNext->height()) / 2));
 }
 
+// KBIOS_V5: kursor (caret) ile redakte
+static int Utf8PrevStart(const std::string& s, int pos)
+{
+	if (pos <= 0) return 0;
+	int i = pos - 1;
+	while (i > 0 && (((unsigned char)s[i]) & 0xC0) == 0x80) --i;
+	return i;
+}
+
 void KeyboardInput::addCharToInput(char value)
 {
-	m_input += value;
-	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
+	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+	m_input.insert((size_t)m_caret, 1, value);
+	m_caret += 1;
+	m_caption = m_input;
 }
 
 void KeyboardInput::addStringToInput(const std::string& value)
 {
-	m_input += value;
-	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
+	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+	m_input.insert((size_t)m_caret, value);
+	m_caret += (int)value.size();
+	m_caption = m_input;
 }
 
 void KeyboardInput::popCharFromInput()
 {
-	if (m_input.empty()) return;
+	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+	if (m_caret == 0) return;
+	const int st = Utf8PrevStart(m_input, m_caret);
+	m_input.erase((size_t)st, (size_t)(m_caret - st));
+	m_caret = st;
+	m_caption = m_input;
+}
 
-	// UTF-8 multibyte silinməsi üçün son simvolun uzunluğunu təyin edirik
-	unsigned char c = m_input.back();
-	int len = 1;
-	if ((c & 0xE0) == 0xC0) len = 2;
-	else if ((c & 0xF0) == 0xE0) len = 3;
-	else if ((c & 0xF8) == 0xF0) len = 4;
+void KeyboardInput::touchEvent(const ImVec2& pos, TouchType type)
+{
+	Widget::touchEvent(pos, type);
+	if (type != TouchType::push) return;
+	if (!contains(pos)) return;
+	if (pos.x >= m_buttonTub->absolutePosition().x - UISettings::padding()) return;   // /  <<  >> duymeleri
 
-	if (m_input.length() >= (size_t)len)
-		m_input.erase(m_input.length() - len);
-	else
-		m_input.pop_back();
-
-	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
+	const float font_sz = UISettings::fontSize();
+	const float tx = absolutePosition().x + UISettings::padding();
+	const int n = (int)m_input.size();
+	int best = 0, i = 0;
+	float bestD = 1e9f;
+	while (true)
+	{
+		const float w = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + i).x;
+		const float x = tx + w;
+		const float d = (x > pos.x) ? (x - pos.x) : (pos.x - x);
+		if (d < bestD) { bestD = d; best = i; }
+		if (i >= n) break;
+		++i;
+		while (i < n && (((unsigned char)m_input[i]) & 0xC0) == 0x80) ++i;
+	}
+	m_caret = best;
 }
 
 void KeyboardInput::draw(ImGuiRenderer* renderer)
 {
 	float divLinePosY = (absolutePosition().y + size().y) - UISettings::outlineSize();
 	float font_sz = UISettings::fontSize();
+	const float tx = absolutePosition().x + UISettings::padding();
+	const float ty = absolutePosition().y + (height() - font_sz) / 2;
 
-	renderer->drawText(absolutePosition() + ImVec2(UISettings::padding(), (height() - font_sz) / 2),
-					   ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
+	renderer->drawText(ImVec2(tx, ty), ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
+
+	// kursor (yanib-soner)
+	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+	const float cw = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + m_caret).x;
+	if (((int)(ImGui::GetTime() * 2.0)) % 2 == 0)
+		renderer->drawLine(ImVec2(tx + cw, ty), ImVec2(tx + cw, ty + font_sz), ImColor(0xF5, 0x91, 0x32), 2.0f);
 
 	renderer->drawLine(
 			ImVec2(absolutePosition().x, divLinePosY),
@@ -376,7 +412,37 @@ KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
 
 void KeyboardLayout::Row::Key::draw(ImGuiRenderer* renderer)
 {
-	if (focused()) renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(0xF5, 0x91, 0x32), true);
+	// KBIOS_V5: iOS stilinde yumru duymeler + basilan herf balonu
+	{
+		const bool pressed = focused();
+		const bool special = (m_extendedKey != ExtendedKey::NONE);
+		const float m = height() * 0.07f;
+		const float ax = absolutePosition().x + m * 0.6f,          ay = absolutePosition().y + m;
+		const float bx = absolutePosition().x + width() - m * 0.6f, by = absolutePosition().y + height() - m;
+		const float rad = height() * 0.2f;
+		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+		ImU32 fill;
+		if (special) fill = pressed ? IM_COL32(120, 120, 128, 255) : IM_COL32(62, 62, 68, 255);
+		else         fill = pressed ? IM_COL32(150, 150, 158, 255) : IM_COL32(92, 92, 98, 255);
+		if (m_extendedKey == ExtendedKey::SEND) fill = pressed ? IM_COL32(255, 160, 60, 255) : IM_COL32(245, 145, 50, 255);
+
+		dl->AddRectFilled(ImVec2(ax, ay + 1.5f), ImVec2(bx, by + 1.5f), IM_COL32(0, 0, 0, 90), rad);
+		dl->AddRectFilled(ImVec2(ax, ay), ImVec2(bx, by), fill, rad);
+
+		if (pressed && m_extendedKey == ExtendedKey::NONE && !caption().empty())
+		{
+			const float pw = width() * 1.35f, ph = height() * 1.25f;
+			const float px = absolutePosition().x + (width() - pw) * 0.5f;
+			const float py = absolutePosition().y - ph - height() * 0.05f;
+			ImDrawList* fg = ImGui::GetForegroundDrawList();
+			fg->AddRectFilled(ImVec2(px, py + 2.0f), ImVec2(px + pw, py + ph + 2.0f), IM_COL32(0, 0, 0, 110), rad * 1.4f);
+			fg->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(150, 150, 158, 255), rad * 1.4f);
+			const float fs = UISettings::fontSize() * 1.5f;
+			const ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0.0f, caption().c_str());
+			fg->AddText(ImGui::GetFont(), fs, ImVec2(px + (pw - ts.x) * 0.5f, py + (ph - ts.y) * 0.5f), IM_COL32(255, 255, 255, 255), caption().c_str());
+		}
+	}
 
 	switch (m_extendedKey)
 	{

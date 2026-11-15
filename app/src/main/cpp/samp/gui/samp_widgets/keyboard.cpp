@@ -245,13 +245,13 @@ void KeyboardInput::performLayout()
 void KeyboardInput::addCharToInput(char value)
 {
 	m_input += value;
-	m_caption = Encoding::cp2utf(m_input);
+	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
 }
 
 void KeyboardInput::addStringToInput(const std::string& value)
 {
 	m_input += value;
-	m_caption = Encoding::cp2utf(m_input);
+	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
 }
 
 void KeyboardInput::popCharFromInput()
@@ -270,7 +270,7 @@ void KeyboardInput::popCharFromInput()
 	else
 		m_input.pop_back();
 
-	m_caption = Encoding::cp2utf(m_input);
+	m_caption = m_input;   // KBFIX_V3: m_input artiq UTF-8-dir
 }
 
 void KeyboardInput::draw(ImGuiRenderer* renderer)

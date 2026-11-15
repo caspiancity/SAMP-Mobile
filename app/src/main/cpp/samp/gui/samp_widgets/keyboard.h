@@ -16,7 +16,7 @@ public:
 	void addStringToInput(const std::string& value);
 	void popCharFromInput();
 
-	void setInputString(const std::string& string) { m_input = string; m_caption = Encoding::cp2utf(string); }
+	void setInputString(const std::string& string) { m_input = string; m_caption = string;   // KBFIX_V3 }
 	const std::string& inputString() const { return m_input; }
 
 	virtual void draw(ImGuiRenderer* rendderer) override;

@@ -1041,7 +1041,7 @@ static void HndxSlotsRead()
     fclose(f);
 }
 
-bool HndExt_SlotUsed(int slot)
+static bool HndxOldSlotUsed(int slot)
 {
     if (slot < 1 || slot > HNDX_SLOTS) return false;
     HndxSlotsRead();
@@ -1061,7 +1061,7 @@ bool HndExt_SaveSlot(CVehicle* v, int slot)
 
 bool HndExt_LoadSlot(CVehicle* v, int slot)
 {
-    if (!v || !v->m_pVehicle || !HndExt_SlotUsed(slot)) return false;
+    if (!v || !v->m_pVehicle || !HndxOldSlotUsed(slot)) return false;
     HndxSnap(v);
     const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
     if (!p) return false;
@@ -1113,3 +1113,219 @@ bool HndExt_ImportCodeFile(CVehicle* v)
 
 #pragma clang diagnostic pop
 // ===== /HNDV2 =====
+
+// ===== HNDV3: handling.cfg slotlari (SAMP/hslot_1..5.cfg, launcher yazir) =====
+#include <chrono>
+#include <cctype>
+#include <algorithm>
+
+namespace hv3
+{
+    static std::map<int, std::string> s_ide;       // model id -> handling adi (vehicles.ide)
+    static bool s_ideLoaded = false;
+
+    static std::string Trim(const std::string& s)
+    {
+        size_t a = 0, b = s.size();
+        while (a < b && isspace((unsigned char)s[a])) ++a;
+        while (b > a && isspace((unsigned char)s[b - 1])) --b;
+        return s.substr(a, b - a);
+    }
+
+    static std::string Up(std::string s)
+    {
+        for (size_t i = 0; i < s.size(); ++i) s[i] = (char)toupper((unsigned char)s[i]);
+        return s;
+    }
+
+    static void Split(const char* line, std::vector<std::string>& out)
+    {
+        out.clear();
+        std::string cur;
+        for (const char* c = line; *c; ++c) {
+            if (*c == ' ' || *c == '\t' || *c == '\r' || *c == '\n') {
+                if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+            } else cur += *c;
+        }
+        if (!cur.empty()) out.push_back(cur);
+    }
+
+    static void LoadIde()
+    {
+        if (s_ideLoaded) return;
+        s_ideLoaded = true;
+        FILE* f = fopen(HndxPath("vehicles.ide").c_str(), "r");
+        if (!f) return;
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            if (line[0] < '0' || line[0] > '9') continue;
+            std::vector<std::string> tk;
+            std::string cur;
+            for (const char* c = line; *c; ++c) {
+                if (*c == ',') { tk.push_back(Trim(cur)); cur.clear(); }
+                else cur += *c;
+            }
+            tk.push_back(Trim(cur));
+            if (tk.size() < 5) continue;
+            s_ide[atoi(tk[0].c_str())] = Up(tk[4]);
+        }
+        fclose(f);
+    }
+
+    // standart baza: oyunun ozunun yukledigi fayl
+    static std::string BaseCfgPath()
+    {
+        const std::string c = HndxPath("handling_custom.cfg");
+        FILE* f = fopen(c.c_str(), "rb");
+        if (f) { fclose(f); return c; }
+        return HndxPath("handling.cfg");
+    }
+
+    // faylda ad ile setri tapir; qiymetler: adin sonrakisi (0-dan). Reqem olmayanlar NAN.
+    static bool FindLine(const std::string& path, const std::string& name, std::vector<float>& vals)
+    {
+        FILE* f = fopen(path.c_str(), "r");
+        if (!f) return false;
+        char line[1024];
+        std::vector<std::string> tk;
+        bool found = false;
+        while (fgets(line, sizeof(line), f)) {
+            const char* p = line;
+            while (*p == ' ' || *p == '\t') ++p;
+            if (!*p || *p == ';' || *p == '*' || *p == '!' || *p == '$' || *p == '%' || *p == '^' || *p == '\r' || *p == '\n') continue;
+            Split(p, tk);
+            if (tk.size() < 2 || Up(tk[0]) != name) continue;
+            vals.clear();
+            for (size_t i = 1; i < tk.size(); ++i) {
+                char* e = nullptr;
+                const float v = strtof(tk[i].c_str(), &e);
+                vals.push_back((e && e != tk[i].c_str()) ? v : NAN);
+            }
+            found = true;
+            break;
+        }
+        fclose(f);
+        return found;
+    }
+
+    // Vahid cevirmesini bilmeye ehtiyac olmasin deye NISBET: yeni = indiki * (fayl_slot / fayl_baza)
+    static float Scale(float cur, float base, float imp)
+    {
+        if (!std::isfinite(base) || !std::isfinite(imp)) return cur;
+        if (fabsf(base) > 1.0e-6f) return cur * (imp / base);
+        return (fabsf(imp) > 1.0e-6f) ? imp : cur;
+    }
+
+    static float Ratio(float base, float imp)
+    {
+        if (!std::isfinite(base) || !std::isfinite(imp) || fabsf(base) < 1.0e-6f) return 1.0f;
+        return imp / base;
+    }
+}
+
+bool HndExt_SlotUsed(int slot)
+{
+    if (slot < 1 || slot > HNDX_SLOTS) return false;
+    static bool used[HNDX_SLOTS + 1] = {};
+    static bool inited = false;
+    static std::chrono::steady_clock::time_point last;
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    if (!inited || std::chrono::duration<float>(now - last).count() > 0.7f) {
+        inited = true;
+        last = now;
+        for (int i = 1; i <= HNDX_SLOTS; ++i) {
+            char nm[32];
+            snprintf(nm, sizeof(nm), "hslot_%d.cfg", i);
+            FILE* f = fopen(HndxPath(nm).c_str(), "rb");
+            used[i] = (f != nullptr);
+            if (f) fclose(f);
+        }
+    }
+    return used[slot];
+}
+
+bool HndExt_ApplyFileSlot(CVehicle* v, int slot, std::string& msg)
+{
+    msg.clear();
+    if (!v || !v->m_pVehicle) { msg = "Avtomobil tapılmadı"; return false; }
+    if (slot < 1 || slot > HNDX_SLOTS) { msg = "Yanlış slot"; return false; }
+
+    char nm[32];
+    snprintf(nm, sizeof(nm), "hslot_%d.cfg", slot);
+    const std::string slotPath = HndxPath(nm);
+    {
+        FILE* f = fopen(slotPath.c_str(), "rb");
+        if (!f) { msg = "Slot boşdur — launcher: Settings → Fayl seç"; return false; }
+        fclose(f);
+    }
+
+    hv3::LoadIde();
+    const int mid = (int)v->m_pVehicle->m_nModelIndex;
+    std::map<int, std::string>::iterator it = hv3::s_ide.find(mid);
+    if (it == hv3::s_ide.end()) { msg = "Model vehicles.ide-də tapılmadı"; return false; }
+    const std::string name = it->second;
+
+    std::vector<float> base, imp;
+    if (!hv3::FindLine(hv3::BaseCfgPath(), name, base)) { msg = name + " baza handling-də tapılmadı"; return false; }
+    if (!hv3::FindLine(slotPath, name, imp)) { msg = name + " bu faylda yoxdur"; return false; }
+    if (base.size() < 29 || imp.size() < 29) { msg = "Sətir natamamdır (" + name + ")"; return false; }
+    if (!(imp[0] > 0.0f)) { msg = "Fayldakı çəki yanlışdır"; return false; }
+
+    HndxSnap(v);
+    tHandlingData* h = (tHandlingData*)GetOrCreateOwnHandling(v->m_pVehicle);
+    if (!h) { msg = "Handling yaradıla bilmədi"; return false; }
+
+    const std::vector<float>& B = base;
+    const std::vector<float>& I = imp;
+    using hv3::Scale;
+
+    // fayl sutunlari (adin sonrasi, 0-dan):
+    // 0 mass 1 turnmass 2 drag 3-5 com 6 submerged 7 tractionMult 8 tractionLoss 9 tractionBias 10 gears
+    // 11 maxVel 12 accel 13 inertia 14 drive 15 engine 16 brake 17 brakeBias 18 abs 19 steering
+    // 20 suspForce 21 suspDamp 22 suspHighSpd 23 upper 24 lower 25 bias 26 antidive 27 seatOffset 28 collision
+    const float oldMass = h->m_fMass;
+    h->m_fMass = Scale(h->m_fMass, B[0], I[0]);
+    if (oldMass > 0.0f && h->m_fMass > 0.0f) v->m_pVehicle->m_fMass *= h->m_fMass / oldMass;
+    h->m_fTurnMass = Scale(h->m_fTurnMass, B[1], I[1]);
+    h->m_fDragMult = Scale(h->m_fDragMult, B[2], I[2]);
+    h->m_vecCentreOfMass.x = Scale(h->m_vecCentreOfMass.x, B[3], I[3]);
+    h->m_vecCentreOfMass.y = Scale(h->m_vecCentreOfMass.y, B[4], I[4]);
+    h->m_vecCentreOfMass.z = Scale(h->m_vecCentreOfMass.z, B[5], I[5]);
+
+    h->m_fTractionMultiplier = Scale(h->m_fTractionMultiplier, B[7], I[7]);
+    h->m_fTractionLoss       = Scale(h->m_fTractionLoss,       B[8], I[8]);
+    h->m_fTractionBias       = Scale(h->m_fTractionBias,       B[9], I[9]);
+
+    {   // surat: maksimum suret + vites cedveli birlikde miqyaslanir
+        const float kv = hv3::Ratio(B[11], I[11]);
+        cTransmission& t = h->m_transmissionData;
+        t.m_fMaxVelocity     *= kv;
+        t.m_fMaxGearVelocity *= kv;
+        constexpr size_t kFloatsPerGear = sizeof(tTransmissionGear) / sizeof(float);
+        for (int i = 0; i < 6; ++i) {
+            float* g = reinterpret_cast<float*>(&t.m_aGears[i]);
+            for (size_t j = 0; j < kFloatsPerGear; ++j) g[j] *= kv;
+        }
+        t.m_fEngineAcceleration = Scale(t.m_fEngineAcceleration, B[12], I[12]);
+        t.m_fEngineInertia      = Scale(t.m_fEngineInertia,      B[13], I[13]);
+    }
+
+    h->m_fBrakeDeceleration = Scale(h->m_fBrakeDeceleration, B[16], I[16]);
+    h->m_fBrakeBias         = Scale(h->m_fBrakeBias,         B[17], I[17]);
+    h->m_fSteeringLock      = Scale(h->m_fSteeringLock,      B[19], I[19]);
+
+    h->m_fSuspensionForceLevel                = Scale(h->m_fSuspensionForceLevel,                B[20], I[20]);
+    h->m_fSuspensionDampingLevel              = Scale(h->m_fSuspensionDampingLevel,              B[21], I[21]);
+    h->m_fSuspensionHighSpdComDamp            = Scale(h->m_fSuspensionHighSpdComDamp,            B[22], I[22]);
+    h->m_fSuspensionUpperLimit                = Scale(h->m_fSuspensionUpperLimit,                B[23], I[23]);
+    h->m_fSuspensionLowerLimit                = Scale(h->m_fSuspensionLowerLimit,                B[24], I[24]);
+    h->m_fSuspensionBiasBetweenFrontAndRear   = Scale(h->m_fSuspensionBiasBetweenFrontAndRear,   B[25], I[25]);
+    h->m_fSuspensionAntiDiveMultiplier        = Scale(h->m_fSuspensionAntiDiveMultiplier,        B[26], I[26]);
+    h->m_fSeatOffsetDistance                  = Scale(h->m_fSeatOffsetDistance,                  B[27], I[27]);
+    h->m_fCollisionDamageMultiplier           = Scale(h->m_fCollisionDamageMultiplier,           B[28], I[28]);
+
+    HndxFixMass((uintptr_t)h);
+    msg = name + " tətbiq edildi (slot " + std::to_string(slot) + ")";
+    return true;
+}
+// ===== /HNDV3 =====

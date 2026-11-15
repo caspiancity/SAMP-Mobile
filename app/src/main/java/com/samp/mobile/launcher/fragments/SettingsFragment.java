@@ -81,18 +81,40 @@ public class SettingsFragment extends Fragment {
         return new File(dir, "handling_custom.cfg");
     }
 
+    // HNDV3: yuklenen fayl bos olan ilk slota (hslot_1..5.cfg) yazilir
+    private File hndDir() {
+        File dir = new File(requireActivity().getExternalFilesDir(null), "SAMP");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private File hndSlotFile(int i) {
+        return new File(hndDir(), "hslot_" + i + ".cfg");
+    }
+
     private void copyHandling(Uri uri) {
+        int slot = 0;
+        for (int i = 1; i <= 5; i++) {
+            if (!hndSlotFile(i).exists()) { slot = i; break; }
+        }
+        if (slot == 0) {
+            Toast.makeText(getActivity(), "Bütün 5 slot doludur. Əvvəlcə «Sıfırla» bas.", Toast.LENGTH_LONG).show();
+            return;
+        }
         try {
             InputStream in = requireActivity().getContentResolver().openInputStream(uri);
             if (in == null) throw new IOException("fayl açıla bilmədi");
-            FileOutputStream os = new FileOutputStream(hndTarget());
+            File tmp = new File(hndDir(), "hslot_tmp.cfg");
+            FileOutputStream os = new FileOutputStream(tmp);
             byte[] buf = new byte[8192];
             int n;
             long total = 0;
             while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); total += n; }
             os.close();
             in.close();
-            Toast.makeText(getActivity(), "handling.cfg yükləndi (" + total + " bayt). Oyunu yenidən başlat.", Toast.LENGTH_LONG).show();
+            if (total < 50) { tmp.delete(); throw new IOException("fayl çox kiçikdir"); }
+            if (!tmp.renameTo(hndSlotFile(slot))) throw new IOException("slota yazıla bilmədi");
+            Toast.makeText(getActivity(), "handling.cfg slot " + slot + "-ə əlavə olundu (" + total + " bayt). Oyunda /mm → Handling", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Toast.makeText(getActivity(), "Xəta: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -129,8 +151,10 @@ public class SettingsFragment extends Fragment {
         hndReset.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                boolean ok = hndTarget().delete();
-                Toast.makeText(getActivity(), ok ? "Standart handling.cfg qaytarıldı. Oyunu yenidən başlat." : "Seçilmiş fayl yoxdur", Toast.LENGTH_LONG).show();
+                int n = 0;
+                for (int i = 1; i <= 5; i++) { if (hndSlotFile(i).delete()) n++; }
+                if (hndTarget().delete()) n++;
+                Toast.makeText(getActivity(), n > 0 ? "Handling slotları təmizləndi" : "Yüklənmiş fayl yoxdur", Toast.LENGTH_LONG).show();
             }
         });
 

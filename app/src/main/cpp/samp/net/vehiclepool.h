@@ -84,6 +84,7 @@ public:
 				return i;
 			}
 		}
+	return INVALID_VEHICLE_ID;   // VPFIX_V3
 	}
 
 	// 0.3.7

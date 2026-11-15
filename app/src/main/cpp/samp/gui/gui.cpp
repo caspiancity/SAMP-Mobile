@@ -539,7 +539,12 @@ namespace mm
                 s_blink = Smooth(s_blink, VehControls::BlinkOn() ? 1.0f : 0.0f, dt, 28.0f);
 
                 Fill(blk, Col(27, 30, 40, 255), S(10.0f));
-                Txt(S(15.0f), blk.x + S(18.0f), blk.y + S(10.0f), Col(124, 132, 152), "Sinyal");
+                // BETA_V3
+                const Rc bb{ blk.x + S(16.0f), blk.y + S(8.0f), S(44.0f), S(20.0f) };
+                Fill(bb, Orange(46), S(10.0f));
+                Stroke(bb, Orange(150), S(10.0f), S(1.0f));
+                TxtC(S(12.0f), bb, Col(255, 190, 100, 255), "BETA", true);
+                Txt(S(15.0f), bb.x + bb.w + S(10.0f), blk.y + S(10.0f), Col(124, 132, 152), "Sinyal");
 
                 const float gap = S(10.0f);
                 const float bw = (blk.w - S(32.0f) - gap * 2.0f) / 3.0f;
@@ -1892,6 +1897,7 @@ bool HndExt_SaveSlot(CVehicle*, int);
 bool HndExt_LoadSlot(CVehicle*, int);
 bool HndExt_ImportCodeFile(CVehicle*);
 std::string HndExt_GetCode(CVehicle*);
+bool HndExt_ApplyFileSlot(CVehicle*, int, std::string&);   // HNDV3
 
 namespace mm2
 {
@@ -1963,6 +1969,30 @@ namespace mm2
         }
     };
     static EditCaller* s_caller = nullptr;
+
+    // MMV3_LAYOUT: panelin olcusu/yeri SAMP/mm_layout.txt faylinda saxlanir
+    static void LayoutLoad(float& z, float& cx, float& cy)
+    {
+        if (!g_pszStorage) return;
+        char p[0x100];
+        snprintf(p, sizeof(p), "%sSAMP/mm_layout.txt", g_pszStorage);
+        FILE* f = fopen(p, "r");
+        if (!f) return;
+        float a = 1.0f, b = -1.0f, c = -1.0f;
+        if (fscanf(f, "%f %f %f", &a, &b, &c) == 3 && a > 0.2f && a < 3.0f) { z = a; cx = b; cy = c; }
+        fclose(f);
+    }
+
+    static void LayoutSave(float z, float cx, float cy)
+    {
+        if (!g_pszStorage) return;
+        char p[0x100];
+        snprintf(p, sizeof(p), "%sSAMP/mm_layout.txt", g_pszStorage);
+        FILE* f = fopen(p, "w");
+        if (!f) return;
+        fprintf(f, "%.4f %.1f %.1f\n", z, cx, cy);
+        fclose(f);
+    }
 
     static float EaseOutBack(float t)
     {
@@ -2047,6 +2077,10 @@ void RenderHandlingDialog()
     static float         s_pill = 0.0f, s_tabAnim = 1.0f, s_tabDir = 1.0f;
     static bool          s_outDown = false;
     static int           s_slot = 1;
+    // MMV3_LAYOUT
+    static float         s_zoom = 1.0f, s_cx = -1.0f, s_cy = -1.0f;
+    static float         s_dragDx = 0.0f, s_dragDy = 0.0f, s_rsOff = 0.0f, s_rsLeft = 0.0f, s_rsTop = 0.0f;
+    static bool          s_layLoaded = false;
     static float         s_hOff = 0.0f, s_hVel = 0.0f, s_hLastY = 0.0f, s_hDownY = 0.0f;
     static bool          s_hDrag = false, s_hMoved = false;
     static std::chrono::steady_clock::time_point s_last = std::chrono::steady_clock::now();
@@ -2106,12 +2140,49 @@ void RenderHandlingDialog()
     s_tabAnim = Clamp(s_tabAnim + dt / 0.26f, 0.0f, 1.0f);
     mm2::s_msgT = Clamp(mm2::s_msgT - dt / 3.5f, 0.0f, 1.0f);
 
-    const float W0 = 880.0f, H0 = 560.0f;
-    float u0 = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
-    u0 = std::min(u0, std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0));
-    s_U = u0 * (0.90f + 0.10f * open);
+    const float W0 = 880.0f, H0 = 560.0f;      // MMV3_LAYOUT
+    const float uBase = std::min(disp.y / 720.0f, std::min(disp.x * 0.96f / W0, disp.y * 0.96f / H0));
+    const float uFit  = std::min(disp.x * 0.98f / W0, disp.y * 0.98f / H0);
+    if (!s_layLoaded) { s_layLoaded = true; mm2::LayoutLoad(s_zoom, s_cx, s_cy); }
+    s_zoom = Clamp(s_zoom, 0.45f, 1.6f);
 
-    const Rc P{ disp.x * 0.5f - W0 * s_U * 0.5f, disp.y * 0.5f - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U };
+    // basliqdan surusdur / sag-alt kunceden olcunu deyis (evvelki kadrin sahesine gore)
+    if (want && s_t > 0.8f && s_hndRectValid) {
+        const MMTouch& mt = g_mmTouch;
+        const Rc pp{ s_hndPos.x, s_hndPos.y, s_hndSize.x, s_hndSize.y };
+        const Rc hdr{ pp.x, pp.y, pp.w - S(64.0f), S(58.0f) };
+        const Rc hdl{ pp.x + pp.w - S(44.0f), pp.y + pp.h - S(44.0f), S(44.0f), S(44.0f) };
+        if (mt.pressed && s_act == 0) {
+            if (In(hdl, mt.x, mt.y)) {
+                s_act = ID_ZOOMP; s_rsOff = (pp.x + pp.w) - mt.x; s_rsLeft = pp.x; s_rsTop = pp.y;
+            } else if (In(hdr, mt.x, mt.y)) {
+                s_act = ID_DRAG; s_dragDx = mt.x - s_cx; s_dragDy = mt.y - s_cy;
+            }
+        }
+        if (mt.down && s_act == ID_DRAG) {
+            s_cx = mt.x - s_dragDx;
+            s_cy = mt.y - s_dragDy;
+        } else if (mt.down && s_act == ID_ZOOMP) {
+            const float wantU = (mt.x + s_rsOff - s_rsLeft) / W0;
+            s_zoom = Clamp(wantU / uBase, 0.45f, 1.6f);
+            const float nu = std::min(uBase * s_zoom, uFit);
+            s_cx = s_rsLeft + W0 * nu * 0.5f;
+            s_cy = s_rsTop  + H0 * nu * 0.5f;
+        }
+        if (mt.released && (s_act == ID_DRAG || s_act == ID_ZOOMP))
+            mm2::LayoutSave(s_zoom, s_cx, s_cy);
+    }
+
+    const float u0 = std::min(uBase * s_zoom, uFit);
+    s_U = u0 * (0.90f + 0.10f * open);
+    if (s_cx < 0.0f || s_cy < 0.0f) { s_cx = disp.x * 0.5f; s_cy = disp.y * 0.5f; }
+    {
+        const float hw = W0 * u0 * 0.5f, hh = H0 * u0 * 0.5f;
+        s_cx = Clamp(s_cx, hw, std::max(hw, disp.x - hw));
+        s_cy = Clamp(s_cy, hh, std::max(hh, disp.y - hh));
+    }
+
+    const Rc P{ s_cx - W0 * s_U * 0.5f, s_cy - H0 * s_U * 0.5f, W0 * s_U, H0 * s_U };
     const bool canInput = want && s_t > 0.8f;
     const MMTouch& tch = g_mmTouch;
 
@@ -2133,6 +2204,14 @@ void RenderHandlingDialog()
     }
 
     mm2::Glass(P, S(28.0f));
+    // MMV3_LAYOUT: olcu tutacagi (sag-alt)
+    {
+        const float gx = P.x + P.w - S(14.0f), gy = P.y + P.h - S(14.0f);
+        for (int k = 1; k <= 3; ++k) {
+            const float d = S(4.5f) * (float)k;
+            s_dl->AddLine(ImVec2(gx - d, gy), ImVec2(gx, gy - d), Col(255, 255, 255, 80), S(1.6f));
+        }
+    }
 
     // grabber + basliq + bagla
     Fill(Rc{ P.x + P.w * 0.5f - S(22.0f), P.y + S(9.0f), S(44.0f), S(5.0f) }, Col(255, 255, 255, 54), S(2.5f));
@@ -2216,25 +2295,20 @@ void RenderHandlingDialog()
                 TxtC(S(18.0f), c, on ? Col(255, 255, 255) : Col(190, 198, 216), nb, true);
                 if (HndExt_SlotUsed(i + 1)) Dot(c.x + c.w - S(8.0f), c.y + S(8.0f), S(3.2f), Col(80, 220, 140, 255));
             }
-            // emeller
-            static const char* kAct[5] = { "Yaz", "Yüklə", "Kod", "Fayl", "Sıfırla" };
+            // HNDV3_UI: slot = launcherden yuklenen handling.cfg fayli
+            static const char* kAct[2] = { "Tətbiq et", "Sıfırla" };
             const float bx = cx0 + S(272.0f);
-            const float bw = (cw - S(272.0f) - S(6.0f) * 4.0f) / 5.0f;
-            for (int k = 0; k < 5; ++k) {
+            const float bw = (cw - S(272.0f) - S(6.0f)) / 2.0f;
+            for (int k = 0; k < 2; ++k) {
                 const Rc b{ bx + k * (bw + S(6.0f)), y0, bw, S(40.0f) };
                 if (mm2::SmallBtn(85 + k, b, kAct[k], dt, inputPage, k == 0) && pVeh) {
-                    if (k == 0)      mm2::SetMsg(HndExt_SaveSlot(pVeh, s_slot) ? "Slot yadda saxlandı" : "Yadda saxlanmadı");
-                    else if (k == 1) mm2::SetMsg(HndExt_LoadSlot(pVeh, s_slot) ? "Slot yükləndi" : "Slot boşdur");
-                    else if (k == 2) {
-                        const std::string code = HndExt_GetCode(pVeh);
-                        if (pUI && pUI->chat() && !code.empty()) {
-                            pUI->chat()->addDebugMessage("{00FF00}[Handling]: kod SAMP/handling_code.txt faylına yazıldı:");
-                            pUI->chat()->addDebugMessage("{B9C9BF}%s", code.c_str());
-                        }
-                        mm2::SetMsg(code.empty() ? "Kod alınmadı" : "Kod fayla yazıldı və çata çıxdı");
+                    if (k == 0) {
+                        std::string m;
+                        HndExt_ApplyFileSlot(pVeh, s_slot, m);
+                        mm2::SetMsg(m);
+                    } else {
+                        mm2::SetMsg(HndExt_Reset(pVeh) ? "Standarta qaytarıldı" : "Dəyişiklik yoxdur");
                     }
-                    else if (k == 3) mm2::SetMsg(HndExt_ImportCodeFile(pVeh) ? "Koddan yükləndi" : "handling_code.txt tapılmadı / kod yanlışdır");
-                    else             mm2::SetMsg(HndExt_Reset(pVeh) ? "Standarta qaytarıldı" : "Dəyişiklik yoxdur");
                 }
             }
             if (mm2::s_msgT > 0.01f)

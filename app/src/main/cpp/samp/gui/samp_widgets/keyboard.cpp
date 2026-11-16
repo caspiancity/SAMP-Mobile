@@ -14,564 +14,564 @@ extern CJavaWrapper* pJavaWrapper;
 
 Keyboard::Keyboard()
 {
-	m_input = new KeyboardInput();
-	this->addChild(m_input);
+        m_input = new KeyboardInput();
+        this->addChild(m_input);
 
 
-	m_layoutLowerENG = new KeyboardLayoutLowerENG();
-	this->addChild(m_layoutLowerENG);
-	m_layoutLowerENG->setPadding(0.0f);
-	m_layoutLowerENG->setSpacing(0.0f);
-	m_layoutLowerENG->setVisible(false);
+        m_layoutLowerENG = new KeyboardLayoutLowerENG();
+        this->addChild(m_layoutLowerENG);
+        m_layoutLowerENG->setPadding(0.0f);
+        m_layoutLowerENG->setSpacing(0.0f);
+        m_layoutLowerENG->setVisible(false);
 
-	m_layoutUpperENG = new KeyboardLayoutUpperENG();
-	this->addChild(m_layoutUpperENG);
-	m_layoutUpperENG->setPadding(0.0f);
-	m_layoutUpperENG->setSpacing(0.0f);
-	m_layoutUpperENG->setVisible(false);
+        m_layoutUpperENG = new KeyboardLayoutUpperENG();
+        this->addChild(m_layoutUpperENG);
+        m_layoutUpperENG->setPadding(0.0f);
+        m_layoutUpperENG->setSpacing(0.0f);
+        m_layoutUpperENG->setVisible(false);
 
-	m_layoutLowerAZE = new KeyboardLayoutLowerAZE();
-	this->addChild(m_layoutLowerAZE);
-	m_layoutLowerAZE->setPadding(0.0f);
-	m_layoutLowerAZE->setSpacing(0.0f);
-	m_layoutLowerAZE->setVisible(false);
+        m_layoutLowerAZE = new KeyboardLayoutLowerAZE();
+        this->addChild(m_layoutLowerAZE);
+        m_layoutLowerAZE->setPadding(0.0f);
+        m_layoutLowerAZE->setSpacing(0.0f);
+        m_layoutLowerAZE->setVisible(false);
 
-	m_layoutUpperAZE = new KeyboardLayoutUpperAZE();
-	this->addChild(m_layoutUpperAZE);
-	m_layoutUpperAZE->setPadding(0.0f);
-	m_layoutUpperAZE->setSpacing(0.0f);
-	m_layoutUpperAZE->setVisible(false);
+        m_layoutUpperAZE = new KeyboardLayoutUpperAZE();
+        this->addChild(m_layoutUpperAZE);
+        m_layoutUpperAZE->setPadding(0.0f);
+        m_layoutUpperAZE->setSpacing(0.0f);
+        m_layoutUpperAZE->setVisible(false);
 
 
-	m_layoutNUM = new KeyboardLayoutNUM();
-	this->addChild(m_layoutNUM);
-	m_layoutNUM->setPadding(0.0f);
-	m_layoutNUM->setSpacing(0.0f);
-	m_layoutNUM->setVisible(false);
+        m_layoutNUM = new KeyboardLayoutNUM();
+        this->addChild(m_layoutNUM);
+        m_layoutNUM->setPadding(0.0f);
+        m_layoutNUM->setSpacing(0.0f);
+        m_layoutNUM->setVisible(false);
 
-	m_layoutEMOJI = new KeyboardLayoutEMOJI();   // EMOJI_V5
-	this->addChild(m_layoutEMOJI);
-	m_layoutEMOJI->setPadding(0.0f);
-	m_layoutEMOJI->setSpacing(0.0f);
-	m_layoutEMOJI->setVisible(false);
+        m_layoutEMOJI = new KeyboardLayoutEMOJI();   // EMOJI_V5
+        this->addChild(m_layoutEMOJI);
+        m_layoutEMOJI->setPadding(0.0f);
+        m_layoutEMOJI->setSpacing(0.0f);
+        m_layoutEMOJI->setVisible(false);
 
-	m_activeLayout = m_layoutLowerENG;
-	m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
-	m_activeLayout->setVisible(true);
+        m_activeLayout = m_layoutLowerENG;
+        m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
+        m_activeLayout->setVisible(true);
 
-	m_history = new KeyboardHistory();
+        m_history = new KeyboardHistory();
 }
 
 void Keyboard::performLayout()
 {
-	m_input->setFixedSize(ImVec2(width(), UISettings::keyboardRowHeight()));
-	m_input->setPosition(ImVec2(0.0f, 0.0f));
+        m_input->setFixedSize(ImVec2(width(), UISettings::keyboardRowHeight()));
+        m_input->setPosition(ImVec2(0.0f, 0.0f));
 
-	/* ENG */
-	m_layoutLowerENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutLowerENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-	m_layoutUpperENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutUpperENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        /* ENG */
+        m_layoutLowerENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutLowerENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        m_layoutUpperENG->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutUpperENG->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
-	/* AZE */
-	m_layoutLowerAZE->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutLowerAZE->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
-	m_layoutUpperAZE->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutUpperAZE->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        /* AZE */
+        m_layoutLowerAZE->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutLowerAZE->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        m_layoutUpperAZE->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutUpperAZE->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
-	/* NUM */
-	m_layoutNUM->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutNUM->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        /* NUM */
+        m_layoutNUM->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutNUM->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
-	/* EMOJI */
-	m_layoutEMOJI->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
-	m_layoutEMOJI->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+        /* EMOJI */
+        m_layoutEMOJI->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+        m_layoutEMOJI->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
-	Widget::performLayout();
+        Widget::performLayout();
 }
 
 void Keyboard::draw(ImGuiRenderer* renderer)
 {
-	renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(28, 28, 32, 250), true);   // KBIOS_V5
-	Widget::draw(renderer);
+        renderer->drawRect(absolutePosition(), absolutePosition() + size(), ImColor(28, 28, 32, 250), true);   // KBIOS_V5
+        Widget::draw(renderer);
 }
 
 void Keyboard::setActiveLayout(KeyboardLayout::Type type)
 {
-	m_activeLayout->setVisible(false);
+        m_activeLayout->setVisible(false);
 
-	switch (type)
-	{
-		case KeyboardLayout::Type::ENG_LOWER:
-			m_layoutLowerENG->setVisible(true);
-			m_activeLayout = m_layoutLowerENG;
-			break;
+        switch (type)
+        {
+                case KeyboardLayout::Type::ENG_LOWER:
+                        m_layoutLowerENG->setVisible(true);
+                        m_activeLayout = m_layoutLowerENG;
+                        break;
 
-		case KeyboardLayout::Type::ENG_UPPER:
-			m_layoutUpperENG->setVisible(true);
-			m_activeLayout = m_layoutUpperENG;
-			break;
+                case KeyboardLayout::Type::ENG_UPPER:
+                        m_layoutUpperENG->setVisible(true);
+                        m_activeLayout = m_layoutUpperENG;
+                        break;
 
-		case KeyboardLayout::Type::AZE_LOWER:
-			m_layoutLowerAZE->setVisible(true);
-			m_activeLayout = m_layoutLowerAZE;
-			break;
+                case KeyboardLayout::Type::AZE_LOWER:
+                        m_layoutLowerAZE->setVisible(true);
+                        m_activeLayout = m_layoutLowerAZE;
+                        break;
 
-		case KeyboardLayout::Type::AZE_UPPER:
-			m_layoutUpperAZE->setVisible(true);
-			m_activeLayout = m_layoutUpperAZE;
-			break;
+                case KeyboardLayout::Type::AZE_UPPER:
+                        m_layoutUpperAZE->setVisible(true);
+                        m_activeLayout = m_layoutUpperAZE;
+                        break;
 
-		case KeyboardLayout::Type::NUM:
-			m_layoutNUM->setVisible(true);
-			m_activeLayout = m_layoutNUM;
-			break;
+                case KeyboardLayout::Type::NUM:
+                        m_layoutNUM->setVisible(true);
+                        m_activeLayout = m_layoutNUM;
+                        break;
 
-		case KeyboardLayout::Type::EMOJI:
-			m_layoutEMOJI->setVisible(true);
-			m_activeLayout = m_layoutEMOJI;
-			break;
-	}
+                case KeyboardLayout::Type::EMOJI:
+                        m_layoutEMOJI->setVisible(true);
+                        m_activeLayout = m_layoutEMOJI;
+                        break;
+        }
 
-	m_activeLayoutType = type;
+        m_activeLayoutType = type;
 }
 
 void Keyboard::changeCase(KeyboardLayout::KeyCase key_case)
 {
-	switch (key_case)
-	{
-		case KeyboardLayout::KeyCase::LOWER:
-			if (m_activeLayoutType == KeyboardLayout::Type::ENG_UPPER) setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
-			if (m_activeLayoutType == KeyboardLayout::Type::AZE_UPPER) setActiveLayout(KeyboardLayout::Type::AZE_LOWER);
-			break;
+        switch (key_case)
+        {
+                case KeyboardLayout::KeyCase::LOWER:
+                        if (m_activeLayoutType == KeyboardLayout::Type::ENG_UPPER) setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
+                        if (m_activeLayoutType == KeyboardLayout::Type::AZE_UPPER) setActiveLayout(KeyboardLayout::Type::AZE_LOWER);
+                        break;
 
-		case KeyboardLayout::KeyCase::UPPER:
-			if (m_activeLayoutType == KeyboardLayout::Type::ENG_LOWER) setActiveLayout(KeyboardLayout::Type::ENG_UPPER);
-			if (m_activeLayoutType == KeyboardLayout::Type::AZE_LOWER) setActiveLayout(KeyboardLayout::Type::AZE_UPPER);
-			break;
-	}
+                case KeyboardLayout::KeyCase::UPPER:
+                        if (m_activeLayoutType == KeyboardLayout::Type::ENG_LOWER) setActiveLayout(KeyboardLayout::Type::ENG_UPPER);
+                        if (m_activeLayoutType == KeyboardLayout::Type::AZE_LOWER) setActiveLayout(KeyboardLayout::Type::AZE_UPPER);
+                        break;
+        }
 }
 
 void Keyboard::show(Widget* caller)
 {
-	if(pSettings->Get().iAndroidKeyboard)
-	{
-		pJavaWrapper->ShowKeyboard();
-	}
-	else {
-		m_history->reset();
-		m_input->clear();
-		this->setVisible(true);
-		pGame->EnableGameInput(false);
-	}
-	m_caller = caller;
+        if(pSettings->Get().iAndroidKeyboard)
+        {
+                pJavaWrapper->ShowKeyboard();
+        }
+        else {
+                m_history->reset();
+                m_input->clear();
+                this->setVisible(true);
+                pGame->EnableGameInput(false);
+        }
+        m_caller = caller;
 }
 
 void Keyboard::hide()
 {
-	if(pSettings->Get().iAndroidKeyboard)
-	{
-		pJavaWrapper->HideKeyboard();
-	}
-	else {
-		this->setVisible(false);
-		pGame->EnableGameInput(true);
-	}
-	m_caller = nullptr;
+        if(pSettings->Get().iAndroidKeyboard)
+        {
+                pJavaWrapper->HideKeyboard();
+        }
+        else {
+                this->setVisible(false);
+                pGame->EnableGameInput(true);
+        }
+        m_caller = nullptr;
 }
 
 void Keyboard::send()
 {
-	const std::string input = this->input()->inputString();
-	m_history->add(input);
-	if (m_caller) m_caller->keyboardEvent(input);
-	this->hide();
+        const std::string input = this->input()->inputString();
+        m_history->add(input);
+        if (m_caller) m_caller->keyboardEvent(input);
+        this->hide();
 }
 
 void Keyboard::sendForGB(JNIEnv *pEnv, jobject thiz, jbyteArray str)
 {
-	std::string::size_type v8;
-	v8 = pEnv->functions->GetArrayLength(pEnv, (jarray)str);
-	char* buffer = (char*)malloc(v8 + 1);
-	jbyte* elements = pEnv->GetByteArrayElements(str, NULL);
-	memcpy(buffer, elements, v8);
-	buffer[v8] = 0;
-	std::string input = std::string(buffer);
-	if (m_caller) m_caller->keyboardEvent(input);
-	hide();
-	pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);
+        std::string::size_type v8;
+        v8 = pEnv->functions->GetArrayLength(pEnv, (jarray)str);
+        char* buffer = (char*)malloc(v8 + 1);
+        jbyte* elements = pEnv->GetByteArrayElements(str, NULL);
+        memcpy(buffer, elements, v8);
+        buffer[v8] = 0;
+        std::string input = std::string(buffer);
+        if (m_caller) m_caller->keyboardEvent(input);
+        hide();
+        pEnv->ReleaseByteArrayElements(str, elements, JNI_ABORT);
 }
 
 void Keyboard::activateEvent(bool active)
 {
-	if (active == false) this->hide();
+        if (active == false) this->hide();
 }
 
 /* KeyboardInput */
 KeyboardInput::KeyboardInput()
 {
-	m_buttonTub = new Button("/", UISettings::fontSize());
-	this->addChild(m_buttonTub);
-	m_buttonPrev = new Button("<<", UISettings::fontSize());
-	this->addChild(m_buttonPrev);
-	m_buttonNext = new Button(">>", UISettings::fontSize());
-	this->addChild(m_buttonNext);
+        m_buttonTub = new Button("/", UISettings::fontSize());
+        this->addChild(m_buttonTub);
+        m_buttonPrev = new Button("<<", UISettings::fontSize());
+        this->addChild(m_buttonPrev);
+        m_buttonNext = new Button(">>", UISettings::fontSize());
+        this->addChild(m_buttonNext);
 
-	m_buttonPrev->setCallback([]()
-							  {
-								  std::string text = pUI->keyboard()->history()->prev();
-								  pUI->keyboard()->input()->setInputString(text);
-							  }
-	);
+        m_buttonPrev->setCallback([]()
+                                                          {
+                                                                  std::string text = pUI->keyboard()->history()->prev();
+                                                                  pUI->keyboard()->input()->setInputString(text);
+                                                          }
+        );
 
-	m_buttonNext->setCallback([]()
-							  {
-								  std::string text = pUI->keyboard()->history()->next();
-								  pUI->keyboard()->input()->setInputString(text);
-							  }
-	);
+        m_buttonNext->setCallback([]()
+                                                          {
+                                                                  std::string text = pUI->keyboard()->history()->next();
+                                                                  pUI->keyboard()->input()->setInputString(text);
+                                                          }
+        );
 
-	m_buttonTub->setCallback([]()
-							 {
-								 pUI->keyboard()->input()->setInputString("/");
-							 }
-	);
+        m_buttonTub->setCallback([]()
+                                                         {
+                                                                 pUI->keyboard()->input()->setInputString("/");
+                                                         }
+        );
 
-	m_buttonPrev->setVisible(true);
-	m_buttonNext->setVisible(true);
-	m_buttonTub->setVisible(true);
+        m_buttonPrev->setVisible(true);
+        m_buttonNext->setVisible(true);
+        m_buttonTub->setVisible(true);
 }
 
 void KeyboardInput::performLayout()
 {
-	Widget::performLayout();
+        Widget::performLayout();
 
-	m_buttonTub->setPosition(
-			ImVec2(width() - (m_buttonTub->width() + UISettings::padding() + m_buttonPrev->width()*2.3 + UISettings::padding()),
-				   (height() - m_buttonTub->height()) / 2));
-	m_buttonPrev->setPosition(
-			ImVec2(width() - (m_buttonPrev->width() + UISettings::padding() + m_buttonNext->width() + UISettings::padding()),
-				   (height() - m_buttonPrev->height()) / 2));
-	m_buttonNext->setPosition(
-			ImVec2(width() - (m_buttonNext->width() + UISettings::padding()),
-				   (height() - m_buttonNext->height()) / 2));
+        m_buttonTub->setPosition(
+                        ImVec2(width() - (m_buttonTub->width() + UISettings::padding() + m_buttonPrev->width()*2.3 + UISettings::padding()),
+                                   (height() - m_buttonTub->height()) / 2));
+        m_buttonPrev->setPosition(
+                        ImVec2(width() - (m_buttonPrev->width() + UISettings::padding() + m_buttonNext->width() + UISettings::padding()),
+                                   (height() - m_buttonPrev->height()) / 2));
+        m_buttonNext->setPosition(
+                        ImVec2(width() - (m_buttonNext->width() + UISettings::padding()),
+                                   (height() - m_buttonNext->height()) / 2));
 }
 
 // KBIOS_V5: kursor (caret) ile redakte
 static int Utf8PrevStart(const std::string& s, int pos)
 {
-	if (pos <= 0) return 0;
-	int i = pos - 1;
-	while (i > 0 && (((unsigned char)s[i]) & 0xC0) == 0x80) --i;
-	return i;
+        if (pos <= 0) return 0;
+        int i = pos - 1;
+        while (i > 0 && (((unsigned char)s[i]) & 0xC0) == 0x80) --i;
+        return i;
 }
 
 void KeyboardInput::addCharToInput(char value)
 {
-	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
-	m_input.insert((size_t)m_caret, 1, value);
-	m_caret += 1;
-	m_caption = m_input;
+        if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+        m_input.insert((size_t)m_caret, 1, value);
+        m_caret += 1;
+        m_caption = m_input;
 }
 
 void KeyboardInput::addStringToInput(const std::string& value)
 {
-	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
-	m_input.insert((size_t)m_caret, value);
-	m_caret += (int)value.size();
-	m_caption = m_input;
+        if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+        m_input.insert((size_t)m_caret, value);
+        m_caret += (int)value.size();
+        m_caption = m_input;
 }
 
 void KeyboardInput::popCharFromInput()
 {
-	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
-	if (m_caret == 0) return;
-	const int st = Utf8PrevStart(m_input, m_caret);
-	m_input.erase((size_t)st, (size_t)(m_caret - st));
-	m_caret = st;
-	m_caption = m_input;
+        if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+        if (m_caret == 0) return;
+        const int st = Utf8PrevStart(m_input, m_caret);
+        m_input.erase((size_t)st, (size_t)(m_caret - st));
+        m_caret = st;
+        m_caption = m_input;
 }
 
 void KeyboardInput::touchEvent(const ImVec2& pos, TouchType type)
 {
-	Widget::touchEvent(pos, type);
-	if (type != TouchType::push) return;
-	if (!contains(pos)) return;
-	if (pos.x >= m_buttonTub->absolutePosition().x - UISettings::padding()) return;   // /  <<  >> duymeleri
+        Widget::touchEvent(pos, type);
+        if (type != TouchType::push) return;
+        if (!contains(pos)) return;
+        if (pos.x >= m_buttonTub->absolutePosition().x - UISettings::padding()) return;   // /  <<  >> duymeleri
 
-	const float font_sz = UISettings::fontSize();
-	const float tx = absolutePosition().x + UISettings::padding();
-	const int n = (int)m_input.size();
-	int best = 0, i = 0;
-	float bestD = 1e9f;
-	while (true)
-	{
-		const float w = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + i).x;
-		const float x = tx + w;
-		const float d = (x > pos.x) ? (x - pos.x) : (pos.x - x);
-		if (d < bestD) { bestD = d; best = i; }
-		if (i >= n) break;
-		++i;
-		while (i < n && (((unsigned char)m_input[i]) & 0xC0) == 0x80) ++i;
-	}
-	m_caret = best;
+        const float font_sz = UISettings::fontSize();
+        const float tx = absolutePosition().x + UISettings::padding();
+        const int n = (int)m_input.size();
+        int best = 0, i = 0;
+        float bestD = 1e9f;
+        while (true)
+        {
+                const float w = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + i).x;
+                const float x = tx + w;
+                const float d = (x > pos.x) ? (x - pos.x) : (pos.x - x);
+                if (d < bestD) { bestD = d; best = i; }
+                if (i >= n) break;
+                ++i;
+                while (i < n && (((unsigned char)m_input[i]) & 0xC0) == 0x80) ++i;
+        }
+        m_caret = best;
 }
 
 void KeyboardInput::draw(ImGuiRenderer* renderer)
 {
-	float divLinePosY = (absolutePosition().y + size().y) - UISettings::outlineSize();
-	float font_sz = UISettings::fontSize();
-	const float tx = absolutePosition().x + UISettings::padding();
-	const float ty = absolutePosition().y + (height() - font_sz) / 2;
+        float divLinePosY = (absolutePosition().y + size().y) - UISettings::outlineSize();
+        float font_sz = UISettings::fontSize();
+        const float tx = absolutePosition().x + UISettings::padding();
+        const float ty = absolutePosition().y + (height() - font_sz) / 2;
 
-	renderer->drawText(ImVec2(tx, ty), ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
+        renderer->drawText(ImVec2(tx, ty), ImColor(1.0f, 1.0f, 1.0f), m_caption, false, font_sz);
 
-	// kursor (yanib-soner)
-	if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
-	const float cw = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + m_caret).x;
-	if (((int)(ImGui::GetTime() * 2.0)) % 2 == 0)
-		renderer->drawLine(ImVec2(tx + cw, ty), ImVec2(tx + cw, ty + font_sz), ImColor(0xF5, 0x91, 0x32), 2.0f);
+        // kursor (yanib-soner)
+        if (m_caret < 0 || m_caret > (int)m_input.size()) m_caret = (int)m_input.size();
+        const float cw = ImGui::GetFont()->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, m_input.c_str(), m_input.c_str() + m_caret).x;
+        if (((int)(ImGui::GetTime() * 2.0)) % 2 == 0)
+                renderer->drawLine(ImVec2(tx + cw, ty), ImVec2(tx + cw, ty + font_sz), ImColor(0xF5, 0x91, 0x32), 2.0f);
 
-	renderer->drawLine(
-			ImVec2(absolutePosition().x, divLinePosY),
-			ImVec2(absolutePosition().x + size().x, divLinePosY),
-			ImColor(0xF5, 0x91, 0x32), UISettings::outlineSize()
-	);
+        renderer->drawLine(
+                        ImVec2(absolutePosition().x, divLinePosY),
+                        ImVec2(absolutePosition().x + size().x, divLinePosY),
+                        ImColor(0xF5, 0x91, 0x32), UISettings::outlineSize()
+        );
 
-	Widget::draw(renderer);
+        Widget::draw(renderer);
 }
 
 /* KeyboardLayout */
 
 KeyboardLayout::KeyboardLayout()
-		: Layout(Orientation::VERTICAL)
+                : Layout(Orientation::VERTICAL)
 {
-	for (int i = 0; i < 5; i++)
-	{
-		m_rows[i] = new Row();
-		this->addChild(m_rows[i]);
-	}
+        for (int i = 0; i < 5; i++)
+        {
+                m_rows[i] = new Row();
+                this->addChild(m_rows[i]);
+        }
 }
 
 void KeyboardLayout::performLayout()
 {
-	Layout::performLayout();
+        Layout::performLayout();
 }
 
 /* KeyboardLayout::Row */
 
 KeyboardLayout::Row::Row()
-		: Layout(Orientation::HORIZONTAL)
+                : Layout(Orientation::HORIZONTAL)
 {
 
 }
 
 KeyboardLayout::Row::Key* KeyboardLayout::Row::addKey(const std::string& caption, char value)
 {
-	Key* key = new Key(caption, value);
-	this->addChild(key);
-	return key;
+        Key* key = new Key(caption, value);
+        this->addChild(key);
+        return key;
 }
 
 KeyboardLayout::Row::Key* KeyboardLayout::Row::addKey(const std::string& caption, const std::string& valueStr)
 {
-	Key* key = new Key(caption, valueStr);
-	this->addChild(key);
-	return key;
+        Key* key = new Key(caption, valueStr);
+        this->addChild(key);
+        return key;
 }
 
 KeyboardLayout::Row::Key* KeyboardLayout::Row::addKey(ExtendedKey extended_key)
 {
-	Key* key = new Key(extended_key);
-	this->addChild(key);
-	return key;
+        Key* key = new Key(extended_key);
+        this->addChild(key);
+        return key;
 }
 
 /* KeyboardLayout::Row::Key */
 
 KeyboardLayout::Row::Key::Key(const std::string& caption, char value)
-		: Button(caption)
+                : Button(caption)
 {
-	m_extendedKey = ExtendedKey::NONE;
-	m_value = value;
-	m_isStringValue = false;
+        m_extendedKey = ExtendedKey::NONE;
+        m_value = value;
+        m_isStringValue = false;
 }
 
 KeyboardLayout::Row::Key::Key(const std::string& caption, const std::string& valueStr)
-		: Button(caption)
+                : Button(caption)
 {
-	m_extendedKey = ExtendedKey::NONE;
-	m_value = 0;
-	m_valueStr = valueStr;
-	m_isStringValue = true;
+        m_extendedKey = ExtendedKey::NONE;
+        m_value = 0;
+        m_valueStr = valueStr;
+        m_isStringValue = true;
 }
 
 KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
-		: Button("")
+                : Button("")
 {
-	switch (extended_key)
-	{
-		case ExtendedKey::NUM:
-			this->setCaption(std::string("123"));
-			break;
-		case ExtendedKey::LANG_ENG:
-			this->setCaption(std::string("ENG"));
-			break;
-		case ExtendedKey::LANG_AZE:
-			this->setCaption(std::string("AZE"));
-			break;
-		case ExtendedKey::EMOJI:
-			this->setCaption(std::string("\xEE\x80\x80"));
-			break;
-	}
+        switch (extended_key)
+        {
+                case ExtendedKey::NUM:
+                        this->setCaption(std::string("123"));
+                        break;
+                case ExtendedKey::LANG_ENG:
+                        this->setCaption(std::string("ENG"));
+                        break;
+                case ExtendedKey::LANG_AZE:
+                        this->setCaption(std::string("AZE"));
+                        break;
+                case ExtendedKey::EMOJI:
+                        this->setCaption(std::string("\xEE\x80\x80"));
+                        break;
+        }
 
-	m_extendedKey = extended_key;
+        m_extendedKey = extended_key;
 }
 
 void KeyboardLayout::Row::Key::draw(ImGuiRenderer* renderer)
 {
-	// KBIOS_V5: iOS stilinde yumru duymeler + basilan herf balonu
-	{
-		const bool pressed = focused();
-		const bool special = (m_extendedKey != ExtendedKey::NONE);
-		const float m = height() * 0.07f;
-		const float ax = absolutePosition().x + m * 0.6f,          ay = absolutePosition().y + m;
-		const float bx = absolutePosition().x + width() - m * 0.6f, by = absolutePosition().y + height() - m;
-		const float rad = height() * 0.2f;
-		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+        // KBIOS_V5: iOS stilinde yumru duymeler + basilan herf balonu
+        {
+                const bool pressed = focused();
+                const bool special = (m_extendedKey != ExtendedKey::NONE);
+                const float m = height() * 0.07f;
+                const float ax = absolutePosition().x + m * 0.6f,          ay = absolutePosition().y + m;
+                const float bx = absolutePosition().x + width() - m * 0.6f, by = absolutePosition().y + height() - m;
+                const float rad = height() * 0.2f;
+                ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-		ImU32 fill;
-		if (special) fill = pressed ? IM_COL32(120, 120, 128, 255) : IM_COL32(62, 62, 68, 255);
-		else         fill = pressed ? IM_COL32(150, 150, 158, 255) : IM_COL32(92, 92, 98, 255);
-		if (m_extendedKey == ExtendedKey::SEND) fill = pressed ? IM_COL32(255, 160, 60, 255) : IM_COL32(245, 145, 50, 255);
+                ImU32 fill;
+                if (special) fill = pressed ? IM_COL32(120, 120, 128, 255) : IM_COL32(62, 62, 68, 255);
+                else         fill = pressed ? IM_COL32(150, 150, 158, 255) : IM_COL32(92, 92, 98, 255);
+                if (m_extendedKey == ExtendedKey::SEND) fill = pressed ? IM_COL32(255, 160, 60, 255) : IM_COL32(245, 145, 50, 255);
 
-		dl->AddRectFilled(ImVec2(ax, ay + 1.5f), ImVec2(bx, by + 1.5f), IM_COL32(0, 0, 0, 90), rad);
-		dl->AddRectFilled(ImVec2(ax, ay), ImVec2(bx, by), fill, rad);
+                dl->AddRectFilled(ImVec2(ax, ay + 1.5f), ImVec2(bx, by + 1.5f), IM_COL32(0, 0, 0, 90), rad);
+                dl->AddRectFilled(ImVec2(ax, ay), ImVec2(bx, by), fill, rad);
 
-		if (pressed && m_extendedKey == ExtendedKey::NONE && !caption().empty())
-		{
-			const float pw = width() * 1.35f, ph = height() * 1.25f;
-			const float px = absolutePosition().x + (width() - pw) * 0.5f;
-			const float py = absolutePosition().y - ph - height() * 0.05f;
-			ImDrawList* fg = ImGui::GetForegroundDrawList();
-			fg->AddRectFilled(ImVec2(px, py + 2.0f), ImVec2(px + pw, py + ph + 2.0f), IM_COL32(0, 0, 0, 110), rad * 1.4f);
-			fg->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(150, 150, 158, 255), rad * 1.4f);
-			const float fs = UISettings::fontSize() * 1.5f;
-			const ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0.0f, caption().c_str());
-			fg->AddText(ImGui::GetFont(), fs, ImVec2(px + (pw - ts.x) * 0.5f, py + (ph - ts.y) * 0.5f), IM_COL32(255, 255, 255, 255), caption().c_str());
-		}
-	}
+                if (pressed && m_extendedKey == ExtendedKey::NONE && !caption().empty())
+                {
+                        const float pw = width() * 1.35f, ph = height() * 1.25f;
+                        const float px = absolutePosition().x + (width() - pw) * 0.5f;
+                        const float py = absolutePosition().y - ph - height() * 0.05f;
+                        ImDrawList* fg = ImGui::GetForegroundDrawList();
+                        fg->AddRectFilled(ImVec2(px, py + 2.0f), ImVec2(px + pw, py + ph + 2.0f), IM_COL32(0, 0, 0, 110), rad * 1.4f);
+                        fg->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), IM_COL32(150, 150, 158, 255), rad * 1.4f);
+                        const float fs = UISettings::fontSize() * 1.5f;
+                        const ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0.0f, caption().c_str());
+                        fg->AddText(ImGui::GetFont(), fs, ImVec2(px + (pw - ts.x) * 0.5f, py + (ph - ts.y) * 0.5f), IM_COL32(255, 255, 255, 255), caption().c_str());
+                }
+        }
 
-	switch (m_extendedKey)
-	{
-		case ExtendedKey::SHIFT_ON:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
-					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
-					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
+        switch (m_extendedKey)
+        {
+                case ExtendedKey::SHIFT_ON:
+                        renderer->drawTriangle(
+                                        ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
+                                        ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
+                                        ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
+                                        ImColor(1.0f, 1.0f, 1.0f), true
+                        );
+                        renderer->drawRect(
+                                        ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
+                                        ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
+                                        ImColor(1.0f, 1.0f, 1.0f), true
+                        );
+                        break;
 
-		case ExtendedKey::SHIFT_OFF:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
-					ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
-					ImColor(0xF5, 0x91, 0x32), true
-			);
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
-					ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
-					ImColor(0xF5, 0x91, 0x32), true
-			);
-			break;
+                case ExtendedKey::SHIFT_OFF:
+                        renderer->drawTriangle(
+                                        ImVec2(absolutePosition().x + width() * 0.37f, absolutePosition().y + height() * 0.50f),
+                                        ImVec2(absolutePosition().x + width() * 0.50f, absolutePosition().y + height() * 0.25f),
+                                        ImVec2(absolutePosition().x + width() * 0.63f, absolutePosition().y + height() * 0.50f),
+                                        ImColor(0xF5, 0x91, 0x32), true
+                        );
+                        renderer->drawRect(
+                                        ImVec2(absolutePosition().x + width() * 0.44f, absolutePosition().y + height() * 0.50f - 1),
+                                        ImVec2(absolutePosition().x + width() * 0.56f, absolutePosition().y + height() * 0.68f),
+                                        ImColor(0xF5, 0x91, 0x32), true
+                        );
+                        break;
 
-		case ExtendedKey::BACKSPACE:
-			static ImVec2 points[5];
-			points[0] = ImVec2(absolutePosition().x + width() * 0.35f, absolutePosition().y + height() * 0.50f);
-			points[1] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.25f);
-			points[2] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.25f);
-			points[3] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.65f);
-			points[4] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.65f);
-			renderer->drawConvexPolyFilled(points, 5, ImColor(1.0f, 1.0f, 1.0f));
-			break;
+                case ExtendedKey::BACKSPACE:
+                        static ImVec2 points[5];
+                        points[0] = ImVec2(absolutePosition().x + width() * 0.35f, absolutePosition().y + height() * 0.50f);
+                        points[1] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.25f);
+                        points[2] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.25f);
+                        points[3] = ImVec2(absolutePosition().x + width() * 0.65f, absolutePosition().y + height() * 0.65f);
+                        points[4] = ImVec2(absolutePosition().x + width() * 0.45f, absolutePosition().y + height() * 0.65f);
+                        renderer->drawConvexPolyFilled(points, 5, ImColor(1.0f, 1.0f, 1.0f));
+                        break;
 
-		case ExtendedKey::SPACE:
-			renderer->drawRect(
-					ImVec2(absolutePosition().x + width() * 0.07f, absolutePosition().y + height() * 0.35f),
-					ImVec2(absolutePosition().x + width() * 0.93f, absolutePosition().y + height() * 0.65f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
+                case ExtendedKey::SPACE:
+                        renderer->drawRect(
+                                        ImVec2(absolutePosition().x + width() * 0.07f, absolutePosition().y + height() * 0.35f),
+                                        ImVec2(absolutePosition().x + width() * 0.93f, absolutePosition().y + height() * 0.65f),
+                                        ImColor(1.0f, 1.0f, 1.0f), true
+                        );
+                        break;
 
-		case ExtendedKey::SEND:
-			renderer->drawTriangle(
-					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.25f),
-					ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.75f),
-					ImVec2(absolutePosition().x + width() * 0.7f, absolutePosition().y + height() * 0.50f),
-					ImColor(1.0f, 1.0f, 1.0f), true
-			);
-			break;
-	}
+                case ExtendedKey::SEND:
+                        renderer->drawTriangle(
+                                        ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.25f),
+                                        ImVec2(absolutePosition().x + width() * 0.3f, absolutePosition().y + height() * 0.75f),
+                                        ImVec2(absolutePosition().x + width() * 0.7f, absolutePosition().y + height() * 0.50f),
+                                        ImColor(1.0f, 1.0f, 1.0f), true
+                        );
+                        break;
+        }
 
-	Widget::draw(renderer);
+        Widget::draw(renderer);
 }
 
 void KeyboardLayout::Row::Key::touchPopEvent()
 {
-	Keyboard* keyboard = dynamic_cast<Keyboard*>(this->parent()->parent()->parent());
+        Keyboard* keyboard = dynamic_cast<Keyboard*>(this->parent()->parent()->parent());
 
-	switch (m_extendedKey)
-	{
-		case ExtendedKey::BACKSPACE:
-			keyboard->input()->popCharFromInput();
-			break;
+        switch (m_extendedKey)
+        {
+                case ExtendedKey::BACKSPACE:
+                        keyboard->input()->popCharFromInput();
+                        break;
 
-		case ExtendedKey::SPACE:
-			keyboard->input()->addCharToInput(' ');
-			break;
+                case ExtendedKey::SPACE:
+                        keyboard->input()->addCharToInput(' ');
+                        break;
 
-		case ExtendedKey::SEND:
-			keyboard->send();
-			break;
+                case ExtendedKey::SEND:
+                        keyboard->send();
+                        break;
 
-		case ExtendedKey::SHIFT_ON:
-			keyboard->changeCase(KeyCase::UPPER);
-			break;
+                case ExtendedKey::SHIFT_ON:
+                        keyboard->changeCase(KeyCase::UPPER);
+                        break;
 
-		case ExtendedKey::SHIFT_OFF:
-			keyboard->changeCase(KeyCase::LOWER);
-			break;
+                case ExtendedKey::SHIFT_OFF:
+                        keyboard->changeCase(KeyCase::LOWER);
+                        break;
 
-		case ExtendedKey::LANG_AZE:
-			keyboard->setActiveLayout(KeyboardLayout::Type::AZE_LOWER);
-			break;
+                case ExtendedKey::LANG_AZE:
+                        keyboard->setActiveLayout(KeyboardLayout::Type::AZE_LOWER);
+                        break;
 
-		case ExtendedKey::LANG_ENG:
-			keyboard->setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
-			break;
+                case ExtendedKey::LANG_ENG:
+                        keyboard->setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
+                        break;
 
-		case ExtendedKey::EMOJI:
-			keyboard->setActiveLayout(KeyboardLayout::Type::EMOJI);
-			break;
+                case ExtendedKey::EMOJI:
+                        keyboard->setActiveLayout(KeyboardLayout::Type::EMOJI);
+                        break;
 
-		case ExtendedKey::NUM:
-			keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
-			break;
+                case ExtendedKey::NUM:
+                        keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
+                        break;
 
-		case ExtendedKey::NONE:
-			if (m_isStringValue)
-				keyboard->input()->addStringToInput(m_valueStr);
-			else
-				keyboard->input()->addCharToInput(m_value);
-			break;
-	}
+                case ExtendedKey::NONE:
+                        if (m_isStringValue)
+                                keyboard->input()->addStringToInput(m_valueStr);
+                        else
+                                keyboard->input()->addCharToInput(m_value);
+                        break;
+        }
 }
 
 /* KeyboardLayoutLowerENG */
@@ -580,60 +580,60 @@ KeyboardLayoutLowerENG::KeyboardLayoutLowerENG() : KeyboardLayout() {}
 
 void KeyboardLayoutLowerENG::performLayout()
 {
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string("q"), 'q');
-	m_rows[0]->addKey(std::string("w"), 'w');
-	m_rows[0]->addKey(std::string("e"), 'e');
-	m_rows[0]->addKey(std::string("r"), 'r');
-	m_rows[0]->addKey(std::string("t"), 't');
-	m_rows[0]->addKey(std::string("y"), 'y');
-	m_rows[0]->addKey(std::string("u"), 'u');
-	m_rows[0]->addKey(std::string("i"), 'i');
-	m_rows[0]->addKey(std::string("o"), 'o');
-	m_rows[0]->addKey(std::string("p"), 'p');
+        m_rows[0]->setPadding(0.0f);
+        m_rows[0]->setSpacing(0.0f);
+        m_rows[0]->addKey(std::string("q"), 'q');
+        m_rows[0]->addKey(std::string("w"), 'w');
+        m_rows[0]->addKey(std::string("e"), 'e');
+        m_rows[0]->addKey(std::string("r"), 'r');
+        m_rows[0]->addKey(std::string("t"), 't');
+        m_rows[0]->addKey(std::string("y"), 'y');
+        m_rows[0]->addKey(std::string("u"), 'u');
+        m_rows[0]->addKey(std::string("i"), 'i');
+        m_rows[0]->addKey(std::string("o"), 'o');
+        m_rows[0]->addKey(std::string("p"), 'p');
 
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-	float padding = keySize.x / 2;
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->setPaddingLeft(padding);
-	m_rows[1]->setPaddingRight(padding);
-	m_rows[1]->addKey(std::string("a"), 'a');
-	m_rows[1]->addKey(std::string("s"), 's');
-	m_rows[1]->addKey(std::string("d"), 'd');
-	m_rows[1]->addKey(std::string("f"), 'f');
-	m_rows[1]->addKey(std::string("g"), 'g');
-	m_rows[1]->addKey(std::string("h"), 'h');
-	m_rows[1]->addKey(std::string("j"), 'j');
-	m_rows[1]->addKey(std::string("k"), 'k');
-	m_rows[1]->addKey(std::string("l"), 'l');
+        ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+        float padding = keySize.x / 2;
+        m_rows[1]->setPadding(0.0f);
+        m_rows[1]->setSpacing(0.0f);
+        m_rows[1]->setPaddingLeft(padding);
+        m_rows[1]->setPaddingRight(padding);
+        m_rows[1]->addKey(std::string("a"), 'a');
+        m_rows[1]->addKey(std::string("s"), 's');
+        m_rows[1]->addKey(std::string("d"), 'd');
+        m_rows[1]->addKey(std::string("f"), 'f');
+        m_rows[1]->addKey(std::string("g"), 'g');
+        m_rows[1]->addKey(std::string("h"), 'h');
+        m_rows[1]->addKey(std::string("j"), 'j');
+        m_rows[1]->addKey(std::string("k"), 'k');
+        m_rows[1]->addKey(std::string("l"), 'l');
 
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(std::string("z"), 'z');
-	m_rows[2]->addKey(std::string("x"), 'x');
-	m_rows[2]->addKey(std::string("c"), 'c');
-	m_rows[2]->addKey(std::string("v"), 'v');
-	m_rows[2]->addKey(std::string("b"), 'b');
-	m_rows[2]->addKey(std::string("n"), 'n');
-	m_rows[2]->addKey(std::string("m"), 'm');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->setPadding(0.0f);
+        m_rows[2]->setSpacing(0.0f);
+        m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->addKey(std::string("z"), 'z');
+        m_rows[2]->addKey(std::string("x"), 'x');
+        m_rows[2]->addKey(std::string("c"), 'c');
+        m_rows[2]->addKey(std::string("v"), 'v');
+        m_rows[2]->addKey(std::string("b"), 'b');
+        m_rows[2]->addKey(std::string("n"), 'n');
+        m_rows[2]->addKey(std::string("m"), 'm');
+        m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(std::string("?"), '?');
-	m_rows[3]->addKey(std::string("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::NUM);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::EMOJI);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+        m_rows[3]->addKey(std::string("/"), '/');
+        m_rows[3]->addKey(std::string("?"), '?');
+        m_rows[3]->addKey(std::string("."), '.');
+        m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 /* KeyboardLayoutUpperENG */
@@ -642,60 +642,60 @@ KeyboardLayoutUpperENG::KeyboardLayoutUpperENG() : KeyboardLayout() {}
 
 void KeyboardLayoutUpperENG::performLayout()
 {
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string("Q"), 'Q');
-	m_rows[0]->addKey(std::string("W"), 'W');
-	m_rows[0]->addKey(std::string("E"), 'E');
-	m_rows[0]->addKey(std::string("R"), 'R');
-	m_rows[0]->addKey(std::string("T"), 'T');
-	m_rows[0]->addKey(std::string("Y"), 'Y');
-	m_rows[0]->addKey(std::string("U"), 'U');
-	m_rows[0]->addKey(std::string("I"), 'I');
-	m_rows[0]->addKey(std::string("O"), 'O');
-	m_rows[0]->addKey(std::string("P"), 'P');
+        m_rows[0]->setPadding(0.0f);
+        m_rows[0]->setSpacing(0.0f);
+        m_rows[0]->addKey(std::string("Q"), 'Q');
+        m_rows[0]->addKey(std::string("W"), 'W');
+        m_rows[0]->addKey(std::string("E"), 'E');
+        m_rows[0]->addKey(std::string("R"), 'R');
+        m_rows[0]->addKey(std::string("T"), 'T');
+        m_rows[0]->addKey(std::string("Y"), 'Y');
+        m_rows[0]->addKey(std::string("U"), 'U');
+        m_rows[0]->addKey(std::string("I"), 'I');
+        m_rows[0]->addKey(std::string("O"), 'O');
+        m_rows[0]->addKey(std::string("P"), 'P');
 
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
-	float padding = keySize.x / 2;
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->setPaddingLeft(padding);
-	m_rows[1]->setPaddingRight(padding);
-	m_rows[1]->addKey(std::string("A"), 'A');
-	m_rows[1]->addKey(std::string("S"), 'S');
-	m_rows[1]->addKey(std::string("D"), 'D');
-	m_rows[1]->addKey(std::string("F"), 'F');
-	m_rows[1]->addKey(std::string("G"), 'G');
-	m_rows[1]->addKey(std::string("H"), 'H');
-	m_rows[1]->addKey(std::string("J"), 'J');
-	m_rows[1]->addKey(std::string("K"), 'K');
-	m_rows[1]->addKey(std::string("L"), 'L');
+        ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+        float padding = keySize.x / 2;
+        m_rows[1]->setPadding(0.0f);
+        m_rows[1]->setSpacing(0.0f);
+        m_rows[1]->setPaddingLeft(padding);
+        m_rows[1]->setPaddingRight(padding);
+        m_rows[1]->addKey(std::string("A"), 'A');
+        m_rows[1]->addKey(std::string("S"), 'S');
+        m_rows[1]->addKey(std::string("D"), 'D');
+        m_rows[1]->addKey(std::string("F"), 'F');
+        m_rows[1]->addKey(std::string("G"), 'G');
+        m_rows[1]->addKey(std::string("H"), 'H');
+        m_rows[1]->addKey(std::string("J"), 'J');
+        m_rows[1]->addKey(std::string("K"), 'K');
+        m_rows[1]->addKey(std::string("L"), 'L');
 
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey(std::string("Z"), 'Z');
-	m_rows[2]->addKey(std::string("X"), 'X');
-	m_rows[2]->addKey(std::string("C"), 'C');
-	m_rows[2]->addKey(std::string("V"), 'V');
-	m_rows[2]->addKey(std::string("B"), 'B');
-	m_rows[2]->addKey(std::string("N"), 'N');
-	m_rows[2]->addKey(std::string("M"), 'M');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->setPadding(0.0f);
+        m_rows[2]->setSpacing(0.0f);
+        m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->addKey(std::string("Z"), 'Z');
+        m_rows[2]->addKey(std::string("X"), 'X');
+        m_rows[2]->addKey(std::string("C"), 'C');
+        m_rows[2]->addKey(std::string("V"), 'V');
+        m_rows[2]->addKey(std::string("B"), 'B');
+        m_rows[2]->addKey(std::string("N"), 'N');
+        m_rows[2]->addKey(std::string("M"), 'M');
+        m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(std::string("?"), '?');
-	m_rows[3]->addKey(std::string("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::NUM);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::EMOJI);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+        m_rows[3]->addKey(std::string("/"), '/');
+        m_rows[3]->addKey(std::string("?"), '?');
+        m_rows[3]->addKey(std::string("."), '.');
+        m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 /* KeyboardLayoutLowerAZE (Azərbaycan klaviaturası - Kiçik hərflər və xüsusi hərflər) */
@@ -704,63 +704,63 @@ KeyboardLayoutLowerAZE::KeyboardLayoutLowerAZE() : KeyboardLayout() {}
 
 void KeyboardLayoutLowerAZE::performLayout()
 {
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey("q", "q");
-	m_rows[0]->addKey("w", "w");
-	m_rows[0]->addKey("e", "e");
-	m_rows[0]->addKey("r", "r");
-	m_rows[0]->addKey("t", "t");
-	m_rows[0]->addKey("y", "y");
-	m_rows[0]->addKey("u", "u");
-	m_rows[0]->addKey("ı", "ı");
-	m_rows[0]->addKey("o", "o");
-	m_rows[0]->addKey("p", "p");
-	m_rows[0]->addKey("ü", "ü");
+        m_rows[0]->setPadding(0.0f);
+        m_rows[0]->setSpacing(0.0f);
+        m_rows[0]->addKey("q", "q");
+        m_rows[0]->addKey("w", "w");
+        m_rows[0]->addKey("e", "e");
+        m_rows[0]->addKey("r", "r");
+        m_rows[0]->addKey("t", "t");
+        m_rows[0]->addKey("y", "y");
+        m_rows[0]->addKey("u", "u");
+        m_rows[0]->addKey("ı", "ı");
+        m_rows[0]->addKey("o", "o");
+        m_rows[0]->addKey("p", "p");
+        m_rows[0]->addKey("ü", "ü");
 
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey("a", "a");
-	m_rows[1]->addKey("s", "s");
-	m_rows[1]->addKey("d", "d");
-	m_rows[1]->addKey("f", "f");
-	m_rows[1]->addKey("g", "g");
-	m_rows[1]->addKey("h", "h");
-	m_rows[1]->addKey("j", "j");
-	m_rows[1]->addKey("k", "k");
-	m_rows[1]->addKey("l", "l");
-	m_rows[1]->addKey("ş", "ş");
-	m_rows[1]->addKey("ö", "ö");
+        m_rows[1]->setPadding(0.0f);
+        m_rows[1]->setSpacing(0.0f);
+        m_rows[1]->addKey("a", "a");
+        m_rows[1]->addKey("s", "s");
+        m_rows[1]->addKey("d", "d");
+        m_rows[1]->addKey("f", "f");
+        m_rows[1]->addKey("g", "g");
+        m_rows[1]->addKey("h", "h");
+        m_rows[1]->addKey("j", "j");
+        m_rows[1]->addKey("k", "k");
+        m_rows[1]->addKey("l", "l");
+        m_rows[1]->addKey("ş", "ş");
+        m_rows[1]->addKey("ö", "ö");
 
-	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey("z", "z");
-	m_rows[2]->addKey("x", "x");
-	m_rows[2]->addKey("c", "c");
-	m_rows[2]->addKey("v", "v");
-	m_rows[2]->addKey("b", "b");
-	m_rows[2]->addKey("n", "n");
-	m_rows[2]->addKey("m", "m");
-	m_rows[2]->addKey("ə", "ə");
-	m_rows[2]->addKey("ç", "ç");
-	m_rows[2]->addKey("ğ", "ğ");
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
+        m_rows[2]->setPadding(0.0f);
+        m_rows[2]->setSpacing(0.0f);
+        m_rows[2]->addKey(ExtendedKey::SHIFT_ON)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->addKey("z", "z");
+        m_rows[2]->addKey("x", "x");
+        m_rows[2]->addKey("c", "c");
+        m_rows[2]->addKey("v", "v");
+        m_rows[2]->addKey("b", "b");
+        m_rows[2]->addKey("n", "n");
+        m_rows[2]->addKey("m", "m");
+        m_rows[2]->addKey("ə", "ə");
+        m_rows[2]->addKey("ç", "ç");
+        m_rows[2]->addKey("ğ", "ğ");
+        m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(std::string("?"), '?');
-	m_rows[3]->addKey(std::string("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::NUM);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::EMOJI);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+        m_rows[3]->addKey(std::string("/"), '/');
+        m_rows[3]->addKey(std::string("?"), '?');
+        m_rows[3]->addKey(std::string("."), '.');
+        m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 /* KeyboardLayoutUpperAZE (Azərbaycan klaviaturası - Böyük hərflər) */
@@ -769,63 +769,63 @@ KeyboardLayoutUpperAZE::KeyboardLayoutUpperAZE() : KeyboardLayout() {}
 
 void KeyboardLayoutUpperAZE::performLayout()
 {
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey("Q", "Q");
-	m_rows[0]->addKey("W", "W");
-	m_rows[0]->addKey("E", "E");
-	m_rows[0]->addKey("R", "R");
-	m_rows[0]->addKey("T", "T");
-	m_rows[0]->addKey("Y", "Y");
-	m_rows[0]->addKey("U", "U");
-	m_rows[0]->addKey("İ", "İ"); // 'ı' hərfinin böyük forması İ
-	m_rows[0]->addKey("O", "O");
-	m_rows[0]->addKey("P", "P");
-	m_rows[0]->addKey("Ü", "Ü");
+        m_rows[0]->setPadding(0.0f);
+        m_rows[0]->setSpacing(0.0f);
+        m_rows[0]->addKey("Q", "Q");
+        m_rows[0]->addKey("W", "W");
+        m_rows[0]->addKey("E", "E");
+        m_rows[0]->addKey("R", "R");
+        m_rows[0]->addKey("T", "T");
+        m_rows[0]->addKey("Y", "Y");
+        m_rows[0]->addKey("U", "U");
+        m_rows[0]->addKey("İ", "İ"); // 'ı' hərfinin böyük forması İ
+        m_rows[0]->addKey("O", "O");
+        m_rows[0]->addKey("P", "P");
+        m_rows[0]->addKey("Ü", "Ü");
 
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey("A", "A");
-	m_rows[1]->addKey("S", "S");
-	m_rows[1]->addKey("D", "D");
-	m_rows[1]->addKey("F", "F");
-	m_rows[1]->addKey("G", "G");
-	m_rows[1]->addKey("H", "H");
-	m_rows[1]->addKey("J", "J");
-	m_rows[1]->addKey("K", "K");
-	m_rows[1]->addKey("L", "L");
-	m_rows[1]->addKey("Ş", "Ş");
-	m_rows[1]->addKey("Ö", "Ö");
+        m_rows[1]->setPadding(0.0f);
+        m_rows[1]->setSpacing(0.0f);
+        m_rows[1]->addKey("A", "A");
+        m_rows[1]->addKey("S", "S");
+        m_rows[1]->addKey("D", "D");
+        m_rows[1]->addKey("F", "F");
+        m_rows[1]->addKey("G", "G");
+        m_rows[1]->addKey("H", "H");
+        m_rows[1]->addKey("J", "J");
+        m_rows[1]->addKey("K", "K");
+        m_rows[1]->addKey("L", "L");
+        m_rows[1]->addKey("Ş", "Ş");
+        m_rows[1]->addKey("Ö", "Ö");
 
-	ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
-	m_rows[2]->addKey("Z", "Z");
-	m_rows[2]->addKey("X", "X");
-	m_rows[2]->addKey("C", "C");
-	m_rows[2]->addKey("V", "V");
-	m_rows[2]->addKey("B", "B");
-	m_rows[2]->addKey("N", "N");
-	m_rows[2]->addKey("M", "M");
-	m_rows[2]->addKey("Ə", "Ə");
-	m_rows[2]->addKey("Ç", "Ç");
-	m_rows[2]->addKey("Ğ", "Ğ");
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        ImVec2 keySize = ImVec2(width() / 11, UISettings::keyboardRowHeight());
+        m_rows[2]->setPadding(0.0f);
+        m_rows[2]->setSpacing(0.0f);
+        m_rows[2]->addKey(ExtendedKey::SHIFT_OFF)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[2]->addKey("Z", "Z");
+        m_rows[2]->addKey("X", "X");
+        m_rows[2]->addKey("C", "C");
+        m_rows[2]->addKey("V", "V");
+        m_rows[2]->addKey("B", "B");
+        m_rows[2]->addKey("N", "N");
+        m_rows[2]->addKey("M", "M");
+        m_rows[2]->addKey("Ə", "Ə");
+        m_rows[2]->addKey("Ç", "Ç");
+        m_rows[2]->addKey("Ğ", "Ğ");
+        m_rows[2]->addKey(ExtendedKey::BACKSPACE)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
-	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(std::string("?"), '?');
-	m_rows[3]->addKey(std::string("."), '.');
-	m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::NUM);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::EMOJI);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
+        m_rows[3]->addKey(std::string("/"), '/');
+        m_rows[3]->addKey(std::string("?"), '?');
+        m_rows[3]->addKey(std::string("."), '.');
+        m_rows[3]->addKey(ExtendedKey::SEND)->setFixedSize(ImVec2(keySize.x * 1.5f, 0.0f));
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 /* KeyboardLayoutNUM */
@@ -834,60 +834,60 @@ KeyboardLayoutNUM::KeyboardLayoutNUM() : KeyboardLayout() {}
 
 void KeyboardLayoutNUM::performLayout()
 {
-	m_rows[0]->setPadding(0.0f);
-	m_rows[0]->setSpacing(0.0f);
-	m_rows[0]->addKey(std::string("1"), '1');
-	m_rows[0]->addKey(std::string("2"), '2');
-	m_rows[0]->addKey(std::string("3"), '3');
-	m_rows[0]->addKey(std::string("4"), '4');
-	m_rows[0]->addKey(std::string("5"), '5');
-	m_rows[0]->addKey(std::string("6"), '6');
-	m_rows[0]->addKey(std::string("7"), '7');
-	m_rows[0]->addKey(std::string("8"), '8');
-	m_rows[0]->addKey(std::string("9"), '9');
-	m_rows[0]->addKey(std::string("0"), '0');
+        m_rows[0]->setPadding(0.0f);
+        m_rows[0]->setSpacing(0.0f);
+        m_rows[0]->addKey(std::string("1"), '1');
+        m_rows[0]->addKey(std::string("2"), '2');
+        m_rows[0]->addKey(std::string("3"), '3');
+        m_rows[0]->addKey(std::string("4"), '4');
+        m_rows[0]->addKey(std::string("5"), '5');
+        m_rows[0]->addKey(std::string("6"), '6');
+        m_rows[0]->addKey(std::string("7"), '7');
+        m_rows[0]->addKey(std::string("8"), '8');
+        m_rows[0]->addKey(std::string("9"), '9');
+        m_rows[0]->addKey(std::string("0"), '0');
 
-	m_rows[1]->setPadding(0.0f);
-	m_rows[1]->setSpacing(0.0f);
-	m_rows[1]->addKey(std::string("@"), '@');
-	m_rows[1]->addKey(std::string("#"), '#');
-	m_rows[1]->addKey(std::string("$"), '$');
-	m_rows[1]->addKey(std::string("%"), '%');
-	m_rows[1]->addKey(std::string("\""), '\"');
-	m_rows[1]->addKey(std::string("*"), '*');
-	m_rows[1]->addKey(std::string("("), '(');
-	m_rows[1]->addKey(std::string(")"), ')');
-	m_rows[1]->addKey(std::string("-"), '-');
-	m_rows[1]->addKey(std::string("_"), '_');
+        m_rows[1]->setPadding(0.0f);
+        m_rows[1]->setSpacing(0.0f);
+        m_rows[1]->addKey(std::string("@"), '@');
+        m_rows[1]->addKey(std::string("#"), '#');
+        m_rows[1]->addKey(std::string("$"), '$');
+        m_rows[1]->addKey(std::string("%"), '%');
+        m_rows[1]->addKey(std::string("\""), '\"');
+        m_rows[1]->addKey(std::string("*"), '*');
+        m_rows[1]->addKey(std::string("("), '(');
+        m_rows[1]->addKey(std::string(")"), ')');
+        m_rows[1]->addKey(std::string("-"), '-');
+        m_rows[1]->addKey(std::string("_"), '_');
 
-	m_rows[2]->setPadding(0.0f);
-	m_rows[2]->setSpacing(0.0f);
-	m_rows[2]->addKey(std::string("."), '.');
-	m_rows[2]->addKey(std::string(":"), ':');
-	m_rows[2]->addKey(std::string(";"), ';');
-	m_rows[2]->addKey(std::string("+"), '+');
-	m_rows[2]->addKey(std::string("="), '=');
-	m_rows[2]->addKey(std::string("<"), '<');
-	m_rows[2]->addKey(std::string(">"), '>');
-	m_rows[2]->addKey(std::string("["), '[');
-	m_rows[2]->addKey(std::string("]"), ']');
-	m_rows[2]->addKey(ExtendedKey::BACKSPACE);
+        m_rows[2]->setPadding(0.0f);
+        m_rows[2]->setSpacing(0.0f);
+        m_rows[2]->addKey(std::string("."), '.');
+        m_rows[2]->addKey(std::string(":"), ':');
+        m_rows[2]->addKey(std::string(";"), ';');
+        m_rows[2]->addKey(std::string("+"), '+');
+        m_rows[2]->addKey(std::string("="), '=');
+        m_rows[2]->addKey(std::string("<"), '<');
+        m_rows[2]->addKey(std::string(">"), '>');
+        m_rows[2]->addKey(std::string("["), '[');
+        m_rows[2]->addKey(std::string("]"), ']');
+        m_rows[2]->addKey(ExtendedKey::BACKSPACE);
 
-	ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
+        ImVec2 keySize = ImVec2(width() / 10, UISettings::keyboardRowHeight());
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::NUM);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::EMOJI);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
-	m_rows[3]->addKey(std::string("/"), '/');
-	m_rows[3]->addKey(std::string("?"), '?');
-	m_rows[3]->addKey(std::string("!"), '!');
-	m_rows[3]->addKey(ExtendedKey::SEND);
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::NUM);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::EMOJI);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
+        m_rows[3]->addKey(std::string("/"), '/');
+        m_rows[3]->addKey(std::string("?"), '?');
+        m_rows[3]->addKey(std::string("!"), '!');
+        m_rows[3]->addKey(ExtendedKey::SEND);
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 /* KeyboardLayoutEMOJI */   // EMOJI_V5
@@ -896,79 +896,79 @@ KeyboardLayoutEMOJI::KeyboardLayoutEMOJI() : KeyboardLayout() {}
 
 static std::string KbEmojiUtf8(int idx)
 {
-	const unsigned cp = 0xE000u + (unsigned)idx;
-	std::string s;
-	s += (char)(0xE0 | (cp >> 12));
-	s += (char)(0x80 | ((cp >> 6) & 0x3F));
-	s += (char)(0x80 | (cp & 0x3F));
-	return s;
+        const unsigned cp = 0xE000u + (unsigned)idx;
+        std::string s;
+        s += (char)(0xE0 | (cp >> 12));
+        s += (char)(0x80 | ((cp >> 6) & 0x3F));
+        s += (char)(0x80 | (cp & 0x3F));
+        return s;
 }
 
 void KeyboardLayoutEMOJI::performLayout()
 {
-	ImVec2 keySize = ImVec2(width() / 6, UISettings::keyboardRowHeight());
-	for (int r = 0; r < 3; ++r)
-	{
-		m_rows[r]->setPadding(0.0f);
-		m_rows[r]->setSpacing(0.0f);
-		for (int c = 0; c < 6; ++c)
-		{
-			const std::string e = KbEmojiUtf8(r * 6 + c);
-			m_rows[r]->addKey(e, e);
-		}
-	}
+        ImVec2 keySize = ImVec2(width() / 6, UISettings::keyboardRowHeight());
+        for (int r = 0; r < 3; ++r)
+        {
+                m_rows[r]->setPadding(0.0f);
+                m_rows[r]->setSpacing(0.0f);
+                for (int c = 0; c < 6; ++c)
+                {
+                        const std::string e = KbEmojiUtf8(r * 6 + c);
+                        m_rows[r]->addKey(e, e);
+                }
+        }
 
-	m_rows[3]->setPadding(0.0f);
-	m_rows[3]->setSpacing(0.0f);
-	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
-	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
-	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 2, 0.0f));
-	m_rows[3]->addKey(ExtendedKey::BACKSPACE);
-	m_rows[3]->addKey(ExtendedKey::SEND);
+        m_rows[3]->setPadding(0.0f);
+        m_rows[3]->setSpacing(0.0f);
+        m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+        m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+        m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 2, 0.0f));
+        m_rows[3]->addKey(ExtendedKey::BACKSPACE);
+        m_rows[3]->addKey(ExtendedKey::SEND);
 
-	KeyboardLayout::performLayout();
+        KeyboardLayout::performLayout();
 }
 
 KeyboardHistory::KeyboardHistory()
 {
-	m_index = 0;
-	m_count = 0;
-	m_vMessages.resize(KEYBOARD_MAX_HISTORY_MESSAGES);
+        m_index = 0;
+        m_count = 0;
+        m_vMessages.resize(KEYBOARD_MAX_HISTORY_MESSAGES);
 }
 
 void KeyboardHistory::add(const std::string& input)
 {
-	for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 2; i > 0; i--)
-	{
-		std::string str = m_vMessages[i];
-		m_vMessages[i] = m_vMessages[i - 1];
-		m_vMessages[i - 1] = str;
-	}
+        for (int i = KEYBOARD_MAX_HISTORY_MESSAGES - 2; i > 0; i--)
+        {
+                std::string str = m_vMessages[i];
+                m_vMessages[i] = m_vMessages[i - 1];
+                m_vMessages[i - 1] = str;
+        }
 
-	m_vMessages[0] = input;
-	if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) m_count++;
+        m_vMessages[0] = input;
+        if (m_count < KEYBOARD_MAX_HISTORY_MESSAGES) m_count++;
 }
 
 void KeyboardHistory::reset()
 {
-	m_index = 0;
+        m_index = 0;
 }
 
 const std::string KeyboardHistory::next()
 {
-	if (m_count == 0) return "";
+        if (m_count == 0) return "";
 
-	std::string str = m_vMessages[m_index];
+        std::string str = m_vMessages[m_index];
 
-	if (m_index < m_count - 1) m_index++;
-	return str;
+        if (m_index < m_count - 1) m_index++;
+        return str;
 }
 
 const std::string KeyboardHistory::prev()
 {
-	if (m_count == 0) return "";
+        if (m_count == 0) return "";
 
-	std::string str = m_vMessages[m_index];
-	if (m_index > 0) m_index--;
-	return str;
+        std::string str = m_vMessages[m_index];
+        if (m_index > 0) m_index--;
+        return str;
 }

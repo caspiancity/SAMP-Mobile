@@ -223,6 +223,15 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; }
     }
 
+    // AZENC_V5: Az herfleri windows-1251-de olmadigi ucun '?' olurdu -> bir baytliq kodlar (chat.cpp ChatDecode geri cevirir)
+    private static String azEnc(String s) {
+        if (s == null) return "";
+        String[] from = { "\u0259", "\u018F", "\u011F", "\u011E", "\u0131", "\u0130", "\u015F", "\u015E", "\u00E7", "\u00C7", "\u00F6", "\u00D6", "\u00FC", "\u00DC" };
+        char[] to = { 1, 2, 3, 4, 5, 6, 7, 8, 14, 15, 16, 17, 18, 19 };
+        for (int i = 0; i < from.length; i++) s = s.replace(from[i], String.valueOf(to[i]));
+        return s;
+    }
+
     private native void onInputEnd(byte[] str);
     @Override
     public void OnInputEnd(String str)
@@ -230,7 +239,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         byte[] toReturn = null;
         try
         {
-            toReturn = str.getBytes("windows-1251");
+            toReturn = azEnc(str).getBytes("windows-1251");
         }
         catch(UnsupportedEncodingException e)
         {

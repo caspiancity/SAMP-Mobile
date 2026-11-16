@@ -2235,6 +2235,152 @@ namespace mm2
     }
 }
 
+// ===== GARAGE_V5: qaraj kamerasi + tuning =====
+namespace Garage
+{
+    bool  g_on = false;
+    static float s_yaw = 0.8f, s_pitch = 0.20f, s_dist = 7.5f;
+    static float s_lx = 0.0f, s_ly = 0.0f;
+    static bool  s_drag = false;
+    static float s_height = 0.0f;
+    static CVehicleGTA* s_veh = nullptr;
+
+    static void Begin(CVehicleGTA* v)
+    {
+        if (!v) return;
+        s_veh = v; s_height = 0.0f; s_drag = false;
+        s_dist = 7.5f; s_pitch = 0.20f;
+        RwMatrix m;
+        v->GetMatrix(&m);
+        s_yaw = atan2f(m.up.y, m.up.x) + 0.8f;
+        g_on = true;
+    }
+
+    static void End()
+    {
+        if (!g_on) return;
+        g_on = false;
+        CCamera::SetBehindPlayer();
+    }
+
+    static void Render(CVehicle* pVeh, float dt)
+    {
+        using namespace mm;
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+        CVehicleGTA* v = pVeh ? pVeh->m_pVehicle : nullptr;
+        if (!v) { End(); return; }
+        if (v != s_veh) { s_veh = v; s_height = 0.0f; }
+
+        s_dl = ImGui::GetForegroundDrawList();
+        s_A = 1.0f;
+        s_U = std::min(disp.y / 720.0f, disp.x / 1000.0f);
+        const MMTouch& t = g_mmTouch;
+
+        const float bh = S(176.0f);
+        const Rc bar{ disp.x * 0.5f - S(480.0f), disp.y - bh - S(10.0f), S(960.0f), bh };
+
+        // kamera: bosh sahede surusdur = dondur
+        if (t.pressed && s_act == 0 && !In(bar, t.x, t.y)) { s_drag = true; s_lx = t.x; s_ly = t.y; }
+        if (s_drag) {
+            if (t.down) {
+                s_yaw   -= (t.x - s_lx) * 0.006f;
+                s_pitch += (t.y - s_ly) * 0.004f;
+                s_lx = t.x; s_ly = t.y;
+                if (s_pitch < 0.02f) s_pitch = 0.02f;
+                if (s_pitch > 1.2f)  s_pitch = 1.2f;
+            } else s_drag = false;
+        } else {
+            s_yaw += dt * 0.12f;   // yavas avtomatik donme
+        }
+
+        RwMatrix m;
+        v->GetMatrix(&m);
+        const float cp = cosf(s_pitch), sp = sinf(s_pitch);
+        ScriptCommand(&set_camera_position,
+                      m.pos.x + cosf(s_yaw) * cp * s_dist,
+                      m.pos.y + sinf(s_yaw) * cp * s_dist,
+                      m.pos.z + 0.5f + sp * s_dist, 0.0f, 0.0f, 0.0f);
+        ScriptCommand(&point_camera, m.pos.x, m.pos.y, m.pos.z + 0.3f, 2);
+
+        // panel
+        Fill(bar, Col(20, 22, 30, 236), S(22.0f));
+        Stroke(bar, Col(255, 255, 255, 40), S(22.0f), S(1.0f));
+        TxtB(S(20.0f), bar.x + S(22.0f), bar.y + S(12.0f), Col(240, 243, 250), "Tuning");
+        Txt(S(13.0f), bar.x + S(110.0f), bar.y + S(17.0f), Col(124, 132, 152), "Boş yerdə sürüşdür = maşını fırlat");
+
+        const float gap = S(12.0f);
+        const float cwid = (bar.w - S(44.0f) - gap * 3.0f) / 4.0f;
+        const float cy = bar.y + S(44.0f);
+
+        auto stepper = [&](int id, const Rc& c, const char* label, const char* val) -> int {
+            Fill(c, Col(255, 255, 255, 16), S(14.0f));
+            Txt(S(13.0f), c.x + S(12.0f), c.y + S(6.0f), Col(150, 158, 180), label);
+            const Rc bm{ c.x + S(8.0f), c.y + c.h - S(36.0f), S(40.0f), S(30.0f) };
+            const Rc bp{ c.x + c.w - S(48.0f), c.y + c.h - S(36.0f), S(40.0f), S(30.0f) };
+            int dir = 0;
+            if (Tap(id, bm, true))     dir = -1;
+            if (Tap(id + 1, bp, true)) dir = +1;
+            const float p1 = Prs(id, dt), p2 = Prs(id + 1, dt);
+            Fill(bm, Col(255, 255, 255, 24 + (int)(36.0f * p1)), S(9.0f));
+            TxtC(S(20.0f), bm, Col(240, 244, 252), "-", true);
+            Fill(bp, Col(255, 255, 255, 24 + (int)(36.0f * p2)), S(9.0f));
+            TxtC(S(20.0f), bp, Col(240, 244, 252), "+", true);
+            TxtC(S(16.0f), Rc{ c.x + S(50.0f), bm.y, c.w - S(100.0f), bm.h }, Col(236, 240, 250), val, true);
+            return dir;
+        };
+
+        char vb[24];
+        int d;
+
+        // 1) hundurluk (butun suspansiya: yuxari ve asagi hedd birlikde)
+        snprintf(vb, sizeof(vb), "%+.2f", s_height);
+        d = stepper(110, Rc{ bar.x + S(22.0f), cy, cwid, S(76.0f) }, "Hündürlük (tam)", vb);
+        if (d) {
+            const float st = 0.02f * (float)d;
+            float lo = 0.0f, up = 0.0f;
+            if (HndExt_Get(pVeh, "susplower", &lo) && HndExt_Get(pVeh, "suspupper", &up)) {
+                HndExt_Set(pVeh, "susplower", lo + st);
+                HndExt_Set(pVeh, "suspupper", up + st);
+                s_height += st;
+            }
+        }
+
+        // 2) on / arxa balans
+        float bias = 0.5f;
+        const bool hb = HndExt_Get(pVeh, "suspbias", &bias);
+        snprintf(vb, sizeof(vb), hb ? "%.2f" : "-", bias);
+        d = stepper(112, Rc{ bar.x + S(22.0f) + (cwid + gap), cy, cwid, S(76.0f) }, "Ön / Arxa balans", vb);
+        if (d && hb) HndExt_Set(pVeh, "suspbias", Clamp(bias + 0.05f * (float)d, 0.05f, 0.95f));
+
+        // 3) serlik
+        float force = 0.0f;
+        const bool hf = HndExt_Get(pVeh, "suspforce", &force);
+        snprintf(vb, sizeof(vb), hf ? "%.2f" : "-", force);
+        d = stepper(114, Rc{ bar.x + S(22.0f) + (cwid + gap) * 2.0f, cy, cwid, S(76.0f) }, "Süspansiyon sərtliyi", vb);
+        if (d && hf && force > 0.0001f) HndExt_Set(pVeh, "suspforce", force * (1.0f + 0.1f * (float)d));
+
+        // 4) tekər olcusu (sinaq)
+        float ws = v->m_wheelScale;
+        if (ws < 0.05f || ws > 5.0f) ws = 1.0f;
+        snprintf(vb, sizeof(vb), "%.2f", ws);
+        d = stepper(116, Rc{ bar.x + S(22.0f) + (cwid + gap) * 3.0f, cy, cwid, S(76.0f) }, "Təkər ölçüsü (sınaq)", vb);
+        if (d) v->m_wheelScale = Clamp(ws + 0.05f * (float)d, 0.5f, 2.0f);
+
+        // alt duymeler
+        const float yb = bar.y + bar.h - S(46.0f);
+        if (mm2::SmallBtn(120, Rc{ bar.x + S(22.0f),  yb, S(130.0f), S(36.0f) }, "Yaxınlaş", dt, true, false)) s_dist = std::max(3.5f, s_dist - 0.8f);
+        if (mm2::SmallBtn(121, Rc{ bar.x + S(162.0f), yb, S(130.0f), S(36.0f) }, "Uzaqlaş",  dt, true, false)) s_dist = std::min(14.0f, s_dist + 0.8f);
+        if (mm2::SmallBtn(122, Rc{ bar.x + bar.w - S(318.0f), yb, S(140.0f), S(36.0f) }, "Sıfırla", dt, true, false)) {
+            HndExt_Reset(pVeh);
+            s_height = 0.0f;
+        }
+        if (mm2::SmallBtn(123, Rc{ bar.x + bar.w - S(162.0f), yb, S(140.0f), S(36.0f) }, "Bağla", dt, true, true)) End();
+
+        if (!g_mmTouch.down) s_act = 0;
+    }
+}
+
 void RenderHandlingDialog()
 {
     using namespace mm;
@@ -2262,6 +2408,7 @@ void RenderHandlingDialog()
     dt = Clamp(dt, 0.0f, 0.05f);
 
     const bool want = g_bShowHandlingDlg;
+    if (!want && Garage::g_on) Garage::End();   // GARAGE_V5
     if (!want && s_t <= 0.0f) {
         s_wasOpen = false;
         s_hndRectValid = false;
@@ -2302,6 +2449,12 @@ void RenderHandlingDialog()
         Fill(b, Col(26, 29, 40, 236), S(22.0f));
         Stroke(b, Col(255, 255, 255, 46), S(22.0f), S(1.0f));
         TxtC(S(16.0f), b, Col(238, 241, 250), mm2::s_caller ? (mm2::s_caller->label + " — yeni dəyəri yaz").c_str() : "Yeni dəyəri yaz", true);
+        return;
+    }
+
+    if (want && Garage::g_on) {   // GARAGE_V5: panel gizlenir, yalniz alt zolaq
+        s_hndRectValid = false;
+        Garage::Render(pVeh, dt);
         return;
     }
 
@@ -2398,14 +2551,14 @@ void RenderHandlingDialog()
     }
 
     // segmentli idareetme (iOS)
-    static const char* kTabs[4] = { "Maşın", "Handling", "Far", "Spidometr" };
+    static const char* kTabs[5] = { "Maşın", "Handling", "Far", "Tuning", "Spidometr" };
     {
         const Rc seg{ P.x + S(24.0f), P.y + S(66.0f), P.w - S(48.0f), S(40.0f) };
         Fill(seg, Col(255, 255, 255, 18), S(13.0f));
-        const float tw = seg.w / 4.0f;
+        const float tw = seg.w / 5.0f;
         s_pill = Smooth(s_pill, (float)s_tab, dt, 16.0f);
         Fill(Rc{ seg.x + S(3.0f) + s_pill * tw, seg.y + S(3.0f), tw - S(6.0f), seg.h - S(6.0f) }, Col(255, 255, 255, 50), S(10.5f));
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 5; ++i) {
             const Rc ti{ seg.x + i * tw, seg.y, tw, seg.h };
             if (Tap(ID_NAV0 + i, ti, canInput) && s_tab != i) {
                 s_tabDir = (i > s_tab) ? 1.0f : -1.0f;
@@ -2689,6 +2842,20 @@ void RenderHandlingDialog()
                 Dot(cxs, cys, S(20.0f) - S(2.0f) * p, Col(r, g, b, 255));
             }
             if (hlChanged && gtaVeh) CCoronas::SetHeadlightRGB(gtaVeh, (uint8_t)s_hl[0], (uint8_t)s_hl[1], (uint8_t)s_hl[2]);
+        }
+    }
+    else if (s_tab == 3)                                    // TUNING (GARAGE_V5)
+    {
+        if (noVeh) {
+            mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobildə deyilsiniz", "Tuning yalnız maşının içində işləyir");
+        } else {
+            Txt(S(17.0f), cx0, y0, Col(228, 232, 244), "Maşını qaraj kamerası ilə tuning et");
+            Txt(S(13.0f), cx0, y0 + S(28.0f), Col(128, 136, 158), "Kamera maşının ətrafında dönür. Hündürlük, ön/arxa balans, sərtlik və təkər ölçüsü.");
+            if (mm2::SmallBtn(100, Rc{ cx0, y0 + S(64.0f), S(330.0f), S(54.0f) }, "Tuning et  (qaraj kamerası)", dt, inputPage, true) && gtaVeh)
+                Garage::Begin(gtaVeh);
+            Txt(S(13.0f), cx0, y0 + S(136.0f), Col(128, 136, 158), "• Boş yerdə sürüşdür: maşını fırlat");
+            Txt(S(13.0f), cx0, y0 + S(160.0f), Col(128, 136, 158), "• - / + ilə dəyişdir, Sıfırla standarta qaytarır");
+            Txt(S(13.0f), cx0, y0 + S(184.0f), Col(128, 136, 158), "• Bağla düyməsi kameranı oyuna qaytarır");
         }
     }
     else                                                    // SPIDOMETR

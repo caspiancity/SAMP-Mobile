@@ -111,7 +111,7 @@ static void DrawAzFlag(ImDrawList* dl, ImVec2 p, float w, float h)
 	dl->AddRect(p, ImVec2(p.x + w, p.y + h), IM_COL32(0, 0, 0, 150));
 }
 
-// ===== PLAYERTAG_V4: muasir nametag =====
+// ===== PLAYERTAG_V5: MTA stilinde yigcam nametag =====
 ImFont* g_pNickFont = nullptr;   // imguiwrapper.cpp doldurur (nick.ttf varsa)
 
 static inline float PtClamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
@@ -152,97 +152,94 @@ void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick
 	const float maxD = (pNetGame && pNetGame->m_pNetSet) ? pNetGame->m_pNetSet->fNameTagDrawDistance : 70.0f;
 	const float fadeFrom = maxD * 0.5f;
 	float fade = 1.0f;
-	if (fDist > fadeFrom) fade = 1.0f - 0.7f * (fDist - fadeFrom) / ((maxD - fadeFrom) > 1.0f ? (maxD - fadeFrom) : 1.0f);
-	fade = PtClamp(fade, 0.3f, 1.0f);
-	const float scale = PtClamp(1.1f - fDist / (maxD * 1.5f), 0.7f, 1.0f);
+	if (fDist > fadeFrom) fade = 1.0f - 0.6f * (fDist - fadeFrom) / ((maxD - fadeFrom) > 1.0f ? (maxD - fadeFrom) : 1.0f);
+	fade = PtClamp(fade, 0.35f, 1.0f);
+	const float scale = PtClamp(1.15f - fDist / (maxD * 1.3f), 0.65f, 1.0f);
 
-	// "Ad (12)" -> "Ad" + "#12"
+	// "Ad (12)" -> "Ad" + "(12)"
 	char name[48];
 	char idtxt[16] = "";
 	snprintf(name, sizeof(name), "%s", szNick);
 	{
 		char* p = strrchr(name, '(');
 		if (p && p > name && p[-1] == ' ') {
-			snprintf(idtxt, sizeof(idtxt), "#%d", atoi(p + 1));
+			snprintf(idtxt, sizeof(idtxt), "(%d)", atoi(p + 1));
 			p[-1] = '\0';
 		}
 	}
 
 	ImFont* font = g_pNickFont ? g_pNickFont : ImGui::GetFont();
-	const float fs  = (UISettings::fontSize() / 2) * scale;
-	const float fs2 = fs * 0.78f;
+	const float fs  = PtClamp(UISettings::fontSize() * 0.30f * scale, 11.0f, 30.0f);
+	const float fs2 = fs * 0.80f;
 	const ImVec2 nsz = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, name);
 	const ImVec2 isz = idtxt[0] ? font->CalcTextSizeA(fs2, FLT_MAX, 0.0f, idtxt) : ImVec2(0.0f, 0.0f);
 
-	const float h     = fs * 1.55f;
-	const float pad   = h * 0.38f;
-	const float flagH = fs * 0.8f;
+	const float gap   = fs * 0.28f;
+	const float flagH = fs * 0.62f;
 	const float flagW = flagH * 1.5f;
-	const float gap   = fs * 0.32f;
-	float w = pad + flagW + gap + nsz.x + pad;
+	float w = flagW + gap + nsz.x;
 	if (idtxt[0]) w += gap + isz.x;
 
 	const float x0 = vecOut.x - w * 0.5f;
 	const float y0 = vecOut.y;
+	const int   A  = (int)(255.0f * fade);
 
 	ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-	// pill panel
-	dl->AddRectFilled(ImVec2(x0, y0 + 1.5f), ImVec2(x0 + w, y0 + h + 1.5f), IM_COL32(0, 0, 0, (int)(55.0f * fade)), h * 0.5f);
-	dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(16, 18, 26, (int)(165.0f * fade)), h * 0.5f);
-	dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(255, 255, 255, (int)(34.0f * fade)), h * 0.5f);
+	auto outlined = [&](float x, float y, float size, ImU32 col, const char* txt)
+	{
+		const ImU32 bk = IM_COL32(0, 0, 0, (int)(230.0f * fade));
+		dl->AddText(font, size, ImVec2(x - 1.0f, y), bk, txt);
+		dl->AddText(font, size, ImVec2(x + 1.0f, y), bk, txt);
+		dl->AddText(font, size, ImVec2(x, y - 1.0f), bk, txt);
+		dl->AddText(font, size, ImVec2(x, y + 1.0f), bk, txt);
+		dl->AddText(font, size, ImVec2(x, y), col, txt);
+	};
 
-	// bayraq + ad + id
-	float cx = x0 + pad;
-	DrawAzFlag(dl, ImVec2(cx, y0 + (h - flagH) * 0.5f), flagW, flagH);
+	// bayraq (kicik) + ad + (id)
+	float cx = x0;
+	DrawAzFlag(dl, ImVec2(cx, y0 + (nsz.y - flagH) * 0.5f), flagW, flagH);
 	cx += flagW + gap;
 
 	const ImU32 base = __builtin_bswap32(dwColor | 0x000000FF);
-	const ImU32 nameCol = (base & 0x00FFFFFFu) | ((ImU32)((int)(255.0f * fade)) << 24);
-	const float ty = y0 + (h - nsz.y) * 0.5f;
-	dl->AddText(font, fs, ImVec2(cx + 1.0f, ty + 1.0f), IM_COL32(0, 0, 0, (int)(190.0f * fade)), name);
-	dl->AddText(font, fs, ImVec2(cx, ty), nameCol, name);
+	const ImU32 nameCol = (base & 0x00FFFFFFu) | ((ImU32)A << 24);
+	outlined(cx, y0, fs, nameCol, name);
 	cx += nsz.x;
 	if (idtxt[0]) {
 		cx += gap;
-		dl->AddText(font, fs2, ImVec2(cx, y0 + (h - isz.y) * 0.5f), IM_COL32(170, 176, 196, (int)(220.0f * fade)), idtxt);
+		outlined(cx, y0 + (nsz.y - isz.y) * 0.5f, fs2, IM_COL32(190, 194, 208, A), idtxt);
+		cx += isz.x;
 	}
 
-	// AFK / mikrofon
+	// AFK / mikrofon (kicik)
 	if (bAfk || bMicro) {
-		const float ic = h * 0.9f;
+		const float ic = fs * 1.05f;
 		if (bAfk && m_pAFKIconTexture)
-			dl->AddImage((ImTextureID)m_pAFKIconTexture->raster, ImVec2(x0 + w + gap, y0 + (h - ic) * 0.5f), ImVec2(x0 + w + gap + ic, y0 + (h + ic) * 0.5f));
+			dl->AddImage((ImTextureID)m_pAFKIconTexture->raster, ImVec2(cx + gap, y0), ImVec2(cx + gap + ic, y0 + ic));
 		if (bMicro && m_pMicroIconTexture)
-			dl->AddImage((ImTextureID)m_pMicroIconTexture->raster, ImVec2(x0 - gap - ic, y0 + (h - ic) * 0.5f), ImVec2(x0 - gap, y0 + (h + ic) * 0.5f));
+			dl->AddImage((ImTextureID)m_pMicroIconTexture->raster, ImVec2(x0 - gap - ic, y0), ImVec2(x0 - gap, y0 + ic));
 	}
 
-	// can / zireh
+	// can / zireh (nazik, MTA kimi)
 	if (fHealth < 0.0f) return;
 
-	float bh = UISettings::nametagBarSize().y * 0.62f * scale;
-	if (bh < 3.0f) bh = 3.0f;
-	float bw = PtClamp(w * 0.8f, UISettings::nametagBarSize().x, w);
+	const float bw = PtClamp(w * 0.85f, 38.0f, 96.0f);
+	const float bh = PtClamp(fs * 0.30f, 3.0f, 6.0f);
 	const float bx = vecOut.x - bw * 0.5f;
-	float by = y0 + h + fs * 0.28f;
+	float by = y0 + nsz.y + fs * 0.16f;
 
 	auto bar = [&](float y, float frac, ImU32 fill)
 	{
-		dl->AddRectFilled(ImVec2(bx - 1.0f, y - 1.0f), ImVec2(bx + bw + 1.0f, y + bh + 1.0f), IM_COL32(0, 0, 0, (int)(150.0f * fade)), bh);
-		dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + bw, y + bh), IM_COL32(255, 255, 255, (int)(28.0f * fade)), bh * 0.5f);
-		if (frac > 0.0f) {
-			float fw = bw * frac;
-			if (fw < bh) fw = bh;
-			dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + fw, y + bh), fill, bh * 0.5f);
-		}
+		dl->AddRectFilled(ImVec2(bx - 1.0f, y - 1.0f), ImVec2(bx + bw + 1.0f, y + bh + 1.0f), IM_COL32(0, 0, 0, (int)(210.0f * fade)), 1.5f);
+		dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + bw, y + bh), IM_COL32(50, 50, 56, (int)(200.0f * fade)), 1.0f);
+		if (frac > 0.0f) dl->AddRectFilled(ImVec2(bx, y), ImVec2(bx + bw * frac, y + bh), fill, 1.0f);
 	};
 
-	if (fArmour > 0.0f) {
-		bar(by, PtClamp(fArmour / 100.0f, 0.0f, 1.0f), IM_COL32(205, 214, 236, (int)(255.0f * fade)));
-		by += bh + 2.5f;
-	}
 	{
 		const float hp = PtClamp(fHealth / 100.0f, 0.0f, 1.0f);
-		bar(by, hp, PtHealthColor(hp, (int)(255.0f * fade)));
+		bar(by, hp, PtHealthColor(hp, A));
+		by += bh + 2.0f;
 	}
+	if (fArmour > 0.0f)
+		bar(by, PtClamp(fArmour / 100.0f, 0.0f, 1.0f), IM_COL32(215, 220, 235, A));
 }

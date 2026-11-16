@@ -49,6 +49,12 @@ Keyboard::Keyboard()
 	m_layoutNUM->setSpacing(0.0f);
 	m_layoutNUM->setVisible(false);
 
+	m_layoutEMOJI = new KeyboardLayoutEMOJI();   // EMOJI_V5
+	this->addChild(m_layoutEMOJI);
+	m_layoutEMOJI->setPadding(0.0f);
+	m_layoutEMOJI->setSpacing(0.0f);
+	m_layoutEMOJI->setVisible(false);
+
 	m_activeLayout = m_layoutLowerENG;
 	m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
 	m_activeLayout->setVisible(true);
@@ -76,6 +82,10 @@ void Keyboard::performLayout()
 	/* NUM */
 	m_layoutNUM->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
 	m_layoutNUM->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
+
+	/* EMOJI */
+	m_layoutEMOJI->setFixedSize(ImVec2(width(), height() - m_input->height()+50.0f));
+	m_layoutEMOJI->setPosition(ImVec2(0.0f, UISettings::keyboardRowHeight()));
 
 	Widget::performLayout();
 }
@@ -115,6 +125,11 @@ void Keyboard::setActiveLayout(KeyboardLayout::Type type)
 		case KeyboardLayout::Type::NUM:
 			m_layoutNUM->setVisible(true);
 			m_activeLayout = m_layoutNUM;
+			break;
+
+		case KeyboardLayout::Type::EMOJI:
+			m_layoutEMOJI->setVisible(true);
+			m_activeLayout = m_layoutEMOJI;
 			break;
 	}
 
@@ -405,6 +420,9 @@ KeyboardLayout::Row::Key::Key(ExtendedKey extended_key)
 		case ExtendedKey::LANG_AZE:
 			this->setCaption(std::string("AZE"));
 			break;
+		case ExtendedKey::EMOJI:
+			this->setCaption(std::string("\xEE\x80\x80"));
+			break;
 	}
 
 	m_extendedKey = extended_key;
@@ -539,6 +557,10 @@ void KeyboardLayout::Row::Key::touchPopEvent()
 			keyboard->setActiveLayout(KeyboardLayout::Type::ENG_LOWER);
 			break;
 
+		case ExtendedKey::EMOJI:
+			keyboard->setActiveLayout(KeyboardLayout::Type::EMOJI);
+			break;
+
 		case ExtendedKey::NUM:
 			keyboard->setActiveLayout(KeyboardLayout::Type::NUM);
 			break;
@@ -604,6 +626,7 @@ void KeyboardLayoutLowerENG::performLayout()
 	m_rows[3]->addKey(ExtendedKey::NUM);
 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::EMOJI);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
 	m_rows[3]->addKey(std::string("?"), '?');
@@ -665,6 +688,7 @@ void KeyboardLayoutUpperENG::performLayout()
 	m_rows[3]->addKey(ExtendedKey::NUM);
 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::EMOJI);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
 	m_rows[3]->addKey(std::string("?"), '?');
@@ -729,6 +753,7 @@ void KeyboardLayoutLowerAZE::performLayout()
 	m_rows[3]->addKey(ExtendedKey::NUM);
 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::EMOJI);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
 	m_rows[3]->addKey(std::string("?"), '?');
@@ -793,6 +818,7 @@ void KeyboardLayoutUpperAZE::performLayout()
 	m_rows[3]->addKey(ExtendedKey::NUM);
 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::EMOJI);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 3, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
 	m_rows[3]->addKey(std::string("?"), '?');
@@ -854,10 +880,50 @@ void KeyboardLayoutNUM::performLayout()
 	m_rows[3]->addKey(ExtendedKey::NUM);
 	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
 	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::EMOJI);
 	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 4, 0.0f));
 	m_rows[3]->addKey(std::string("/"), '/');
 	m_rows[3]->addKey(std::string("?"), '?');
 	m_rows[3]->addKey(std::string("!"), '!');
+	m_rows[3]->addKey(ExtendedKey::SEND);
+
+	KeyboardLayout::performLayout();
+}
+
+/* KeyboardLayoutEMOJI */   // EMOJI_V5
+
+KeyboardLayoutEMOJI::KeyboardLayoutEMOJI() : KeyboardLayout() {}
+
+static std::string KbEmojiUtf8(int idx)
+{
+	const unsigned cp = 0xE000u + (unsigned)idx;
+	std::string s;
+	s += (char)(0xE0 | (cp >> 12));
+	s += (char)(0x80 | ((cp >> 6) & 0x3F));
+	s += (char)(0x80 | (cp & 0x3F));
+	return s;
+}
+
+void KeyboardLayoutEMOJI::performLayout()
+{
+	ImVec2 keySize = ImVec2(width() / 6, UISettings::keyboardRowHeight());
+	for (int r = 0; r < 3; ++r)
+	{
+		m_rows[r]->setPadding(0.0f);
+		m_rows[r]->setSpacing(0.0f);
+		for (int c = 0; c < 6; ++c)
+		{
+			const std::string e = KbEmojiUtf8(r * 6 + c);
+			m_rows[r]->addKey(e, e);
+		}
+	}
+
+	m_rows[3]->setPadding(0.0f);
+	m_rows[3]->setSpacing(0.0f);
+	m_rows[3]->addKey(ExtendedKey::LANG_ENG);
+	m_rows[3]->addKey(ExtendedKey::LANG_AZE);
+	m_rows[3]->addKey(ExtendedKey::SPACE)->setFixedSize(ImVec2(keySize.x * 2, 0.0f));
+	m_rows[3]->addKey(ExtendedKey::BACKSPACE);
 	m_rows[3]->addKey(ExtendedKey::SEND);
 
 	KeyboardLayout::performLayout();

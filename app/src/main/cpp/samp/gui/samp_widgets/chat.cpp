@@ -66,9 +66,110 @@ void Chat::addClientMessage(const std::string& message, const ImColor& color)
         addMessage(message, color);
 }
 
-bool VtSync_OnMessage(const std::string& msg);   // VTSYNC_V5 (gui.cpp)
-void Chat::addMessage(const std::string& message, const ImColor& color)
+// ===== CHATENC_V5: Azerbaycan herfleri + emoji =====
+// Telde (serverde) Az herfleri bir baytliq idare kodlari ile, emoji ise :ad: ile gedir.
+// Qebul edende hamisi geri cevrilir (yalniz bu client istifade edenler ucun).
+static const char* const kAzUtf[14] = {
+	"\xC9\x99", "\xC6\x8F", "\xC4\x9F", "\xC4\x9E", "\xC4\xB1", "\xC4\xB0", "\xC5\x9F",
+	"\xC5\x9E", "\xC3\xA7", "\xC3\x87", "\xC3\xB6", "\xC3\x96", "\xC3\xBC", "\xC3\x9C" };
+static const unsigned char kAzWire[14] = { 1, 2, 3, 4, 5, 6, 7, 8, 14, 15, 16, 17, 18, 19 };
+static const char* const kEmoName[18] = {
+	"smile", "grin", "joy", "love", "cool", "wink", "tongue", "sad", "cry",
+	"angry", "wow", "neutral", "kiss", "heart", "star", "ok", "no", "fire" };
+
+static void ChatAppendEmoji(std::string& out, int idx)
 {
+	const unsigned cp = 0xE000u + (unsigned)idx;
+	out += (char)(0xE0 | (cp >> 12));
+	out += (char)(0x80 | ((cp >> 6) & 0x3F));
+	out += (char)(0x80 | (cp & 0x3F));
+}
+
+static std::string ChatEncode(const std::string& in)
+{
+	std::string out;
+	out.reserve(in.size() + 8);
+	const size_t n = in.size();
+	for (size_t i = 0; i < n; )
+	{
+		const unsigned char c = (unsigned char)in[i];
+		if (c == 0xEE && i + 2 < n + 0 && (unsigned char)in[i + 1] == 0x80 &&
+		    (unsigned char)in[i + 2] >= 0x80 && (unsigned char)in[i + 2] < 0x80 + 18)
+		{
+			out += ':';
+			out += kEmoName[(unsigned char)in[i + 2] - 0x80];
+			out += ':';
+			i += 3;
+			continue;
+		}
+		if (c >= 0xC3 && c <= 0xC9 && i + 1 < n)
+		{
+			bool hit = false;
+			for (int k = 0; k < 14; ++k)
+			{
+				if ((unsigned char)kAzUtf[k][0] == c && (unsigned char)kAzUtf[k][1] == (unsigned char)in[i + 1])
+				{
+					out += (char)kAzWire[k];
+					i += 2;
+					hit = true;
+					break;
+				}
+			}
+			if (hit) continue;
+		}
+		out += (char)c;
+		++i;
+	}
+	return out;
+}
+
+static std::string ChatDecode(const std::string& in)
+{
+	std::string out;
+	out.reserve(in.size() + 8);
+	const size_t n = in.size();
+	for (size_t i = 0; i < n; )
+	{
+		const unsigned char c = (unsigned char)in[i];
+		if (c < 32)
+		{
+			bool hit = false;
+			for (int k = 0; k < 14; ++k)
+				if (kAzWire[k] == c) { out += kAzUtf[k]; hit = true; break; }
+			++i;
+			if (!hit) out += (char)c;
+			continue;
+		}
+		if (c == ':' && i + 1 < n)
+		{
+			// :ad:
+			size_t j = i + 1;
+			while (j < n && j - i <= 9 && in[j] >= 'a' && in[j] <= 'z') ++j;
+			if (j < n && in[j] == ':' && j > i + 1)
+			{
+				const std::string nm = in.substr(i + 1, j - i - 1);
+				int idx = -1;
+				for (int k = 0; k < 18; ++k) if (nm == kEmoName[k]) { idx = k; break; }
+				if (idx >= 0) { ChatAppendEmoji(out, idx); i = j + 1; continue; }
+			}
+			// :) :( :D :P
+			const char d = in[i + 1];
+			int idx = -1;
+			if (d == ')') idx = 0; else if (d == 'D') idx = 1; else if (d == '(') idx = 7; else if (d == 'P' || d == 'p') idx = 6;
+			if (idx >= 0) { ChatAppendEmoji(out, idx); i += 2; continue; }
+		}
+		else if (c == ';' && i + 1 < n && in[i + 1] == ')') { ChatAppendEmoji(out, 5); i += 2; continue; }
+		else if (c == '<' && i + 1 < n && in[i + 1] == '3') { ChatAppendEmoji(out, 13); i += 2; continue; }
+		out += (char)c;
+		++i;
+	}
+	return out;
+}
+
+bool VtSync_OnMessage(const std::string& msg);   // VTSYNC_V5 (gui.cpp)
+void Chat::addMessage(const std::string& message_in, const ImColor& color)
+{
+        const std::string message = ChatDecode(message_in);
         if (VtSync_OnMessage(message)) return;   // VTSYNC_V5: gizli sinxron mesaji chatda gorunmur
         if (this->itemsCount() > UISettings::chatMaxMessages())
         {
@@ -81,8 +182,9 @@ void Chat::addMessage(const std::string& message, const ImColor& color)
         m_slide = std::min(m_slide + itemSize().y, itemSize().y * 3.0f);
 }
 
-void Chat::addPlayerMessage(const std::string& message, const std::string& nick, const ImColor& nick_color)
+void Chat::addPlayerMessage(const std::string& message_in, const std::string& nick, const ImColor& nick_color)
 {
+        const std::string message = ChatDecode(message_in);
         if (this->itemsCount() > UISettings::chatMaxMessages())
         {
                 this->removeItem(0);
@@ -439,8 +541,11 @@ void Chat::keyboardEvent(const std::string& input)
         {
                 if (ProcessClientCommands(input)) return;
 
-                if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());
-                else pNetGame->SendChatMessage(input.c_str());
+                {
+                const std::string wire = ChatEncode(input);
+                if (input[0] == '/') pNetGame->SendChatCommand(wire.c_str());
+                else pNetGame->SendChatMessage(wire.c_str());
+        }
         }
 }
 

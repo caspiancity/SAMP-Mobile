@@ -44,7 +44,8 @@ protected:
                 LANG_AZE,
                 LANG_ENG,
                 SPACE,
-                SEND
+                SEND,
+                EMOJI
         };
 
 public:
@@ -54,7 +55,8 @@ public:
                 ENG_UPPER,
                 AZE_LOWER,
                 AZE_UPPER,
-                NUM
+                NUM,
+                EMOJI
         };
 
         enum class KeyCase
@@ -136,6 +138,13 @@ public:
         virtual void performLayout() override;
 };
 
+class KeyboardLayoutEMOJI : public KeyboardLayout
+{
+public:
+        KeyboardLayoutEMOJI();
+        virtual void performLayout() override;
+};
+
 #define KEYBOARD_MAX_HISTORY_MESSAGES        10
 
 class KeyboardHistory
@@ -183,6 +192,7 @@ private:
         KeyboardLayoutLowerAZE* m_layoutLowerAZE;
         KeyboardLayoutUpperAZE* m_layoutUpperAZE;
         KeyboardLayoutNUM* m_layoutNUM;
+        KeyboardLayoutEMOJI* m_layoutEMOJI;
         Widget* m_caller;
 
         KeyboardHistory* m_history;

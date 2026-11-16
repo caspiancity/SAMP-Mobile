@@ -13,17 +13,38 @@
 #define AUTH_BS "E02262CF28BC542486C558D4BE9EFB716592AFAF8B"
 
 // ---------------------------------------------------------------------------
-// Chat message styling (single place to change the look of all system messages)
+// CHATSTYLE_V2: NEON / ICONIC chat message styling
+// Butun sistem mesajlarinin gorunusu yalniz bu blokda deyisir.
+// Ikonlar :ad: formasindadir (chat.cpp-deki emoji sistemi onlari shekle cevirir):
+//   :star: :ok: :fire: :no: :heart: :cool: ...
 // ---------------------------------------------------------------------------
-#define CLR_BRAND   "{FF8000}"   // brand / prefix
-#define CLR_TEXT    "{E6E6E6}"   // normal text
-#define CLR_VALUE   "{FFFFFF}"   // highlighted values
-#define CLR_OK      "{4CD964}"   // success
-#define CLR_INFO    "{5AC8FA}"   // information
-#define CLR_WARN    "{FFCC00}"   // warning / retry
-#define CLR_ERR     "{FF453A}"   // error
 
-#define MSG_PREFIX  CLR_BRAND "APACHE ONLINE " CLR_TEXT "» "
+// ----- reng paleti -----
+#define CLR_PINK    "{FF2D95}"   // neon cehrayi  (brend / ayirici)
+#define CLR_CYAN    "{00E5FF}"   // neon mavi     (melumat / brend)
+#define CLR_GOLD    "{FFD60A}"   // qizili        (vurgulanan deyerler)
+#define CLR_TEXT    "{E8F6FF}"   // acig mavi-ag  (esas metn)
+#define CLR_DIM     "{7A7FA8}"   // sonuk bənövşəyi-boz
+#define CLR_OK      "{00FF9D}"   // nane yasili   (ugur)
+#define CLR_WARN    "{FFB300}"   // kehraba       (xeberdarliq)
+#define CLR_ERR     "{FF3B5C}"   // qirmizi-cehrayi (xeta)
+
+// kohne adlar (geriye uygunluq)
+#define CLR_BRAND   CLR_PINK
+#define CLR_VALUE   CLR_GOLD
+#define CLR_INFO    CLR_CYAN
+
+// ----- brend + ayirici -----
+#define MSG_BRAND   CLR_PINK "APACHE" CLR_CYAN "ONLINE"
+#define MSG_SEP     CLR_PINK " // " CLR_TEXT
+
+// ----- seviyyeye gore prefikslər: [ikon] APACHEONLINE TAG // metn -----
+#define PFX_INFO    ":star: " MSG_BRAND " " CLR_CYAN  "INFO"  MSG_SEP
+#define PFX_OK      ":ok: "   MSG_BRAND " " CLR_OK    "OK"    MSG_SEP
+#define PFX_WARN    ":fire: " MSG_BRAND " " CLR_WARN  "DIQQET" MSG_SEP
+#define PFX_ERR     ":no: "   MSG_BRAND " " CLR_ERR   "XETA"  MSG_SEP
+
+#define MSG_PREFIX  PFX_INFO
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -107,7 +128,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
         sampVer = pSettings->Get().szVersion;
 
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_INFO "Klient versiyası " CLR_VALUE "%s" CLR_INFO " uğurla yükləndi.", sampVer);
+        PFX_INFO "Klient versiyası " CLR_GOLD "%s" CLR_TEXT " uğurla yükləndi.", sampVer);
 }
 
 CNetGame::~CNetGame()
@@ -434,7 +455,7 @@ void CNetGame::ShutdownForGameModeRestart()
     pGame->EnableClock(false);
 
     if (pUI) pUI->chat()->addInfoMessage(
-        MSG_PREFIX CLR_WARN "Server yenidən başladılır. Zəhmət olmasa gözləyin...");
+        PFX_WARN "Server yenidən başladılır. " CLR_DIM "Zəhmət olmasa gözləyin...");
 }
 
 int iVehiclePoolProcessFlag = 0;
@@ -474,7 +495,7 @@ void CNetGame::ProcessConnecting()
     if (GetTickCount() - m_dwLastConnectAttempt > 1000)
     {
         if (pUI) pUI->chat()->addDebugMessage(
-            MSG_PREFIX CLR_INFO "Serverə qoşulma qurulur...");
+            PFX_INFO "Serverə qoşulma qurulur" CLR_DIM "...");
 
         m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 
@@ -513,7 +534,7 @@ void CNetGame::Packet_AuthKey(Packet *pkt)
 void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Serverdən cavab alınmadı. " CLR_TEXT "Yenidən cəhd edilir...");
+        PFX_ERR "Serverdən cavab alınmadı. " CLR_DIM "Yenidən cəhd edilir...");
 
     if (pAudioStream) {
         pAudioStream->Stop(true);
@@ -526,7 +547,7 @@ void CNetGame::Packet_ConnectAttemptFailed(Packet *pkt)
 void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_WARN "Server hazırda doludur. " CLR_TEXT "Yenidən cəhd edilir...");
+        PFX_WARN "Server hazırda doludur. " CLR_DIM "Yenidən cəhd edilir...");
 
     SpeakerList::Hide();
     MicroIcon::Hide();
@@ -536,7 +557,7 @@ void CNetGame::Packet_NoFreeIncomingConnections(Packet *pkt)
 void CNetGame::Packet_DisconnectionNotification(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Server tərəfindən bağlantı kəsildi.");
+        PFX_ERR "Server tərəfindən bağlantı kəsildi.");
 
     if (pAudioStream) {
         pAudioStream->Stop(true);
@@ -564,7 +585,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
     uiChallenge ^= iVersion;
 
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_OK "Bağlantı uğurla quruldu. " CLR_TEXT "Serverə daxil olunur...");
+        PFX_OK "Bağlantı uğurla quruldu. " CLR_GOLD "Serverə daxil olunur...");
 
     SetGameState(GAMESTATE_AWAIT_JOIN);
 
@@ -600,19 +621,19 @@ void CNetGame::Packet_ConnectionSucceeded(Packet *pkt)
 void CNetGame::Packet_FailedInitializeEncription(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Şifrələmə mexanizmi işə salına bilmədi.");
+        PFX_ERR "Şifrələmə mexanizmi işə salına bilmədi.");
 }
 
 void CNetGame::Packet_ConnectionBanned(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Bu serverə giriş qadağan edilib. " CLR_TEXT "Hesabınız bloklanıb.");
+        PFX_ERR "Bu serverə giriş qadağan edilib. " CLR_DIM "Hesabınız bloklanıb.");
 }
 
 void CNetGame::Packet_InvalidPassword(Packet *pkt)
 {
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Server şifrəsi yanlışdır.");
+        PFX_ERR "Server şifrəsi yanlışdır.");
 
     m_pRakClient->Disconnect(0);
 }
@@ -624,7 +645,7 @@ void CNetGame::Packet_ConnectionLost(Packet *pkt)
     }
 
     if (pUI) pUI->chat()->addDebugMessage(
-        MSG_PREFIX CLR_ERR "Serverlə əlaqə kəsildi. " CLR_TEXT "Yenidən qoşulmağa çalışılır...");
+        PFX_ERR "Serverlə əlaqə kəsildi. " CLR_DIM "Yenidən qoşulmağa çalışılır...");
 
     ShutdownForGameModeRestart();
 

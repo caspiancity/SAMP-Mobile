@@ -2381,6 +2381,175 @@ namespace Garage
     }
 }
 
+// ===== PLATEADJ_V7: nomre sehifesi + yerlesdirme rejimi =====
+#include "../game/AzPlate.h"
+extern ImFont* g_pPlateFont;
+
+namespace PlateUi
+{
+    struct PlateCaller : public Widget
+    {
+        virtual void keyboardEvent(const std::string& input) override
+        {
+            CVehicle* v = mm2::LocalVeh();
+            if (!v || !v->m_pVehicle) { mm2::SetMsg("Avtomobil tapılmadı"); return; }
+            std::string out;
+            if (!Plate::Normalize(input, out)) { mm2::SetMsg("Format: 10 AA 123"); return; }
+            Plate::Set(v->m_pVehicle, out);
+            mm2::SetMsg("Nömrə: " + out);
+        }
+    };
+    static PlateCaller* s_caller = nullptr;
+}
+
+namespace PlateAdj
+{
+    bool  g_on = false;
+    static bool  s_front = true, s_fine = true, s_drag = false;
+    static float s_phi = 0.0f, s_theta = 0.12f, s_dist = 1.5f, s_lx = 0.0f, s_ly = 0.0f;
+    static char  s_note[96] = "";
+    static float s_noteT = 0.0f;
+
+    static void Note(const char* t) { snprintf(s_note, sizeof(s_note), "%s", t); s_noteT = 1.0f; }
+
+    static void Begin(CVehicleGTA* v, bool front)
+    {
+        if (!v) return;
+        s_front = front; s_phi = 0.0f; s_theta = 0.12f; s_dist = 1.5f; s_drag = false;
+        g_on = true;
+    }
+
+    static void End()
+    {
+        if (!g_on) return;
+        g_on = false;
+        CCamera::SetBehindPlayer();
+    }
+
+    static void Render(CVehicle* pVeh, float dt)
+    {
+        using namespace mm;
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 disp = io.DisplaySize;
+        CVehicleGTA* v = pVeh ? pVeh->m_pVehicle : nullptr;
+        if (!v) { End(); return; }
+
+        s_dl = ImGui::GetForegroundDrawList();
+        s_A = 1.0f;
+        s_U = std::min(disp.y / 720.0f, disp.x / 1000.0f);
+        s_noteT = Clamp(s_noteT - dt / 3.0f, 0.0f, 1.0f);
+        const MMTouch& t = g_mmTouch;
+
+        const float bh = S(262.0f);
+        const Rc bar{ disp.x * 0.5f - S(480.0f), disp.y - bh - S(8.0f), S(960.0f), bh };
+
+        // kamera: bosh sahede surusdur = plakanin ətrafında fırlat
+        if (t.pressed && s_act == 0 && !In(bar, t.x, t.y)) { s_drag = true; s_lx = t.x; s_ly = t.y; }
+        if (s_drag) {
+            if (t.down) {
+                s_phi   -= (t.x - s_lx) * 0.005f;
+                s_theta += (t.y - s_ly) * 0.004f;
+                s_lx = t.x; s_ly = t.y;
+                s_phi   = Clamp(s_phi, -1.2f, 1.2f);
+                s_theta = Clamp(s_theta, -0.3f, 1.0f);
+            } else s_drag = false;
+        }
+
+        float pos[3], n[3], up[3];
+        if (!Plate::WorldPose(v, s_front, pos, n, up)) { End(); return; }
+        const float sd[3] = { up[1] * n[2] - up[2] * n[1], up[2] * n[0] - up[0] * n[2], up[0] * n[1] - up[1] * n[0] };
+        const float ct = cosf(s_theta), st = sinf(s_theta), cp = cosf(s_phi), sp = sinf(s_phi);
+        float cam[3];
+        for (int i = 0; i < 3; ++i)
+            cam[i] = pos[i] + (n[i] * cp * ct + sd[i] * sp * ct + up[i] * st) * s_dist;
+        ScriptCommand(&set_camera_position, cam[0], cam[1], cam[2], 0.0f, 0.0f, 0.0f);
+        ScriptCommand(&point_camera, pos[0], pos[1], pos[2], 2);
+
+        // panel
+        Fill(bar, Col(20, 22, 30, 238), S(22.0f));
+        Stroke(bar, Col(255, 255, 255, 40), S(22.0f), S(1.0f));
+        TxtB(S(20.0f), bar.x + S(22.0f), bar.y + S(12.0f), Col(240, 243, 250), "Nömrə yerləşdirmə");
+        Txt(S(13.0f), bar.x + S(250.0f), bar.y + S(17.0f), Col(124, 132, 152), "Boş yerdə sürüşdür = kameranı fırlat");
+        if (s_noteT > 0.01f)
+            Txt(S(13.0f), bar.x + bar.w - S(310.0f), bar.y + S(17.0f), Col(120, 215, 160, (int)(255.0f * s_noteT)), s_note);
+
+        PlateCfg c = Plate::GetCfg(v, s_front);
+        bool changed = false;
+        const float ps = s_fine ? 0.005f : 0.02f;   // metr
+        const float rs = s_fine ? 0.5f : 2.0f;      // derece
+
+        const float gap = S(12.0f);
+        const float cwid = (bar.w - S(44.0f) - gap * 2.0f) / 3.0f;
+
+        auto stepper = [&](int id, const Rc& cell, const char* label, const char* val) -> int {
+            Fill(cell, Col(255, 255, 255, 16), S(14.0f));
+            Txt(S(13.0f), cell.x + S(12.0f), cell.y + S(6.0f), Col(150, 158, 180), label);
+            const Rc bm{ cell.x + S(8.0f), cell.y + cell.h - S(36.0f), S(40.0f), S(30.0f) };
+            const Rc bp{ cell.x + cell.w - S(48.0f), cell.y + cell.h - S(36.0f), S(40.0f), S(30.0f) };
+            int dir = 0;
+            if (Tap(id, bm, true))     dir = -1;
+            if (Tap(id + 1, bp, true)) dir = +1;
+            const float p1 = Prs(id, dt), p2 = Prs(id + 1, dt);
+            Fill(bm, Col(255, 255, 255, 24 + (int)(36.0f * p1)), S(9.0f));
+            TxtC(S(20.0f), bm, Col(240, 244, 252), "-", true);
+            Fill(bp, Col(255, 255, 255, 24 + (int)(36.0f * p2)), S(9.0f));
+            TxtC(S(20.0f), bp, Col(240, 244, 252), "+", true);
+            TxtC(S(16.0f), Rc{ cell.x + S(50.0f), bm.y, cell.w - S(100.0f), bm.h }, Col(236, 240, 250), val, true);
+            return dir;
+        };
+
+        char vb[24];
+        int d;
+        const float r1 = bar.y + S(44.0f), r2 = bar.y + S(44.0f + 82.0f);
+        const float colx[3] = { bar.x + S(22.0f), bar.x + S(22.0f) + cwid + gap, bar.x + S(22.0f) + (cwid + gap) * 2.0f };
+
+        snprintf(vb, sizeof(vb), "%+.3f", c.pos[0]);
+        d = stepper(140, Rc{ colx[0], r1, cwid, S(76.0f) }, "Sağ - Sol (X)", vb);
+        if (d) { c.pos[0] += ps * (float)d; changed = true; }
+
+        snprintf(vb, sizeof(vb), "%+.3f", c.pos[1]);
+        d = stepper(142, Rc{ colx[1], r1, cwid, S(76.0f) }, "İrəli - Geri (Y)", vb);
+        if (d) { c.pos[1] += ps * (float)d; changed = true; }
+
+        snprintf(vb, sizeof(vb), "%+.3f", c.pos[2]);
+        d = stepper(144, Rc{ colx[2], r1, cwid, S(76.0f) }, "Yuxarı - Aşağı (Z)", vb);
+        if (d) { c.pos[2] += ps * (float)d; changed = true; }
+
+        snprintf(vb, sizeof(vb), "%.1f", c.rot[2]);
+        d = stepper(146, Rc{ colx[0], r2, cwid, S(76.0f) }, "Dönmə (sağa-sola)", vb);
+        if (d) { c.rot[2] += rs * (float)d; changed = true; }
+
+        snprintf(vb, sizeof(vb), "%.1f", c.rot[0]);
+        d = stepper(148, Rc{ colx[1], r2, cwid, S(76.0f) }, "Əyilmə (önə-arxaya)", vb);
+        if (d) { c.rot[0] += rs * (float)d; changed = true; }
+
+        snprintf(vb, sizeof(vb), "%.3f", c.w);
+        d = stepper(150, Rc{ colx[2], r2, cwid, S(76.0f) }, "Ölçü (en, metr)", vb);
+        if (d) { c.w = Clamp(c.w + ps * (float)d, 0.2f, 1.2f); changed = true; }
+
+        if (changed) Plate::SetCfg(v, s_front, c);
+
+        // alt duymeler
+        const float yb = bar.y + bar.h - S(46.0f);
+        if (mm2::SmallBtn(160, Rc{ bar.x + S(22.0f),  yb, S(100.0f), S(36.0f) }, "Qabaq", dt, true, s_front))  { s_front = true;  s_phi = 0.0f; }
+        if (mm2::SmallBtn(161, Rc{ bar.x + S(130.0f), yb, S(100.0f), S(36.0f) }, "Arxa",  dt, true, !s_front)) { s_front = false; s_phi = 0.0f; }
+        if (mm2::SmallBtn(162, Rc{ bar.x + S(238.0f), yb, S(170.0f), S(36.0f) }, s_fine ? "İncə (5 mm)" : "Kobud (2 sm)", dt, true, false)) s_fine = !s_fine;
+
+        if (mm2::SmallBtn(163, Rc{ bar.x + bar.w - S(342.0f), yb, S(190.0f), S(36.0f) }, "Yadda saxla", dt, true, true)) {
+            char nb[64];
+            if (Plate::SaveCfg()) { snprintf(nb, sizeof(nb), "Model %d üçün yadda saxlandı", (int)v->m_nModelIndex); Note(nb); }
+            else Note(Plate::LastError());
+        }
+        if (mm2::SmallBtn(164, Rc{ bar.x + bar.w - S(142.0f), yb, S(120.0f), S(36.0f) }, "Bağla", dt, true, false)) End();
+        if (mm2::SmallBtn(165, Rc{ bar.x + bar.w - S(472.0f), yb, S(120.0f), S(36.0f) }, "Sıfırla", dt, true, false)) {
+            Plate::ResetCfg(v, s_front);
+            Note("Standarta qaytarıldı");
+        }
+
+        if (!g_mmTouch.down) s_act = 0;
+    }
+}
+
 void RenderHandlingDialog()
 {
     using namespace mm;
@@ -2409,6 +2578,7 @@ void RenderHandlingDialog()
 
     const bool want = g_bShowHandlingDlg;
     if (!want && Garage::g_on) Garage::End();   // GARAGE_V5
+    if (!want && PlateAdj::g_on) PlateAdj::End();   // PLATEADJ_V7
     if (!want && s_t <= 0.0f) {
         s_wasOpen = false;
         s_hndRectValid = false;
@@ -2455,6 +2625,11 @@ void RenderHandlingDialog()
     if (want && Garage::g_on) {   // GARAGE_V5: panel gizlenir, yalniz alt zolaq
         s_hndRectValid = false;
         Garage::Render(pVeh, dt);
+        return;
+    }
+    if (want && PlateAdj::g_on) {   // PLATEADJ_V7
+        s_hndRectValid = false;
+        PlateAdj::Render(pVeh, dt);
         return;
     }
 
@@ -2551,14 +2726,14 @@ void RenderHandlingDialog()
     }
 
     // segmentli idareetme (iOS)
-    static const char* kTabs[5] = { "Maşın", "Handling", "Far", "Tuning", "Spidometr" };
+    static const char* kTabs[6] = { "Maşın", "Handling", "Far", "Tuning", "Nömrə", "Spidometr" };
     {
         const Rc seg{ P.x + S(24.0f), P.y + S(66.0f), P.w - S(48.0f), S(40.0f) };
         Fill(seg, Col(255, 255, 255, 18), S(13.0f));
-        const float tw = seg.w / 5.0f;
+        const float tw = seg.w / 6.0f;
         s_pill = Smooth(s_pill, (float)s_tab, dt, 16.0f);
         Fill(Rc{ seg.x + S(3.0f) + s_pill * tw, seg.y + S(3.0f), tw - S(6.0f), seg.h - S(6.0f) }, Col(255, 255, 255, 50), S(10.5f));
-        for (int i = 0; i < 5; ++i) {
+        for (int i = 0; i < 6; ++i) {
             const Rc ti{ seg.x + i * tw, seg.y, tw, seg.h };
             if (Tap(ID_NAV0 + i, ti, canInput) && s_tab != i) {
                 s_tabDir = (i > s_tab) ? 1.0f : -1.0f;
@@ -2856,6 +3031,74 @@ void RenderHandlingDialog()
             Txt(S(13.0f), cx0, y0 + S(136.0f), Col(128, 136, 158), "• Boş yerdə sürüşdür: maşını fırlat");
             Txt(S(13.0f), cx0, y0 + S(160.0f), Col(128, 136, 158), "• - / + ilə dəyişdir, Sıfırla standarta qaytarır");
             Txt(S(13.0f), cx0, y0 + S(184.0f), Col(128, 136, 158), "• Bağla düyməsi kameranı oyuna qaytarır");
+        }
+    }
+    else if (s_tab == 4)                                    // NOMRE (PLATEADJ_V7)
+    {
+        if (noVeh) {
+            mm2::EmptyState(Rc{ cx0, y0, cw, S(300.0f) }, "Avtomobildə deyilsiniz", "Nömrə yalnız maşının içində təyin olunur");
+        } else {
+            std::string cur;
+            const bool has = gtaVeh && Plate::Get(gtaVeh, cur);
+            bool pf = true, pr = true;
+            if (has) Plate::GetSides(gtaVeh, pf, pr);
+
+            // onizleme
+            const Rc pv{ cx0, y0, S(440.0f), S(440.0f) / 4.523809f };
+            void* ras = Plate::BaseRaster();
+            if (ras) {
+                s_dl->AddImage((ImTextureID)ras, ImVec2(pv.x, pv.y), ImVec2(pv.x + pv.w, pv.y + pv.h));
+                if (has) {
+                    ImFont* pfont = g_pPlateFont ? g_pPlateFont : ImGui::GetFont();
+                    const float bx0 = pv.x + pv.w * 0.181f, bx1 = pv.x + pv.w * 0.966f;
+                    const float by0 = pv.y + pv.h * 0.11f,  by1 = pv.y + pv.h * 0.806f;
+                    float fs = (by1 - by0) * 0.92f;
+                    ImVec2 ts = pfont->CalcTextSizeA(fs, FLT_MAX, 0.0f, cur.c_str());
+                    if (ts.x > (bx1 - bx0) * 0.94f) {
+                        fs *= (bx1 - bx0) * 0.94f / ts.x;
+                        ts = pfont->CalcTextSizeA(fs, FLT_MAX, 0.0f, cur.c_str());
+                    }
+                    s_dl->AddText(pfont, fs, ImVec2((bx0 + bx1) * 0.5f - ts.x * 0.5f, (by0 + by1) * 0.5f - ts.y * 0.5f), IM_COL32(15, 15, 15, 255), cur.c_str());
+                }
+            } else {
+                Fill(pv, Col(255, 255, 255, 20), S(10.0f));
+                TxtC(S(13.0f), pv, Col(255, 160, 130), Plate::LastError(), false);
+            }
+
+            Txt(S(15.0f), cx0 + S(460.0f), y0 + S(6.0f),  Col(228, 232, 244), has ? cur.c_str() : "Nömrə təyin olunmayıb");
+            Txt(S(13.0f), cx0 + S(460.0f), y0 + S(30.0f), Col(128, 136, 158), "Format: 10 AA 123");
+            if (mm2::s_msgT > 0.01f)
+                Txt(S(13.0f), cx0 + S(460.0f), y0 + S(52.0f), Col(120, 215, 160, (int)(255.0f * mm2::s_msgT)), mm2::s_msg);
+
+            const float by = y0 + pv.h + S(30.0f);
+            const float bw = (cw - S(12.0f)) / 2.0f;
+            char lab[40];
+
+            if (mm2::SmallBtn(130, Rc{ cx0, by, bw, S(46.0f) }, "Nömrəni yaz", dt, inputPage, true)) {
+                if (!PlateUi::s_caller) PlateUi::s_caller = new PlateUi::PlateCaller();
+                if (pUI && pUI->keyboard()) {
+                    pUI->keyboard()->show(PlateUi::s_caller);
+                    pUI->keyboard()->input()->setInputString(has ? cur : std::string());
+                }
+            }
+            if (mm2::SmallBtn(131, Rc{ cx0 + bw + S(12.0f), by, bw, S(46.0f) }, "Nömrəni sil", dt, inputPage, false) && gtaVeh) {
+                Plate::Remove(gtaVeh);
+                mm2::SetMsg("Nömrə silindi");
+            }
+
+            snprintf(lab, sizeof(lab), "Qabağa vur: %s", pf ? "açıq" : "bağlı");
+            if (mm2::SmallBtn(132, Rc{ cx0, by + S(58.0f), bw, S(46.0f) }, lab, dt, inputPage, false) && gtaVeh) {
+                if (has) Plate::SetSides(gtaVeh, !pf, pr); else mm2::SetMsg("Əvvəl nömrə yaz");
+            }
+            snprintf(lab, sizeof(lab), "Arxaya vur: %s", pr ? "açıq" : "bağlı");
+            if (mm2::SmallBtn(133, Rc{ cx0 + bw + S(12.0f), by + S(58.0f), bw, S(46.0f) }, lab, dt, inputPage, false) && gtaVeh) {
+                if (has) Plate::SetSides(gtaVeh, pf, !pr); else mm2::SetMsg("Əvvəl nömrə yaz");
+            }
+
+            if (mm2::SmallBtn(134, Rc{ cx0, by + S(116.0f), cw, S(50.0f) }, "Tənzimlə  (kamera plakaya yaxınlaşır)", dt, inputPage, true) && gtaVeh) {
+                if (has) PlateAdj::Begin(gtaVeh, pf || !pr);
+                else mm2::SetMsg("Əvvəl nömrə yaz");
+            }
         }
     }
     else                                                    // SPIDOMETR

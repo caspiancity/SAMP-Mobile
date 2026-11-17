@@ -401,6 +401,25 @@ bool ImGuiWrapper::initialize()
 		}
 	}
 
+	// PLATEFONT_V7: DIN 1451 (assets/Fonts/plate.ttf -> <storage>/SAMP/plate/plate.ttf) nomre lovhesi ucun
+	{
+		extern ImFont* g_pPlateFont;
+		extern char* g_pszStorage;
+		g_pPlateFont = nullptr;
+		if (g_pszStorage)
+		{
+			const std::string plateP = std::string(g_pszStorage) + "/SAMP/plate/plate.ttf";
+			if (access(plateP.c_str(), R_OK) == 0)
+			{
+				static const ImWchar plateRanges[] = { 0x0020, 0x0020, 0x0030, 0x0039, 0x0041, 0x005A, 0 };
+				ImFontConfig pc;
+				pc.PixelSnapH = true;
+				g_pPlateFont = io.Fonts->AddFontFromFileTTF(plateP.c_str(), 128.0f, &pc, plateRanges);
+				if (g_pPlateFont) Log::addParameter("Plate font: %s", plateP.c_str());
+			}
+		}
+	}
+
 	// EMOJI_V5: vektor emoji glifleri
 	{
 		extern void Emoji_Register(ImFontAtlas* atlas, ImFont* font, int size);

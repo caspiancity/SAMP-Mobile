@@ -1,0 +1,1178 @@
+######## FAYL app/src/main/cpp/samp/game/AzPlate.cpp ########
+1: // Azerbaycan nomre lovhesi: MaterialTextGenerator ile tekstura cizilir, masinin render-i
+2: // zamani plate materialinin teksturu muveqqeti evez olunur (material model uzre ORTAQDIR).
+3: #include "../main.h"
+4: #include "game.h"
+5: #include "../gui/gui.h"
+6: #include "RW/RenderWare.h"
+7: #include "RW/rpworld.h"
+8: #include "Scene.h"
+9: #include "VisibilityPlugins.h"
+10: #include "Entity/CVehicleGTA.h"
+11: #include "game/Models/ModelInfo.h"
+12: #include "../vendor/armhook/patch.h"
+13: #include "AzPlate.h"
+14: 
+15: #include <cctype>
+16: #include <algorithm>
+17: #include <unistd.h>
+18: #include <sys/uio.h>
+19: #include <cstdio>
+20: #include <cstring>
+21: #include <mutex>
+22: #include <string>
+23: #include <unordered_map>
+24: #include <utility>
+25: #include <vector>
+26: 
+27: extern UI* pUI;
+28: 
+29: // ----------------------------------------------------------------------------
+30: //  MaterialTextGenerator-un lovhe metodlari (header-de elan olunub)
+31: // ----------------------------------------------------------------------------
+32: void MaterialTextGenerator::RenderPlate(const char* text, float w, float h)
+33: {
+34:     if (!pUI) return;
+35: 
+36:     ImGui::NewFrame();
+37: 
+38:     auto* r = pUI->renderer();
+39:     const ImColor cBlack(15, 15, 15, 255);
+40:     const ImColor cWhite(250, 250, 250, 255);
+41:     const ImColor cBlue(0, 86, 170, 255);
+42:     const ImColor cSky(0, 174, 239, 255);
+43:     const ImColor cRed(224, 60, 49, 255);
+44:     const ImColor cGreen(0, 150, 63, 255);
+45: 
+46:     r->drawRect(ImVec2(0.0f, 0.0f), ImVec2(w, h), cBlack, true);
+47:     const float b = h * 0.045f;
+48:     r->drawRect(ImVec2(b, b), ImVec2(w - 2.0f * b, h - 2.0f * b), cWhite, true);
+49: 
+50:     const float bandW = w * 0.14f;
+51:     r->drawRect(ImVec2(b, b), ImVec2(bandW, h - 2.0f * b), cBlue, true);
+52: 
+53:     // bayraq
+54:     const float fw = bandW * 0.62f, fh = h * 0.085f;
+55:     const float fx = b + (bandW - fw) * 0.5f, fy = h * 0.17f;
+56:     r->drawRect(ImVec2(fx, fy), ImVec2(fw, fh), cSky, true);
+57:     r->drawRect(ImVec2(fx, fy + fh), ImVec2(fw, fh), cRed, true);
+58:     r->drawRect(ImVec2(fx, fy + 2.0f * fh), ImVec2(fw, fh), cGreen, true);
+59: 
+60:     // "AZ"
+61:     const int azSize = (int)(h * 0.30f);
+62:     const ImVec2 azSz = r->calculateTextSize("AZ", azSize);
+63:     r->drawText(ImVec2(b + (bandW - azSz.x) * 0.5f, h * 0.55f), cWhite, "AZ", false, azSize);
+64: 
+65:     // esas yazi (sigmasa kicildilir)
+66:     const float areaX = b + bandW;
+67:     const float areaW = w - 2.0f * b - bandW;
+68:     int txtSize = (int)(h * 0.62f);
+69:     ImVec2 tsz = r->calculateTextSize(text, txtSize);
+70:     if (tsz.x > areaW * 0.94f && tsz.x > 1.0f) {
+71:         txtSize = (int)((float)txtSize * (areaW * 0.94f) / tsz.x);
+72:         if (txtSize < 8) txtSize = 8;
+73:         tsz = r->calculateTextSize(text, txtSize);
+74:     }
+75:     r->drawText(ImVec2(areaX + (areaW - tsz.x) * 0.5f, (h - tsz.y) * 0.5f), cBlack, text, false, txtSize);
+76: 
+77:     ImGui::EndFrame();
+78:     ImGui::Render();
+79:     pUI->renderDrawData(ImGui::GetDrawData());
+80: }
+81: 
+82: RwTexture* MaterialTextGenerator::GeneratePlate(const char* text)
+83: {
+84:     if (!m_camera || !pUI) return nullptr;
+85: 
+86:     const int width = 512, height = 128;
+87:     RwRaster* raster = RwRasterCreate(width, height, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+88:     RwTexture* tex = RwTextureCreate(raster);
+89:     if (!raster || !tex) return nullptr;
+90: 
+91:     m_camera->frameBuffer = raster;
+92:     CVisibilityPlugins::SetRenderWareCamera(m_camera);
+93: 
+94:     uint32_t white = 0xFFFFFFFFu;
+95:     RwCameraClear(m_camera, reinterpret_cast<RwRGBA*>(&white), 3);
+96:     RwCameraBeginUpdate((RwCamera*)m_camera);
+97:     DefinedState();
+98:     RenderPlate(text, (float)width, (float)height);
+99:     RwCameraEndUpdate((RwCamera*)m_camera);
+100: 
+101:     return tex;
+102: }
+103: 
+104: // ----------------------------------------------------------------------------
+105: namespace
+106: {
+107:     struct Entry
+108:     {
+109:         uint32_t    creationTime = 0;
+110:         std::string text;
+111:         RwTexture*  tex   = nullptr;
+112:         bool        dirty = true;
+113:     };
+114: 
+115:     std::unordered_map<CVehicleGTA*, Entry> g_entries;
+116:     std::mutex                              g_mtx;
+117:     MaterialTextGenerator*                  g_gen = nullptr;
+118: 
+119:     std::vector<RpMaterial*>* g_collect = nullptr;
+120: 
+121:     // PLATE_MULTI_STRATEGY: 0 = deqiq adlar, 1 = ehtiyat adlar, 2 = en/hundurluk nisbeti (3:1 .. 8.5:1)
+122:     int g_plateLevel = 0;
+123: 
+124:     bool SafeRead(uintptr_t addr, void* out, size_t n)
+125:     {
+126:         if (addr < 0x10000) return false;
+127:         iovec l{ out, n };
+128:         iovec r{ (void*)addr, n };
+129:         return process_vm_readv(getpid(), &l, 1, &r, 1, 0) == (ssize_t)n;
+130:     }
+131: 
+132:     void LowerCopy(const char* n, char* b, size_t cap)
+133:     {
+134:         size_t i = 0;
+135:         if (n) for (; n[i] && i < cap - 1; ++i) b[i] = (char)tolower((unsigned char)n[i]);
+136:         b[i] = 0;
+137:     }
+138: 
+139:     bool IsPlateName(const char* n, int level)
+140:     {
+141:         if (!n || !n[0]) return false;
+142:         char b[40];
+143:         LowerCopy(n, b, sizeof(b));
+144:         static const char* kStrict[] = { "nomer", "nomre", "carplate", "numberplate", nullptr };
+145:         static const char* kLoose[]  = { "plate", "number", "licen", nullptr };
+146:         const char** keys = (level == 0) ? kStrict : kLoose;
+147:         for (int k = 0; keys[k]; ++k)
+148:             if (strstr(b, keys[k])) return true;
+149:         return false;
+150:     }
+151: 
+152:     bool LooksLikePlateTexture(RwTexture* t)
+153:     {
+154:         if (!t || !t->raster) return false;
+155:         const int w = (int)RwRasterGetWidth(t->raster);
+156:         const int h = (int)RwRasterGetHeight(t->raster);
+157:         if (w < 32 || h < 4) return false;
+158:         const float ar = (float)w / (float)h;
+159:         if (ar < 3.0f || ar > 8.5f) return false;
+160: 
+161:         char b[40];
+162:         LowerCopy(t->name, b, sizeof(b));
+163:         static const char* kBad[] = { "light", "lamp", "glass", "window", "chrome", "grill", "vent",
+164:                                       "sticker", "decal", "wheel", "tire", nullptr };
+165:         for (int k = 0; kBad[k]; ++k)
+166:             if (strstr(b, kBad[k])) return false;
+167:         return true;
+168:     }
+169: 
+170: 
+171:     RpMaterial* MatCB(RpMaterial* mat, void*)
+172:     {
+173:         if (!mat || !mat->texture || !g_collect) return mat;
+174: 
+175:         const bool ok = (g_plateLevel < 2) ? IsPlateName(mat->texture->name, g_plateLevel)
+176:                                            : LooksLikePlateTexture(mat->texture);
+177:         if (ok && std::find(g_collect->begin(), g_collect->end(), mat) == g_collect->end())
+178:             g_collect->push_back(mat);
+179:         return mat;
+180:     }
+181: 
+182:     RpAtomic* AtomCB(RpAtomic* atomic, void*)
+183:     {
+184:         auto geo = RpAtomicGetGeometry(atomic);
+185:         if (geo) RpGeometryForAllMaterials(geo, MatCB, nullptr);
+186:         return atomic;
+187:     }
+188: 
+189:     void CollectPlateMaterials(CVehicleGTA* veh, std::vector<RpMaterial*>& out)
+190:     {
+191:         out.clear();
+192:         if (!veh || !veh->m_pRwClump) return;
+193: 
+194:         // 0) oyunun oz lovhe materiali: modelin m_pPlateMaterial gostericisi (yaddasa tehlukesiz baxilir)
+195:         {
+196:             auto* mi = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+197:             if (mi)
+198:             {
+199:                 RpMaterial* pm = mi->m_pPlateMaterial;
+200:                 const uintptr_t a = (uintptr_t)pm;
+201:                 RwTexture* tx = nullptr;
+202:                 uint32_t probe = 0;
+203:                 if (pm && (a & 3) == 0 &&
+204:                     SafeRead(a, &tx, sizeof(tx)) && tx &&
+205:                     SafeRead((uintptr_t)tx, &probe, sizeof(probe)))
+206:                 {
+207:                     out.push_back(pm);
+208:                     return;
+209:                 }
+210:             }
+211:         }
+212: 
+213:         // 1-3) clump icinde ad / nisbet ile axtaris
+214:         for (g_plateLevel = 0; g_plateLevel <= 2 && out.empty(); ++g_plateLevel)
+215:         {
+216:             g_collect = &out;
+217:             RpClumpForAllAtomics(veh->m_pRwClump, AtomCB, nullptr);
+218:             g_collect = nullptr;
+219:         }
+220:         g_plateLevel = 0;
+221:     }
+222: 
+223:     std::vector<std::pair<RpMaterial*, RwTexture*>> s_saved;
+224: 
+225:     void Before_hook(CVehicleGTA* thiz, void* /*modelInfo*/)
+226:     {
+227:         s_saved.clear();
+228:         RwTexture* tex = nullptr;
+229:         {
+230:             std::lock_guard<std::mutex> lk(g_mtx);
+231:             if (g_entries.empty() || !thiz) return;
+232:             auto it = g_entries.find(thiz);
+233:             if (it == g_entries.end()) return;
+234:             if (it->second.creationTime != thiz->m_nCreationTime) { g_entries.erase(it); return; }
+235:             tex = it->second.tex;
+236:         }
+237:         if (!tex) return;
+238: 
+239:         std::vector<RpMaterial*> mats;
+240:         CollectPlateMaterials(thiz, mats);
+241:         for (RpMaterial* m : mats) {
+242:             s_saved.emplace_back(m, m->texture);
+243:             m->texture = tex;
+244:         }
+245:     }
+246: 
+247:     void After_hook(CVehicleGTA* /*thiz*/, void* /*modelInfo*/)
+248:     {
+249:         for (auto& p : s_saved) p.first->texture = p.second;
+250:         s_saved.clear();
+251:     }
+252: 
+253:     inline bool Dig(char c) { return c >= '0' && c <= '9'; }
+254:     inline bool Let(char c) { return c >= 'A' && c <= 'Z'; }
+255: }
+256: 
+257: namespace AzPlate
+258: {
+259:     bool Normalize(const std::string& in, std::string& out)
+260:     {
+261:         std::string s;
+262:         for (char c : in) {
+263:             if (c == '-' || c == ' ' || c == '_') continue;
+264:             s.push_back((char)toupper((unsigned char)c));
+265:         }
+266:         if (s.size() != 7) return false;
+267:         if (!Dig(s[0]) || !Dig(s[1])) return false;
+268:         if (!Let(s[2]) || !Let(s[3])) return false;
+269:         if (!Dig(s[4]) || !Dig(s[5]) || !Dig(s[6])) return false;
+270:         out = s.substr(0, 2) + "-" + s.substr(2, 2) + "-" + s.substr(4, 3);
+271:         return true;
+272:     }
+273: 
+274:     bool Set(CVehicleGTA* veh, const std::string& normalized)
+275:     {
+276:         if (!veh) return false;
+277: 
+278:         std::vector<RpMaterial*> mats;
+279:         CollectPlateMaterials(veh, mats);
+280:         if (mats.empty()) return false;
+281: 
+282:         std::lock_guard<std::mutex> lk(g_mtx);
+283:         Entry& e = g_entries[veh];
+284:         if (e.creationTime != veh->m_nCreationTime) {
+285:             e = Entry();
+286:             e.creationTime = veh->m_nCreationTime;
+287:         }
+288:         e.text  = normalized;
+289:         e.dirty = true;       // kohne tekstura yenisi hazir olana qeder qalir
+290:         return true;
+291:     }
+292: 
+293:     void Clear(CVehicleGTA* veh)
+294:     {
+295:         std::lock_guard<std::mutex> lk(g_mtx);
+296:         g_entries.erase(veh);
+297:     }
+298: 
+299:     bool Get(CVehicleGTA* veh, std::string& out)
+300:     {
+301:         std::lock_guard<std::mutex> lk(g_mtx);
+302:         auto it = g_entries.find(veh);
+303:         if (it == g_entries.end()) return false;
+304:         if (it->second.creationTime != veh->m_nCreationTime) return false;
+305:         out = it->second.text;
+306:         return true;
+307:     }
+308: 
+309:     void ProcessPending()
+310:     {
+311:         std::lock_guard<std::mutex> lk(g_mtx);
+312:         for (auto& kv : g_entries) {
+313:             Entry& e = kv.second;
+314:             if (!e.dirty) continue;
+315:             e.dirty = false;      // bir defe cehd edilir
+316:             if (!g_gen) g_gen = new MaterialTextGenerator();
+317:             RwTexture* t = g_gen->GeneratePlate(e.text.c_str());
+318:             if (t) e.tex = t;     // (kohne tekstura azad edilmir: kicik sizinti, yalniz lovhe deyisende)
+319:         }
+320:     }
+321: 
+322:     void InstallHooks()
+323:     {
+324:         CHook::Redirect("_ZN11CAutomobile35CustomCarPlate_BeforeRenderingStartEP17CVehicleModelInfo", &Before_hook);
+325:         CHook::Redirect("_ZN11CAutomobile33CustomCarPlate_AfterRenderingStopEP17CVehicleModelInfo", &After_hook);
+326:     }
+327: }
+328: 
+329: 
+330: // ----------------------------------------------------------------------------
+331: //  /dump : masinin atomic/material siyahisi + isiq dummy-leri
+332: // ----------------------------------------------------------------------------
+333: extern char* g_pszStorage;
+334: 
+335: namespace
+336: {
+337:     FILE* g_dumpF    = nullptr;
+338:     int   g_dumpAtom = 0;
+339:     int   g_dumpMat  = 0;
+340: 
+341:     RpMaterial* DumpMatCB(RpMaterial* mat, void*)
+342:     {
+343:         if (g_dumpF && mat) {
+344:             const char* tn = mat->texture ? mat->texture->name : "(texture yox)";
+345:             const char* mn = mat->texture ? mat->texture->mask : "";
+346:             fprintf(g_dumpF, "  mat#%d tex=\"%s\" mask=\"%s\" rgba=%d,%d,%d,%d\n",
+347:                     g_dumpMat++, tn, mn,
+348:                     (int)mat->color.red, (int)mat->color.green, (int)mat->color.blue, (int)mat->color.alpha);
+349:         }
+350:         return mat;
+351:     }
+352: 
+353:     RpAtomic* DumpAtomCB(RpAtomic* atomic, void*)
+354:     {
+355:         if (g_dumpF) fprintf(g_dumpF, "atomic#%d\n", g_dumpAtom++);
+356:         auto geo = RpAtomicGetGeometry(atomic);
+357:         if (geo) RpGeometryForAllMaterials(geo, DumpMatCB, nullptr);
+358:         return atomic;
+359:     }
+360: }
+361: 
+362: namespace AzPlate
+363: {
+364:     bool Dump(CVehicleGTA* veh, std::string& outPath)
+365:     {
+366:         if (!veh || !veh->m_pRwClump || !g_pszStorage) return false;
+367: 
+368:         outPath = std::string(g_pszStorage) + "/vehdump.txt";
+369:         FILE* f = fopen(outPath.c_str(), "a");
+370:         if (!f) return false;
+371: 
+372:         g_dumpF = f;
+373:         g_dumpAtom = 0;
+374:         g_dumpMat = 0;
+375: 
+376:         fprintf(f, "\n===== model %d =====\n", (int)veh->m_nModelIndex);
+377:         auto* mi = CModelInfo::GetVehicleModelInfo(veh->m_nModelIndex);
+378:         if (mi && mi->m_pVehicleStruct) {
+379:             for (int i = 0; i < 4; ++i) {
+380:                 const CVector& d = mi->m_pVehicleStruct->m_avDummyPos[i];
+381:                 fprintf(f, "dummy[%d] = %.3f %.3f %.3f\n", i, d.x, d.y, d.z);
+382:             }
+383:         }
+384:         RpClumpForAllAtomics(veh->m_pRwClump, DumpAtomCB, nullptr);
+385:         fprintf(f, "(atomic=%d, material=%d)\n", g_dumpAtom, g_dumpMat);
+386: 
+387:         fclose(f);
+388:         g_dumpF = nullptr;
+389:         return true;
+390:     }
+391: }
+######## FAYL app/src/main/cpp/samp/game/AzPlate.h ########
+1: #pragma once
+2: // Azerbaycan nomre lovhesi (10-AA-123). Yalniz YERLI ekranda gorunur.
+3: #include <string>
+4: 
+5: struct CVehicleGTA;
+6: 
+7: namespace AzPlate
+8: {
+9:     // "10aa123" / "10-AA-123" / "10 aa 123"  ->  "10-AA-123". Format duz deyilse false.
+10:     bool Normalize(const std::string& in, std::string& out);
+11: 
+12:     // Lovheni masina teyin edir. Masinda lovhe materiali (carplate/nomer) tapilmasa false.
+13:     bool Set(CVehicleGTA* veh, const std::string& normalized);
+14:     void Clear(CVehicleGTA* veh);
+15:     bool Get(CVehicleGTA* veh, std::string& out);
+16:     // /dump: masinin materiallari + dummy-leri <storage>/vehdump.txt faylina (append)
+17:     bool Dump(CVehicleGTA* veh, std::string& outPath);
+18: 
+19:     // UI::render-den cagirilir, ImGui kadrindan EVVEL (tekstura yaradilir)
+20:     void ProcessPending();
+21: 
+22:     // CAutomobile::CustomCarPlate_BeforeRenderingStart/AfterRenderingStop evezlenir
+23:     void InstallHooks();
+24: }
+######## app/src/main/cpp/samp/gui/gui.cpp : /^static void PlatePreview/ ########
+583: static void PlatePreview(const mm::Rc& r, const char* text)
+584: {
+585:         using namespace mm;
+586:         Fill(r, Col(14, 14, 14, 255), S(10.0f));
+587:         const Rc in = Shrink(r, S(3.5f));
+588:         Fill(in, Col(248, 248, 248, 255), S(8.0f));
+589:         const float bandW = in.w * 0.14f;
+590:         Fill(Rc{ in.x, in.y, bandW, in.h }, Col(0, 86, 170, 255), S(8.0f));
+591:         const float fw = bandW * 0.62f, fh = in.h * 0.085f;
+592:         const float fx = in.x + (bandW - fw) * 0.5f, fy = in.y + in.h * 0.17f;
+593:         Fill(Rc{ fx, fy, fw, fh },               Col(0, 174, 239, 255), 0.0f);
+594:         Fill(Rc{ fx, fy + fh, fw, fh },          Col(224, 60, 49, 255), 0.0f);
+595:         Fill(Rc{ fx, fy + 2.0f * fh, fw, fh },   Col(0, 150, 63, 255),  0.0f);
+596:         TxtC(in.h * 0.28f, Rc{ in.x, in.y + in.h * 0.52f, bandW, in.h * 0.36f }, Col(255, 255, 255, 255), "AZ", true);
+597:         TxtC(in.h * 0.56f, Rc{ in.x + bandW, in.y, in.w - bandW, in.h }, Col(12, 12, 12, 255), text, true);
+######## app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp : /AzPlate::/ ########
+419-    CHook::Redirect("_ZN8CVehicle22GetVehicleLightsStatusEv", &CVehicle__GetVehicleLightsStatus_hook);
+420-    CHook::InlineHook("_ZN17CVehicleModelInfo15SetupLightFlagsEP8CVehicle", &CVehicleModelInfo__SetupLightFlags_hook, &CVehicleModelInfo__SetupLightFlags);
+421:    AzPlate::InstallHooks();
+422-}
+423-
+424-bool CVehicleGTA::IsRCVehicleModelID() {
+425-    switch (m_nModelIndex) {
+426-        case 441:
+427-        case 464:
+428-        case 465:
+429-        case 594:
+430-        case 501:
+431-        case 564:
+432-            return true;
+433-
+######## app/src/main/cpp/samp/gui/gui.cpp : /AzPlate::/ ########
+319-        ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
+320-
+321:        AzPlate::ProcessPending();
+322-        CamCtl_Update();            // AZ_PATCH4: /cam   // nomre teksturalari (ImGui kadrindan evvel)
+323-
+324-        ImGuiWrapper::render();
+325-
+326-        renderDebug();
+327-
+328-        ProcessPushedTextdraws();
+329-}
+330-
+331-void UI::shutdown()
+332-{
+333-        ImGuiWrapper::shutdown();
+--
+1070-                                s_plVeh = gtaVeh;
+1071-                                std::string cur;
+1072:                                if (gtaVeh && AzPlate::Get(gtaVeh, cur) && cur.size() == 9) {
+1073-                                        s_plReg = (cur[0] - '0') * 10 + (cur[1] - '0');
+1074-                                        s_plL1  = cur[3] - 'A';
+1075-                                        s_plL2  = cur[4] - 'A';
+1076-                                        s_plNum = (cur[6] - '0') * 100 + (cur[7] - '0') * 10 + (cur[8] - '0');
+1077-                                }
+1078-                        }
+1079-                        s_plMsgT = Clamp(s_plMsgT - dt / 3.0f, 0.0f, 1.0f);
+1080-
+1081-                        auto wrap = [](int v, int n) { return ((v % n) + n) % n; };
+1082-
+1083-                        // [-10][-1] deyer [+1][+10]  (big)   ve ya   [-] deyer [+]
+######## app/src/main/cpp/samp/game/Coronas.cpp : /stbi_load|LoadTextureFromDB|RwTextureCreate|RwRasterCreate/ ########
+252-        //}
+253-//        for (auto i = 0; i < CORONA_TEXTURES_COUNT; i++) {
+254://           gpCoronaTexture[i] = CUtil::LoadTextureFromDB("txd", "coronamoon");
+255-//
+256-//        }
+257-    }
+258-
+259-    for (auto & corona : aCoronas) {
+260-        corona = CRegisteredCorona{}; // reset every corona to its default state
+261-    }
+262-}
+263-
+264-void CCoronas::Render() {
+265-    CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x005A23B8 + 1 : 0x6C5CD4) );
+266-}
+######## app/src/main/cpp/samp/game/CrossHair.cpp : /stbi_load|LoadTextureFromDB|RwTextureCreate|RwRasterCreate/ ########
+24-    FLog("CCrossHair::Init");
+25-    pCircleTex = new CSprite2d();
+26:    pCircleTex->m_pTexture = CUtil::LoadTextureFromDB("txd", "siteM16");
+27-    FLog("CCrossHair::Init 2");
+28-}
+29-
+30-void CCrossHair::Render()
+31-{
+32-    if(!pNetGame || pNetGame->GetPlayerPool())
+33-        return;
+34-
+35-    auto pPed = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed();
+36-
+37-    int iCamState = GameGetLocalPlayerCameraMode();
+38-
+######## app/src/main/cpp/samp/game/Widgets/WidgetGta.cpp : /stbi_load|LoadTextureFromDB|RwTextureCreate|RwRasterCreate/ ########
+167-
+168-void CWidgetGta::SetTexture(const char *name) {
+169:    m_Sprite.m_pTexture = CUtil::LoadTextureFromDB("mobile", name);
+170-}
+171-
+172-bool CWidgetGta::IsReleased(CVector2D *pVecOut) {
+173-    return CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x002B3484 + 1 : 0x372794), this, pVecOut);
+174-}
+175-
+176-bool CWidgetGta::IsTouched(CVector2D *pVecOut) {
+177-    return CHook::CallFunction<bool>(g_libGTASA + (VER_x32 ? 0x002B3324 + 1 : 0x3725D0), this, pVecOut);
+178-}
+179-
+180-
+######## app/src/main/cpp/samp/game/textdraw.cpp : /stbi_load|LoadTextureFromDB|RwTextureCreate|RwRasterCreate/ ########
+119-    if(!tex)
+120-    {
+121:        tex = (RwTexture*)CUtil::LoadTextureFromDB(szSlot, szTexture);
+122-    }
+123-
+124-   FLog("%s loaded from %s", szTexture, szSlot);
+125-    return (uintptr_t)tex;
+126-}
+127-
+128-void CTextDraw::Draw()
+129-{
+130-    if (m_TextDrawData.iTextureSlot != -1) {
+131-        return DrawTextured();
+132-    }
+133-
+######## app/src/main/cpp/samp/game/util.cpp : /stbi_load|LoadTextureFromDB|RwTextureCreate|RwRasterCreate/ ########
+1984-	for (int i = 0; i < 5; i++)
+1985-	{
+1986:		uintptr_t texture = LoadTextureFromDB(texdb[i], texname);
+1987-		if (texture != 0) {
+1988-			FLog("%s loaded from %s", texname, texdb[i]);
+1989-			return texture;
+1990-		}
+1991-	}
+1992-
+1993-	LOGW("Texture %s not found!", texname);
+1994-	return 0;
+1995-}*/
+1996-
+1997-uintptr_t LoadTexture(const char* texname)
+1998-{
+--
+2001-    for (int i = 0; i < sizeof(texdb) / sizeof(const char*); i++)
+2002-    {
+2003:        uintptr_t texture = (uintptr_t)CUtil::LoadTextureFromDB(texdb[i], texname);
+2004-        if (texture != 0) {
+2005-            FLog("Texture: %s loaded from %s", texname, texdb[i]);
+2006-            return texture;
+2007-        }
+2008-    }
+2009-
+2010-    FLog("Texture: %s not found!", texname);
+2011-    return 0;
+2012-}
+2013-
+2014-// 0.3.7 
+2015-#include "sprite2d.h"
+--
+2047-    if(!tex)
+2048-    {
+2049:        tex = (RwTexture*)CUtil::LoadTextureFromDB(txdname, texturename);
+2050-    }
+2051-
+2052-    return tex;
+2053-}
+2054-// 0.3.7 
+######## app/src/main/cpp/samp/game/AzPlate.cpp : /RwRasterLock|RwRasterCreate|RwTextureCreate|RwRasterUnlock/ ########
+85-
+86-    const int width = 512, height = 128;
+87:    RwRaster* raster = RwRasterCreate(width, height, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+88:    RwTexture* tex = RwTextureCreate(raster);
+89-    if (!raster || !tex) return nullptr;
+90-
+91-    m_camera->frameBuffer = raster;
+92-    CVisibilityPlugins::SetRenderWareCamera(m_camera);
+93-
+94-    uint32_t white = 0xFFFFFFFFu;
+95-    RwCameraClear(m_camera, reinterpret_cast<RwRGBA*>(&white), 3);
+96-    RwCameraBeginUpdate((RwCamera*)m_camera);
+97-    DefinedState();
+98-    RenderPlate(text, (float)width, (float)height);
+99-    RwCameraEndUpdate((RwCamera*)m_camera);
+100-
+######## app/src/main/cpp/samp/game/RW/RenderWare.cpp : /RwRasterLock|RwRasterCreate|RwTextureCreate|RwRasterUnlock/ ########
+9-RwCamera* (*RwCameraShowRaster)(RwCamera * camera, void *pDev, RwUInt32 flags);
+10-
+11:RwRaster* 	(*RwRasterCreate)(RwInt32 width, RwInt32 height, RwInt32 depth, RwInt32 flags);
+12-RwBool 		(*RwRasterDestroy)(RwRaster * raster);
+13-RwRaster* 	(*RwRasterGetOffset)(RwRaster *raster, RwInt16 *xOffset, RwInt16 *yOffset);
+14-RwInt32 	(*RwRasterGetNumLevels)(RwRaster * raster);
+15-RwRaster* 	(*RwRasterSubRaster)(RwRaster * subRaster, RwRaster * raster, RwRect * rect);
+16-RwRaster* 	(*RwRasterRenderFast)(RwRaster * raster, RwInt32 x, RwInt32 y);
+17-RwRaster* 	(*RwRasterRender)(RwRaster * raster, RwInt32 x, RwInt32 y);
+18-RwRaster* 	(*RwRasterRenderScaled)(RwRaster * raster, RwRect * rect);
+19-RwRaster* 	(*RwRasterPushContext)(RwRaster * raster);
+20-RwRaster* 	(*RwRasterPopContext)(void);
+21-RwRaster* 	(*RwRasterGetCurrentContext)(void);
+22-RwBool 		(*RwRasterClear)(RwInt32 pixelValue);
+23-RwBool 		(*RwRasterClearRect)(RwRect * rpRect, RwInt32 pixelValue);
+24-RwRaster* 	(*RwRasterShowRaster)(RwRaster * raster, void *dev, RwUInt32 flags);
+25:RwUInt8* 	(*RwRasterLock)(RwRaster * raster, RwUInt8 level, RwInt32 lockMode);
+26:RwRaster* 	(*RwRasterUnlock)(RwRaster * raster);
+27:RwUInt8* 	(*RwRasterLockPalette)(RwRaster * raster, RwInt32 lockMode);
+28:RwRaster* 	(*RwRasterUnlockPalette)(RwRaster * raster);
+29-RwImage* 	(*RwImageCreate)(RwInt32 width, RwInt32 height, RwInt32 depth);
+30-RwBool 		(*RwImageDestroy)(RwImage * image);
+31-RwImage* 	(*RwImageAllocatePixels)(RwImage * image);
+32-RwImage* 	(*RwImageFreePixels)(RwImage * image);
+33-RwImage* 	(*RwImageCopy)(RwImage * destImage, const RwImage * sourceImage);
+34-RwImage* 	(*RwImageResize)(RwImage * image, RwInt32 width, RwInt32 height);
+35-RwImage* 	(*RwImageApplyMask)(RwImage * image, const RwImage * mask);
+36-RwImage* 	(*RwImageMakeMask)(RwImage * image);
+37-RwImage* 	(*RwImageReadMaskedImage)(const RwChar * imageName, const RwChar * maskname);
+38-RwImage* 	(*RwImageRead)(const RwChar * imageName);
+39-RwImage* 	(*RwImageWrite)(RwImage * image, const RwChar * imageName);
+40-RwImage* 	(*RwImageSetFromRaster)(RwImage *image, RwRaster *raster);
+--
+71-	*(void**)(&RwCameraShowRaster)				= (void*)(CHook::getSym("_Z18RwCameraShowRasterP8RwCameraPvj"));
+72-
+73:	*(void **)(&RwRasterCreate) 				= (void*)(CHook::getSym("_Z14RwRasterCreateiiii"));
+74-	*(void **)(&RwRasterDestroy) 				= (void*)(CHook::getSym("_Z15RwRasterDestroyP8RwRaster"));
+75-	*(void **)(&RwRasterGetOffset) 				= (void*)(CHook::getSym("_Z17RwRasterGetOffsetP8RwRasterPsS1_"));
+76-	*(void **)(&RwRasterGetNumLevels) 			= (void*)(CHook::getSym("_Z20RwRasterGetNumLevelsP8RwRaster"));
+77-	*(void **)(&RwRasterSubRaster) 				= (void*)(CHook::getSym("_Z17RwRasterSubRasterP8RwRasterS0_P6RwRect"));
+######## app/src/main/cpp/samp/game/RW/raster.h : /RwRasterLock|RwRasterCreate|RwTextureCreate|RwRasterUnlock/ ########
+6-/**
+7- * \ingroup rwraster
+8: * \ref RwRasterLockMode represents the options available for locking 
+9: * a raster so that it may be modified (see API function \ref RwRasterLock). An 
+10- * application may wish to write to the raster, read from the raster or
+11- * simultaneously write and read a raster (rwRASTERLOCKWRITE | rwRASTERLOCKREAD).
+12- */
+13:enum RwRasterLockMode
+14-{
+15-    rwRASTERLOCKWRITE = 0x01,   /**<Lock for writing */
+16-    rwRASTERLOCKREAD = 0x02,    /**<Lock for reading */
+17-    rwRASTERLOCKNOFETCH = 0x04, /**<When used in combination with
+18-                                 *  rwRASTERLOCKWRITE, asks the driver not to
+19-                                 *  fetch the pixel data. This is only useful
+20-                                 *  if it is known that ALL the raster data is
+21-                                 *  going to be overwritten before the raster
+22-                                 *  is unlocked, i.e. from an 
+23-                                 *  \ref RwRasterSetFromImage call. This flag
+24-                                 *  is not supported by all drivers. */
+25-    rwRASTERLOCKRAW = 0x08,    /**<When used in combination with
+--
+32-#define rwRASTERLOCKREADWRITE   (rwRASTERLOCKREAD|rwRASTERLOCKWRITE)
+33-
+34:typedef enum RwRasterLockMode RwRasterLockMode;
+35-
+36-/**
+37- * \ingroup rwraster
+38- *  \ref RwRasterFlipMode represents
+39- *  raster flip modes */
+40-enum RwRasterFlipMode
+41-{
+42-    rwRASTERFLIPDONTWAIT = 0,   /**<Don't wait for VSync */
+43-    rwRASTERFLIPWAITVSYNC = 1,  /**<Flip on VSync */
+44-    rwRASTERFLIPMODEFORCEENUMSIZEINT = RWFORCEENUMSIZEINT
+45-};
+46-typedef enum RwRasterFlipMode RwRasterFlipMode;
+--
+50- *  RwRasterType 
+51- *  This type represents the options available for creating a new 
+52: * raster (se API function \ref RwRasterCreate)*/
+######## app/src/main/cpp/samp/game/RW/rwcore.cpp : /RwRasterLock|RwRasterCreate|RwTextureCreate|RwRasterUnlock/ ########
+11-}
+12-
+13:RwTexture* RwTextureCreate(RwRaster* raster) {
+14-    return CHook::CallFunction<RwTexture*>(g_libGTASA + (VER_x32 ? 0x001DB7BC + 1 : 0x273F74), raster);
+15-}
+16-
+17-RwCamera* RwCameraCreate() {
+18-    return CHook::CallFunction<RwCamera*>(g_libGTASA + (VER_x32 ? 0x001D5EE0 + 1 : 0x26D454));
+19-}
+20-
+21-RwFrame* RwFrameCreate() {
+22-    return CHook::CallFunction<RwFrame*>(g_libGTASA + (VER_x32 ? 0x001D81AC + 1 : 0x26F9E0));
+23-}
+24-
+25-RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode) {
+######## app/src/main/cpp/samp/game/RW/rwcore.h : /RwRasterLock|RwRasterCreate|RwTextureCreate|RwRasterUnlock/ ########
+954-
+955-RwFrame* RwFrameUpdateObjects(RwFrame* frame);
+956:RwTexture* RwTextureCreate(RwRaster* raster);
+957-RwCamera* RwCameraCreate();
+958-RwFrame* RwFrameCreate();
+959-RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode);
+960-RwCamera* RwCameraSetNearClipPlane(RwCamera* camera, RwReal nearClip);
+961-RwCamera* RwCameraSetFarClipPlane(RwCamera* camera, RwReal farClip);
+962-RwFrame* RwFrameTranslate(RwFrame* frame, const RwV3d* v, RwOpCombineType combine);
+963-RwFrame* RwFrameRotate(RwFrame* frame, const RwV3d* axis, RwReal angle, RwOpCombineType combine);
+964-RwCamera* RwCameraSetViewWindow(RwCamera* camera, const RwV2d* viewWindow);
+965-RwCamera* RwCameraSetProjection(RwCamera* camera, RwCameraProjection projection);
+966-RwMatrix* RwFrameGetLTM(RwFrame* frame);
+967-RwCamera* RwCameraEndUpdate(RwCamera* camera);
+968-RwBool RwIm3DEnd();
+######## app/src/main/cpp/samp/game/CrossHair.cpp : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+45-        static float fCHairScreenMultY = (RsGlobal->maximumHeight / 9 * 16) / 10 * 6 * 0.4 + fFixedOffset;
+46-
+47:        RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, RWRSTATE(rwFILTERLINEAR));
+48:        RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, RWRSTATE(FALSE));
+49-
+50-        float f1 = ((RsGlobal->maximumHeight / 448.0) * 64.0) * gunRadius;
+51-
+52-        float fPosX1 = ((f1 * 0.5) + fCHairScreenMultX) - f1;
+53-        float fPosY1 = ((f1 * 0.5) + fCHairScreenMultY) - f1;
+54-
+55-        float fPosX2 = (f1 * 0.5) + fPosX1;
+56-        float fPosY2 = (f1 * 0.5) + fPosY1;
+57-
+58-        pCircleTex->Draw(CRect{fPosX1, fPosY1, fPosX2, fPosY2}, CRGBA(255, 255, 255, 255));
+59-        pCircleTex->Draw(CRect{fPosX1 + f1, fPosY1, fPosX2, fPosY2}, CRGBA(255, 255, 255, 255));
+60-        pCircleTex->Draw(CRect{fPosX1, fPosY1 + f1, fPosX2, fPosY2}, CRGBA(255, 255, 255, 255));
+######## app/src/main/cpp/samp/game/Lines.cpp : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+14-
+15-    ((void(__cdecl *)())(g_libGTASA + (VER_x32 ? 0x3FCAF0 + 1 : 0x4E0224)))();
+16:    if (RwIm3DTransform(vertices, 2u, nullptr, 0)) {
+17-        RwIm3DRenderLine(0, 1);
+18:        RwIm3DEnd();
+19-    }
+20-}
+21-
+22-void CLines::RenderLineWithClipping(float startX, float startY, float startZ, float endX, float endY, float endZ, uint32 startColor, uint32 endColor) {
+23-    CHook::CallFunction<void>(g_libGTASA + 0x5ADBD8 + 1, startX, startY, startZ, endX, endY, endZ, startColor, endColor);
+24-}
+25-
+26-void CLines::ImmediateLine2D(int32 startX, int32 startY, int32 endX, int32 endY, uint8 startR, uint8 startG, uint8 startB, uint8 startA, uint8 endR, uint8 endG, uint8 endB, uint8 endA) {
+27:    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(TRUE));
+28:    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(FALSE));
+29:    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(TRUE));
+30:    RwRenderStateSet(rwRENDERSTATESRCBLEND,          RWRSTATE(rwBLENDSRCALPHA));
+31:    RwRenderStateSet(rwRENDERSTATEDESTBLEND,         RWRSTATE(rwBLENDINVSRCALPHA));
+32:    RwRenderStateSet(rwRENDERSTATETEXTUREFILTER,     RWRSTATE(rwFILTERLINEAR));
+33:    RwRenderStateSet(rwRENDERSTATETEXTURERASTER,     RWRSTATE(NULL));
+34-
+35-    RwIm2DVertex vertices[] = {
+36-            { .x = float(startX), .y = float(startY), .emissiveColor = CRGBA(startR, startG, startB, startA).ToIntARGB() },
+37-            { .x = float(endX),   .y = float(endY),   .emissiveColor = CRGBA(endR, endG, endB, endA).ToIntARGB() }
+38-    };
+39-    RwIm2DRenderLine(vertices, 2, 0, 1);
+40-
+41:    RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, RWRSTATE(FALSE));
+42:    RwRenderStateSet(rwRENDERSTATEZTESTENABLE,       RWRSTATE(TRUE));
+43:    RwRenderStateSet(rwRENDERSTATEZWRITEENABLE,      RWRSTATE(TRUE));
+44-}
+######## app/src/main/cpp/samp/game/RW/RenderWare.cpp : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+48-RwReal 		(*RwIm2DGetFarScreenZ)(void);
+49-RwBool 		(*RwRenderStateGet)(RwRenderState state, void *value);
+50:RwBool 		(*RwRenderStateSet)(RwRenderState state, void *value);
+51-RwBool 		(*RwIm2DRenderLine)(RwIm2DVertex *vertices, RwInt32 numVertices, RwInt32 vert1, RwInt32 vert2);
+52-RwBool 		(*RwIm2DRenderTriangle)(RwIm2DVertex *vertices, RwInt32 numVertices, RwInt32 vert1, RwInt32 vert2, RwInt32 vert3 );
+53-RwBool 		(*RwIm2DRenderPrimitive)(RwPrimitiveType primType, RwIm2DVertex *vertices, RwInt32 numVertices);
+54-RwBool 		(*RwIm2DRenderIndexedPrimitive)(RwPrimitiveType primType, RwIm2DVertex *vertices, RwInt32 numVertices, RwImVertexIndex *indices, RwInt32 numIndices);
+55-
+56-/* rtpng.h */
+57-RwImage*	(*RtPNGImageWrite)(RwImage* image, const RwChar* imageName);
+58-RwImage* 	(*RtPNGImageRead)(const RwChar* imageName);
+59-
+60-RwBool (*RwTextureDestroy)(RwTexture* texture);
+61-void WriteMemory(uintptr_t dest, uintptr_t src, size_t size);
+62-void InitRenderWareFunctions()
+--
+110-	*(void **)(&RwIm2DGetFarScreenZ)			= (void*)(CHook::getSym("_Z19RwIm2DGetFarScreenZv"));
+111-	*(void **)(&RwRenderStateGet)				= (void*)(CHook::getSym("_Z16RwRenderStateGet13RwRenderStatePv"));
+112:	*(void **)(&RwRenderStateSet)				= (void*)(CHook::getSym("_Z16RwRenderStateSet13RwRenderStatePv"));
+113-	*(void **)(&RwIm2DRenderLine)				= (void*)(CHook::getSym("_Z23RwIm2DRenderLine_BUGFIXP14RwOpenGLVertexiii"));
+114-	*(void **)(&RwIm2DRenderTriangle)			= (void*)(CHook::getSym("_Z27RwIm2DRenderTriangle_BUGFIXP14RwOpenGLVertexiiii"));
+115-	*(void **)(&RwIm2DRenderPrimitive)			= (void*)(CHook::getSym("_Z28RwIm2DRenderPrimitive_BUGFIX15RwPrimitiveTypeP14RwOpenGLVertexi"));
+116-	*(void **)(&RwIm2DRenderIndexedPrimitive)	= (void*)(CHook::getSym("_Z35RwIm2DRenderIndexedPrimitive_BUGFIX15RwPrimitiveTypeP14RwOpenGLVertexiPti"));
+117-
+118-	/* rtpng.h */
+119-	*(void **)(&RtPNGImageWrite)				= (void*)(CHook::getSym("_Z15RtPNGImageWriteP7RwImagePKc"));
+120-	*(void **)(&RtPNGImageRead)					= (void*)(CHook::getSym("_Z14RtPNGImageReadPKc"));
+121-
+122-	*(void**)(&RwTextureDestroy) 				= (void*)(CHook::getSym("_Z16RwTextureDestroyP9RwTexture"));
+123-}
+######## app/src/main/cpp/samp/game/RW/badevice.h : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+182-/* Device block */
+183-typedef RwBool
+184:    (*RwRenderStateSetFunction)(RwRenderState nState,void *pParam);
+185-
+186-typedef RwBool
+187-    (*RwRenderStateGetFunction)(RwRenderState nState,void *pParam);
+188-
+189-typedef RwBool
+190-    (*RwIm2DRenderLineFunction)(RwIm2DVertex *vertices,
+191-                                RwInt32 numVertices,
+192-                                RwInt32 vert1,
+193-                                RwInt32 vert2);
+194-
+195-typedef RwBool
+196-    (*RwIm2DRenderTriangleFunction)(RwIm2DVertex *vertices,
+--
+225-
+226-typedef RwBool
+227:    (*RwIm3DRenderIndexedPrimitiveFunction)(RwPrimitiveType primtype,
+228-                                            RwImVertexIndex *indices,
+229-                                            RwInt32 numIndices);
+230-
+231-
+232-typedef struct RwDevice RwDevice;
+233-
+234-#if (!defined(DOXYGEN))
+235-/*
+236- * struct RwDevice
+237- * Structure describing a display device
+238- */
+239-struct RwDevice
+--
+245-
+246-    /* Immediate mode functions */
+247:    RwRenderStateSetFunction                fpRenderStateSet; /* Internal Use */
+248-    RwRenderStateGetFunction                fpRenderStateGet; /* Internal Use */
+249-
+250-    /* Render functions */
+251-    RwIm2DRenderLineFunction                fpIm2DRenderLine; /* Internal Use */
+252-    RwIm2DRenderTriangleFunction            fpIm2DRenderTriangle; /* Internal Use */
+######## app/src/main/cpp/samp/game/RW/immedi.h : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+34- * RwRenderState represents the global state variables that control
+35- * rendering. These may be set and queried using the
+36: * \ref RwRenderStateSet and \ref RwRenderStateGet functions respectively.
+37- *
+38- * Refer to the \ref rwrenderstateoverview for an overview of this system.
+39- *
+40- * \note The texture render states (raster, address & filter modes) would
+41- * normally just be used when rendering in immediate mode and should be
+42- * specificied completely every time a texture is used. Retained mode
+43- * pipelines will frequently set theses states internally, usually based on
+44- * \ref RwTexture objects.
+45- */
+46-#endif /* RWADOXYGENEXTERNAL */
+47-enum RwRenderState
+48-{
+--
+462- * line and indexed triangle primitives that are available when rendering 2D
+463- * and 3D immediate mode objects (see API functions \ref RwIm2DRenderIndexedPrimitive,
+464: * \ref RwIm2DRenderPrimitive, \ref RwIm3DRenderIndexedPrimitive and \ref RwIm3DRenderPrimitive).
+465- * Indices are into a vertex list and must be defined in a counter-clockwise order
+466- * (as seen from the camera) to be visible.*/
+467-#endif /* RWADOXYGENEXTERNAL */
+468-enum RwPrimitiveType
+469-{
+470-    rwPRIMTYPENAPRIMTYPE = 0,   /**<Invalid primative type */
+471-    rwPRIMTYPELINELIST = 1,     /**<Unconnected line segments, each line is specified by
+472-                                 * both its start and end index, independently of other lines
+473-                                 * (for example, 3 segments specified as 0-1, 2-3, 4-5) */
+474-    rwPRIMTYPEPOLYLINE = 2,     /**<Connected line segments, each line's start index
+475-                                 * (except the first) is specified by the index of the end of
+476-                                 * the previous segment (for example, 3 segments specified as
+--
+513-
+514-extern RwBool RwRenderStateGet(RwRenderState state, void *value);
+515:extern RwBool RwRenderStateSet(RwRenderState state, void *value);
+516-
+517-extern RwBool RwIm2DRenderLine(RwIm2DVertex *vertices, RwInt32 numVertices, RwInt32 vert1, RwInt32 vert2);
+518-extern RwBool RwIm2DRenderTriangle(RwIm2DVertex *vertices, RwInt32 numVertices,
+519-                                   RwInt32 vert1, RwInt32 vert2, RwInt32 vert3 );
+520-extern RwBool RwIm2DRenderPrimitive(RwPrimitiveType primType, RwIm2DVertex *vertices, RwInt32 numVertices);
+######## app/src/main/cpp/samp/game/RW/rwcore.cpp : /RwIm3DTransform|RwIm3DRenderIndexedPrimitive|RwIm3DEnd|CSprite::RenderOneXLUSprite|RwRenderStateSet/ ########
+63-}
+64-
+65:RwBool RwIm3DEnd() {
+66-    return CHook::CallFunction<RwBool>(g_libGTASA + (VER_x32 ? 0x001DD03C + 1 : 0x275E20));
+67-}
+68-
+69-RwBool RwIm3DRenderPrimitive(RwPrimitiveType primType) {
+70-    return CHook::CallFunction<RwBool>(g_libGTASA + (VER_x32 ? 0x001DD1C4 + 1 : 0x275FD8), primType);
+71-}
+72-
+73:RwBool RwIm3DRenderIndexedPrimitive(RwPrimitiveType primType, RwImVertexIndex* indices, RwInt32 numIndices) {
+74-    return CHook::CallFunction<RwBool>(g_libGTASA + (VER_x32 ? 0x001DD084 + 1 : 0x275E70), primType, indices, numIndices);
+75-}
+76-
+77:void* RwIm3DTransform(RwIm3DVertex* pVerts, RwUInt32 numVerts, RwMatrix* ltm, RwUInt32 flags) {
+78-    return CHook::CallFunction<void*>(g_libGTASA + (VER_x32 ? 0x001DCFAC + 1 : 0x275D54), pVerts, numVerts, ltm, flags);
+79-}
+80-
+81-RwTexture* RwTextureRead(const char* name, const char* maskName) {
+82-    return CHook::CallFunction<RwTexture*>(g_libGTASA + (VER_x32 ? 0x001DBA3C + 1 : 0x2742C8), name, maskName);
+83-}
+84-
+85-RwFrame* RwFrameForAllObjects(RwFrame* frame, RwObjectCallBack callBack, void* data) {
+86-    return CHook::CallFunction<RwFrame*>(g_libGTASA + (VER_x32 ? 0x001D8858 + 1 : 0x2703BC), frame, callBack, data);
+87-}
+88-
+89-RwBool RwFrameDestroy(RwFrame* frame) {
+######## app/src/main/cpp/samp/game/Collision/ColModel.cpp : /GetBoundingBox|m_boundBox|struct CColModel|class CColModel|m_pColModel/ ########
+14-#endif
+15-
+16:CColModel::CColModel() : m_boundBox() {
+17-    m_nColSlot = 0;
+18-    m_pColData = nullptr;
+19-    m_bHasCollisionVolumes = false;
+20-    m_bIsSingleColDataAlloc = false;
+21-    m_bIsActive = true;
+22-}
+23-
+24-CColModel::~CColModel() {
+25-    if (!m_bIsActive) {
+26-        return;
+27-    }
+28-    RemoveCollisionVolumes();
+--
+52-
+53-    m_boundSphere = colModel.m_boundSphere;
+54:    m_boundBox    = colModel.m_boundBox;
+55-
+56-    if (m_pColData) {
+57-        m_pColData->Copy(*colModel.m_pColData);
+58-    } else {
+59-        exit(0); // ???? What now? We don't copy the stuff ????
+60-    }
+61-
+62-    return *this;
+63-}
+64-
+65-void CColModel::MakeMultipleAlloc() {
+######## app/src/main/cpp/samp/game/Collision/ColModel.h : /GetBoundingBox|m_boundBox|struct CColModel|class CColModel|m_pColModel/ ########
+12-#include "../common.h"
+13-
+14:class CColModel {
+15-public:
+16:    CBoundingBox m_boundBox;
+17-    CSphere      m_boundSphere;
+18-    uint8        m_nColSlot;
+19-    union {
+20-        struct {
+21-            uint8 m_bHasCollisionVolumes : 1; // AKA `m_bNotEmpty`
+22-            uint8 m_bIsSingleColDataAlloc : 1;
+23-            uint8 m_bIsActive : 1;
+24-        };
+25-        uint8 m_nFlags;
+26-    };
+27-    uint8 pad0[2];
+28-    CCollisionData* m_pColData;
+--
+54-    [[nodiscard]] float GetBoundRadius() const noexcept { return m_boundSphere.m_fRadius; }
+55-    auto& GetBoundCenter() { return m_boundSphere.m_vecCenter; }
+56:    auto& GetBoundingBox() { return m_boundBox; }
+57-    auto& GetBoundingSphere() { return m_boundSphere; }
+58-    CCollisionData* GetData() const { return m_pColData; }
+59-};
+60-
+61-VALIDATE_SIZE(CColModel, (VER_x32 ? 0x30 : 0x38));
+######## app/src/main/cpp/samp/game/Collision/Collision.h : /GetBoundingBox|m_boundBox|struct CColModel|class CColModel|m_pColModel/ ########
+88-    static bool ProcessVerticalLineTriangle(const CColLine& line, const CompressedVector* verts, const CColTriangle& tri, const CColTrianglePlane& triPlane, CColPoint& colPoint, float& maxTouchDist
+89-    static bool IsStoredPolyStillValidVerticalLine(const CVector& lineOrigin, float lineDist, CColPoint& colPoint, CStoredCollPoly* collPoly);
+90:    static CColBox GetBoundingBoxFromTwoSpheres(const CColSphere& spA, const CColSphere& spB);
+91-    static bool IsThisVehicleSittingOnMe(CVehicleGTA* vehicle, CVehicleGTA* vehicleOnMe);
+92-    static bool CheckCameraCollisionPeds(int32 sectorX, int32 sectorY, const CVector& pos, const CVector& dir, float& /*unused*/);
+93-    static bool CheckPeds(const CVector& src, const CVector& normal, float& nearest);
+94-    static bool SphereCastVsBBox(const CColSphere& sphere1, const CColSphere& sphere2, const CColBox& box);
+95-    static bool RayPolyPOP(CVector* arg0, CVector* arg1, CColTriangle* arg2, CVector* arg3, CVector* arg4);
+96-    static int32 GetPrincipleAxis(const CVector& normal);
+97-    static bool PointInPoly(
+98-            const CVector& testPt,
+99-            const CColTriangle& /*unused*/,
+100-            const CVector& normal,
+101-            const CVector* verts
+102-    );
+######## app/src/main/cpp/samp/game/Collision/CollisionData.h : /GetBoundingBox|m_boundBox|struct CColModel|class CColModel|m_pColModel/ ########
+123-    }
+124-
+125:    friend class CColModel;
+126-};
+127-VALIDATE_SIZE(CCollisionData, (VER_x32 ? 0x34 : 0x58));
+######## app/src/main/cpp/samp/game/Entity/CVehicleGTA.cpp : /CVehicle__Render|PreRender|RenderEffects|_hook|Redirect|InlineHook/ ########
+141-// ----------------------------------- hooks
+142-
+143:void RenderDriverAndPassengers_hook(CVehicleGTA *thiz)
+144-{
+145-    thiz->RenderDriverAndPassengers();
+146-}
+147-
+148:void SetDriver_hook(CVehicleGTA *thiz, CPedGTA *pPed)
+149-{
+150-    thiz->SetDriver(pPed);
+151-}
+152-
+153:bool CVehicle__GetVehicleLightsStatus_hook(CVehicleGTA *pVehicle)
+154-{
+155-    return pVehicle->GetLightsStatus();
+156-}
+157-
+158-// ---------------------------------------------------------------------------
+159-// DoVehicleLights: masinin butun isiqlari bu funksiyanin icinde cekilir.
+160-// Burada (1) isiqlar motor sondukde de yansin deye bEngineOn=1 edirik (kohne davranis),
+161-// (2) far rengi konteksti qururuq: bu cagirinin icindeki ON far koronalari
+162-//     Coronas.cpp-deki RegisterCorona hook-unda custom renge boyanir.
+163-// ---------------------------------------------------------------------------
+164-void (*CVehicle__DoVehicleLights)(CVehicleGTA* thiz, CMatrix *matVehicle, uint32 nLightFlags);
+165:void CVehicle__DoVehicleLights_hook(CVehicleGTA* thiz, CMatrix *matVehicle, uint32 nLightFlags)
+166-{
+167-    uint8_t old = thiz->m_nVehicleFlags.bEngineOn;
+168-    thiz->m_nVehicleFlags.bEngineOn = 1;
+169-
+170-    auto& ho = CCoronas::s_HeadlightOverride;
+171-    ho.vehicle = thiz;
+172-    ho.inTail  = false;
+173-    ho.r = ho.g = ho.b = 255;
+174-    ho.active = CCoronas::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b) ||
+175-                VehTuner::GetHeadlightRGB(thiz, ho.r, ho.g, ho.b);
+176-
+177-    CVehicle__DoVehicleLights(thiz, matVehicle, nLightFlags);
+--
+309-    }
+310-
+311:    // DoVehicleLights hook-undan (PreRender): oyunun oz "bu lampa yanir" bayraqlari
+312-    void ApplyRenderLightBits(CVehicleGTA* veh) { if (!veh) return; Prune(veh); if (s_signals.empty()) return;
+313-        auto it = s_signals.find(veh);
+314-        if (it == s_signals.end()) return;
+315-
+316-        if (!g_sigLamp) return;
+317-
+318-        bool l, r;
+319-        ComputeSides(it->second, l, r);
+320-        const uint8_t on = BlinkOn() ? 1 : 0;
+321-        if (l) { veh->m_renderLights.m_bLeftFront  = on; veh->m_renderLights.m_bLeftRear  = on; }
+322-        if (r) { veh->m_renderLights.m_bRightFront = on; veh->m_renderLights.m_bRightRear = on; }
+323-    }
+--
+402-// Render zamani lampa materiallarinin yanma massivini (ms_lightsOn) sinyala gore deyisir
+403-void (*CVehicleModelInfo__SetupLightFlags)(CVehicleGTA* veh);
+404:void CVehicleModelInfo__SetupLightFlags_hook(CVehicleGTA* veh)
+405-{
+406-    CVehicleModelInfo__SetupLightFlags(veh);
+407-    VehControls::ApplyLampArray(veh);
+408-}
+409-
+410-void CVehicleGTA::InjectHooks() {
+411-    // var
+412-    CHook::Write(g_libGTASA + (VER_x32 ? 0x675F10 : 0x849EA8), &CVehicleGTA::m_aSpecialColModel);
+413-
+414:    CHook::Redirect("_ZN8CVehicle25RenderDriverAndPassengersEv", &RenderDriverAndPassengers_hook);
+415:    CHook::Redirect("_ZN8CVehicle9SetDriverEP4CPed", &SetDriver_hook);
+416-
+417:    CHook::Redirect("_ZN8CVehicle17DoTailLightEffectEiR7CMatrixhhjh", &CVehicle__DoTailLightEffect);
+######## FAYL app/src/main/cpp/samp/game/Entity/CVehicleGTA.h ########
+1: //
+2: // Created by roman on 11/24/2024.
+3: //
+4: 
+5: #pragma once
+6: 
+7: #include "CPhysical.h"
+8: #include "game/common.h"
+9: #include "game/Enums/eVehicleType.h"
+10: #include "game/tHandlingData.h"
+11: #include "game/Entity/CPhysical.h"
+12: #include "game/Enums/eVehicleHandlingFlags.h"
+13: #include "game/RideAnimData.h"
+14: struct CPedGTA;
+15: 
+16: enum eVehicleCreatedBy : uint8 {
+17:     RANDOM_VEHICLE = 1,
+18:     MISSION_VEHICLE = 2,
+19:     PARKED_VEHICLE = 3,
+20:     PERMANENT_VEHICLE = 4
+21: };
+22: 
+23: enum eRotationAxis : int32 {
+24:     AXIS_X = 0,
+25:     AXIS_Y = 1,
+26:     AXIS_Z = 2
+27: };
+28: enum eCarLock : uint32 {
+29:     CARLOCK_NOT_USED,
+30:     CARLOCK_UNLOCKED,
+31:     CARLOCK_LOCKED,
+32:     CARLOCK_LOCKOUT_PLAYER_ONLY,
+33:     CARLOCK_LOCKED_PLAYER_INSIDE,
+34:     CARLOCK_COP_CAR,
+35:     CARLOCK_FORCE_SHUT_DOORS,
+36:     CARLOCK_SKIP_SHUT_DOORS
+37: };
+38: 
+39: struct CVehicleGTA : CPhysical {
+40: #if VER_x32
+41:     uint8_t m_VehicleAudioEntity[588];
+42: #else
+43:     uint8_t m_VehicleAudioEntity[0x310];
+44: #endif
+45:     tHandlingData* m_pHandlingData;
+46:     uintptr_t* pFlyingHandling;
+47:     union{
+48:         eVehicleHandlingFlags  m_nHandlingFlagsIntValue;
+49:         struct {
+50:             uint32_t b1gBoost : 1;
+51:             uint32_t b2gBoost : 1;
+52:             uint32_t bNpcAntiRoll : 1;
+53:             uint32_t bNpcNeutralHandl : 1;
+54:             uint32_t bNoHandbrake : 1;
+55:             uint32_t bSteerRearwheels : 1;
+56:             uint32_t bHbRearwheelSteer : 1;
+57:             uint32_t bAltSteerOpt : 1;
+58:             uint32_t bWheelFNarrow2 : 1;
+59:             uint32_t bWheelFNarrow : 1;
+60:             uint32_t bWheelFWide : 1;
+######## RESURS FAYLLARI ########
+app/src/main/assets/Fonts/BRADLEYHANDITCTTBOLD.TTF
+app/src/main/assets/Fonts/ChaletComprime-CologneSixty.otf
+app/src/main/assets/Fonts/GTALICENSE-REGULAR.TTF
+app/src/main/assets/Fonts/HELVETICANEUELT-LIGHTCOND.TTF
+app/src/main/assets/Fonts/HELVETICANEUELT-MEDIUMCOND.TTF
+app/src/main/assets/Fonts/HELVETICANEUELTCOM-MD.TTF
+app/src/main/assets/Fonts/HELVETICANEUELTCOM-MDCN.TTF
+app/src/main/assets/Fonts/HELVETICANEUELTCYR-LIGHTCN.TTF
+app/src/main/assets/Fonts/HELVETICANEUELTCYR-MDCOND.TTF
+app/src/main/assets/Fonts/HELVETICANEUELTW1G-ROMAN.OTF
+app/src/main/assets/Fonts/PRICEDOWNGTAVINT.TTF
+app/src/main/assets/Textures/fonts/RussianFont.png
+app/src/main/assets/images/23F3A6.png
+app/src/main/assets/images/23F3A7.png
+app/src/main/assets/images/25C5D0.png
+app/src/main/assets/images/728EBC.png
+app/src/main/assets/images/728EBD.png
+app/src/main/assets/images/728EC0.png
+app/src/main/assets/images/728EC1.png
+app/src/main/assets/images/728EC2.png
+app/src/main/assets/images/728EC3.png
+app/src/main/assets/images/RockstarIntro.png
+app/src/main/assets/images/Splash.png
+app/src/main/assets/images/Splash@2x.png
+app/src/main/assets/json/socialClubAssets.json
+app/src/main/assets/social club/socialClubAssets.json
+app/src/main/assets/socialclub/ButtonDown.png
+app/src/main/assets/socialclub/ButtonUp.png
+app/src/main/assets/socialclub/FeedBar.png
+app/src/main/assets/socialclub/FeedBar@2x.png
+app/src/main/assets/socialclub/Header_SC.png
+app/src/main/assets/socialclub/Header_SC@2x.png
+app/src/main/assets/socialclub/Header_SCBox.png
+app/src/main/assets/socialclub/Header_SCBox@2x.png
+app/src/main/assets/socialclub/PopUP/Button_Blank.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Corners_BL.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Corners_BR.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Corners_TL.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Corners_TR.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Edges_B.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Edges_L.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Edges_R.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Edges_T.png
+app/src/main/assets/socialclub/PopUP/PopUp_BG_Fill.png
+app/src/main/assets/socialclub/PopUP/PopUp_Button_Cross.png
+app/src/main/assets/socialclub/PopUP/PopUp_Button_Cross@2x.png
+app/src/main/assets/socialclub/PopUP/PopUp_Button_Tick.png
+app/src/main/assets/socialclub/PopUP/PopUp_Button_Tick@2x.png
+app/src/main/assets/socialclub/PopUP/PopUp_Footer.png
+app/src/main/assets/socialclub/PopUP/PopUp_Header.png
+app/src/main/assets/socialclub/PopUP/PopUp_Lines.png
+app/src/main/assets/socialclub/SC_Blue_Button_Dot.png
+app/src/main/assets/socialclub/SC_Blue_Button_Tick.png
+app/src/main/assets/socialclub/SC_Circle_Box.png
+app/src/main/assets/socialclub/SC_Circle_Box_Tick.png
+app/src/main/assets/socialclub/SC_Close_icon.png
+app/src/main/assets/socialclub/SC_DOB_Box.png
+app/src/main/assets/socialclub/SC_Gray_Button.png
+app/src/main/assets/socialclub/SC_Gray_Button_Dot.png

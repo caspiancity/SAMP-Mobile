@@ -318,6 +318,7 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
 
         instance = this;
 
+        copyPlateAssets();   // PLATE_V7
         try {
             initializeSAMP();
         } catch (UnsatisfiedLinkError e5) {
@@ -371,6 +372,34 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         } catch (Throwable t) {
             Log.e(TAG, "handling copy: " + t);
             Toast.makeText(this, "Fayl oxunmadı", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // PLATE_V7: assets/Fonts/plate.ttf ve assets/plate/plate.png -> <storage>/SAMP/plate/
+    private void copyPlateAssets() {
+        try {
+            File base = getExternalFilesDir(null);
+            if (base == null) base = getFilesDir();
+            File dir = new File(base, "SAMP/plate");
+            if (!dir.exists()) dir.mkdirs();
+            copyAssetTo("Fonts/plate.ttf", new File(dir, "plate.ttf"));
+            copyAssetTo("plate/plate.png", new File(dir, "plate.png"));
+        } catch (Throwable t) {
+            Log.e(TAG, "copyPlateAssets: " + t);
+        }
+    }
+
+    private void copyAssetTo(String name, File out) {
+        try {
+            java.io.InputStream in = getAssets().open(name);
+            java.io.FileOutputStream os = new java.io.FileOutputStream(out);
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            os.close();
+            in.close();
+        } catch (Throwable t) {
+            Log.w(TAG, "asset tapilmadi: " + name);
         }
     }
 

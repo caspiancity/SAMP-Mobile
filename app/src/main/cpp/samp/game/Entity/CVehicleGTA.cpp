@@ -143,6 +143,7 @@ void CVehicleGTA::ClearGettingOutFlags(uint8 doorId) {
 void RenderDriverAndPassengers_hook(CVehicleGTA *thiz)
 {
     thiz->RenderDriverAndPassengers();
+    Plate::Render(thiz);   // PLATE_V7: PNG nomre lovhesi
 }
 
 void SetDriver_hook(CVehicleGTA *thiz, CPedGTA *pPed)

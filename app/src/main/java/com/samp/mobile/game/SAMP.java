@@ -375,32 +375,44 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         }
     }
 
-    // PLATE_V7: assets/Fonts/plate.ttf ve assets/plate/plate.png -> <storage>/SAMP/plate/
+    // PLATE_V8: plate.png / plate.ttf -> <externalFiles>/SAMP/plate/ (+ <files>/SAMP/plate/). Asset yoxdursa movcud fayla toxunmur.
     private void copyPlateAssets() {
+        final String[] pngNames = { "plate/plate.png", "Plate/plate.png", "plate/Plate.png", "plate.png" };
+        final String[] ttfNames = { "Fonts/plate.ttf", "fonts/plate.ttf", "plate/plate.ttf", "plate.ttf" };
+        java.util.ArrayList<java.io.File> dirs = new java.util.ArrayList<java.io.File>();
         try {
-            File base = getExternalFilesDir(null);
-            if (base == null) base = getFilesDir();
-            File dir = new File(base, "SAMP/plate");
-            if (!dir.exists()) dir.mkdirs();
-            copyAssetTo("Fonts/plate.ttf", new File(dir, "plate.ttf"));
-            copyAssetTo("plate/plate.png", new File(dir, "plate.png"));
-        } catch (Throwable t) {
-            Log.e(TAG, "copyPlateAssets: " + t);
+            java.io.File b = getExternalFilesDir(null);
+            if (b != null) dirs.add(new java.io.File(b, "SAMP/plate"));
+        } catch (Throwable t) { }
+        try { dirs.add(new java.io.File(getFilesDir(), "SAMP/plate")); } catch (Throwable t) { }
+        for (java.io.File d : dirs) {
+            try { d.mkdirs(); } catch (Throwable t) { }
+            boolean a = copyFirstAsset(pngNames, new java.io.File(d, "plate.png"));
+            boolean b = copyFirstAsset(ttfNames, new java.io.File(d, "plate.ttf"));
+            android.util.Log.i("SAMPPlate", d.getPath() + " png=" + a + " ttf=" + b);
         }
     }
 
-    private void copyAssetTo(String name, File out) {
-        try {
-            java.io.InputStream in = getAssets().open(name);
-            java.io.FileOutputStream os = new java.io.FileOutputStream(out);
-            byte[] buf = new byte[16384];
-            int n;
-            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
-            os.close();
-            in.close();
-        } catch (Throwable t) {
-            Log.w(TAG, "asset tapilmadi: " + name);
+    private boolean copyFirstAsset(String[] names, java.io.File out) {
+        for (String name : names) {
+            java.io.InputStream in = null;
+            try {
+                in = getAssets().open(name);
+                java.io.File tmp = new java.io.File(out.getPath() + ".tmp");
+                java.io.FileOutputStream os = new java.io.FileOutputStream(tmp);
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                os.close();
+                if (out.exists()) out.delete();
+                if (tmp.renameTo(out)) return true;
+            } catch (Throwable t) {
+                // bu adla asset yoxdur -> novbetisi
+            } finally {
+                try { if (in != null) in.close(); } catch (Throwable t) { }
+            }
         }
+        return false;
     }
 
     private native void initializeSAMP();

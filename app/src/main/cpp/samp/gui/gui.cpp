@@ -2450,8 +2450,8 @@ namespace PlateAdj
                 s_phi   -= (t.x - s_lx) * 0.005f;
                 s_theta += (t.y - s_ly) * 0.004f;
                 s_lx = t.x; s_ly = t.y;
-                s_phi   = Clamp(s_phi, -1.2f, 1.2f);
-                s_theta = Clamp(s_theta, -0.3f, 1.0f);
+                s_phi   = Clamp(s_phi, -0.95f, 0.95f);   // PLATE_V8
+                s_theta = Clamp(s_theta, 0.0f, 0.9f);
             } else s_drag = false;
         }
 

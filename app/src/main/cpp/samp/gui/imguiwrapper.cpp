@@ -406,9 +406,10 @@ bool ImGuiWrapper::initialize()
 		extern ImFont* g_pPlateFont;
 		extern char* g_pszStorage;
 		g_pPlateFont = nullptr;
-		if (g_pszStorage)
+		if (true)   // PLATE_V8
 		{
-			const std::string plateP = std::string(g_pszStorage) + "/SAMP/plate/plate.ttf";
+			extern std::string PlateFindFile(const char*);
+			const std::string plateP = PlateFindFile("plate/plate.ttf");
 			if (access(plateP.c_str(), R_OK) == 0)
 			{
 				static const ImWchar plateRanges[] = { 0x0020, 0x0020, 0x0030, 0x0039, 0x0041, 0x005A, 0 };

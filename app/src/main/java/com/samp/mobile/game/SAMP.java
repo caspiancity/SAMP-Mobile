@@ -388,8 +388,37 @@ public class SAMP extends GTASA implements CustomKeyboard.InputListener, HeightP
         for (java.io.File d : dirs) {
             try { d.mkdirs(); } catch (Throwable t) { }
             boolean a = copyFirstAsset(pngNames, new java.io.File(d, "plate.png"));
+            fixPlatePng(new java.io.File(d, "plate.png"));   // PLATE_V9
             boolean b = copyFirstAsset(ttfNames, new java.io.File(d, "plate.ttf"));
             android.util.Log.i("SAMPPlate", d.getPath() + " png=" + a + " ttf=" + b);
+        }
+    }
+
+    // PLATE_V9: plate.png real PNG deyilse (JPEG/WebP/BMP/GIF) oxuyub real PNG kimi yeniden yazir
+    private void fixPlatePng(java.io.File f) {
+        try {
+            if (f == null || !f.exists()) return;
+            byte[] h = new byte[8];
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            int n = in.read(h);
+            in.close();
+            final int[] sig = { 137, 80, 78, 71, 13, 10, 26, 10 };
+            boolean ok = (n == 8);
+            for (int i = 0; ok && i < 8; i++) if ((h[i] & 0xFF) != sig[i]) ok = false;
+            if (ok) return;
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(f.getPath());
+            if (bmp == null) {
+                android.util.Log.w("SAMPPlate", "plate.png sekil kimi oxunmadi: " + f.getPath() + " (" + f.length() + " bayt)");
+                return;
+            }
+            java.io.File tmp = new java.io.File(f.getPath() + ".fix");
+            java.io.FileOutputStream os = new java.io.FileOutputStream(tmp);
+            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, os);
+            os.close();
+            if (f.delete() | true) tmp.renameTo(f);
+            android.util.Log.i("SAMPPlate", "plate.png real PNG-e cevrildi: " + f.getPath() + " " + bmp.getWidth() + "x" + bmp.getHeight());
+        } catch (Throwable t) {
+            android.util.Log.w("SAMPPlate", "fixPlatePng: " + t);
         }
     }
 

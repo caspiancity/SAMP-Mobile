@@ -725,7 +725,24 @@ namespace PlateImpl
     static bool DecodePng(const std::vector<uint8_t>& d, int& W, int& H, std::vector<uint8_t>& rgba, std::string& err)
     {
         static const uint8_t sig[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
-        if (d.size() < 33 || memcmp(&d[0], sig, 8) != 0) { err = "PNG deyil (basliq sehvdir)"; return false; }
+        if (d.size() < 33 || memcmp(&d[0], sig, 8) != 0)
+        {
+            // PLATE_V9: diaqnostika
+            const unsigned n = (unsigned)d.size();
+            const unsigned b0 = n > 0 ? d[0] : 0, b1 = n > 1 ? d[1] : 0, b2 = n > 2 ? d[2] : 0, b3 = n > 3 ? d[3] : 0;
+            const char* fmt = "namelum format";
+            if (n == 0) fmt = "fayl bosdur";
+            else if (b0 == 0xFF && b1 == 0xD8) fmt = "bu JPEG-dir";
+            else if (b0 == 'R' && b1 == 'I' && b2 == 'F') fmt = "bu WebP-dir";
+            else if (b0 == 'G' && b1 == 'I' && b2 == 'F') fmt = "bu GIF-dir";
+            else if (b0 == 'B' && b1 == 'M') fmt = "bu BMP-dir";
+            else if (b0 == '<' || b0 == 'v' || b0 == 'V') fmt = "bu metn/HTML/LFS fayldir";
+            else if (n < 33) fmt = "fayl cox kicikdir";
+            char hb[160];
+            snprintf(hb, sizeof(hb), "PNG deyil (%s): %u bayt, ilk baytlar %02X %02X %02X %02X", fmt, n, b0, b1, b2, b3);
+            err = hb;
+            return false;
+        }
         size_t p = 8;
         int depth = 0, ct = -1, il = 0;
         W = H = 0;

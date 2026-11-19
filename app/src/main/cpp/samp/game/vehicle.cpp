@@ -297,16 +297,25 @@ void CVehicle::AddComponent(int iComponentID)
 {
     if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
     if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
+    if (iComponentID < 1000 || iComponentID > 1193) return;
 
-    if (!CStreaming::TryLoadModel(iComponentID))
-        throw std::runtime_error("Model not loaded");
+    // MM_V7: evvel burada exception atilirdi (crash) ve nitro/hidravlika ucun artıq is_component_available yoxlanirdi
+    if (!CStreaming::TryLoadModel(iComponentID)) return;
 
-    if (!ScriptCommand(&is_component_available, iComponentID)) {
-        return;
-    }
+    const bool special = (iComponentID >= 1008 && iComponentID <= 1010) || iComponentID == 1086 || iComponentID == 1087;
+    if (!special && !ScriptCommand(&is_component_available, iComponentID)) return;
 
-    uint32_t dwRet;
+    uint32_t dwRet = 0;
     ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
+
+    // skript komandasi isleməyibse birbasa native
+    if (!m_pVehicle->HasUpgrade(iComponentID)) m_pVehicle->AddVehicleUpgrade(iComponentID);
+    if (!m_pVehicle->HasUpgrade(iComponentID)) return;
+
+    if (iComponentID == 1008) m_pVehicle->m_nNitroBoosts = 5;
+    else if (iComponentID == 1009) m_pVehicle->m_nNitroBoosts = 2;
+    else if (iComponentID == 1010) m_pVehicle->m_nNitroBoosts = 10;
+    else if (iComponentID == 1087) ScriptCommand(&set_car_hydraulics, m_dwGTAId, 1);   // yaradilarkən 0 verilirdi
 }
 
 void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
@@ -524,6 +533,8 @@ void CVehicle::RemoveComponent(int iComponentID)
         return;
 
     ScriptCommand(&remove_component, m_dwGTAId, iComponentID);
+    if (m_pVehicle->HasUpgrade(iComponentID)) m_pVehicle->RemoveVehicleUpgrade(iComponentID);   // MM_V7 native ehtiyat
+    if (iComponentID == 1087) ScriptCommand(&set_car_hydraulics, m_dwGTAId, 0);
 }
 
 void CVehicle::SetZAngle(float fAngle)
@@ -933,6 +944,22 @@ static void HndxFixMass(uintptr_t p)
 // masinin ilk (original) handling-i: "Sifirla" ucun
 static std::map<CVehicleGTA*, std::vector<uint8_t>> g_HndxOrig;
 
+// MM_V7: CPhysical kutlesi handling-den AYRI saxlanir -> evvel "Cəki" deyisende real masin deyismirdi
+struct HndxPhys { float mass; float turn; };
+static std::map<CVehicleGTA*, HndxPhys> g_HndxPhys;
+
+// maxspeed: yalniz bir sahe deyismek kifayet etmir, vites cedveli ve maxVelocity de miqyaslanmalidir
+static void HndxScaleSpeed(uintptr_t p, float ratio)
+{
+    if (!(ratio > 0.01f && ratio < 100.0f)) return;
+    tHandlingData* h = (tHandlingData*)p;
+    cTransmission& t = h->m_transmissionData;
+    t.m_fMaxVelocity *= ratio;
+    float* gr = (float*)t.m_aGears;
+    const size_t n = sizeof(t.m_aGears) / sizeof(float);
+    for (size_t i = 0; i < n; ++i) gr[i] *= ratio;
+}
+
 static void HndxSnap(CVehicle* v)
 {
     CVehicleGTA* g = v->m_pVehicle;
@@ -942,6 +969,7 @@ static void HndxSnap(CVehicle* v)
     if (it != g_HndxOrig.end() && it->second.size() == HND_SIZE &&
         memcmp(it->second.data(), (void*)p, 4) == 0) return;   // eyni model, snapshot kecerlidir
     g_HndxOrig[g].assign((uint8_t*)p, (uint8_t*)p + HND_SIZE);
+    g_HndxPhys[g] = HndxPhys{ g->m_fMass, g->m_fTurnMass };
 }
 
 static int HndxHexVal(char c)
@@ -989,8 +1017,19 @@ bool HndExt_Set(CVehicle* v, const char* name, float val)
     HndxSnap(v);
     const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
     if (!p) return false;
+    const float oldVal = *(float*)(p + f->off);
     *(float*)(p + f->off) = val;
-    if (f->off == offsetof(tHandlingData, m_fMass)) HndxFixMass(p);
+    CVehicleGTA* gv = v->m_pVehicle;
+    if (f->off == offsetof(tHandlingData, m_fMass)) {
+        HndxFixMass(p);
+        if (oldVal > 1.0e-4f) gv->m_fMass *= (val / oldVal);          // MM_V7
+    }
+    if (f->off == offsetof(tHandlingData, m_fTurnMass) && oldVal > 1.0e-4f) gv->m_fTurnMass *= (val / oldVal);
+    if (f->off == HND_MAX_VELOCITY && oldVal > 1.0e-4f && val > 0.0f) HndxScaleSpeed(p, val / oldVal);
+    if (f->off == offsetof(tHandlingData, m_fSuspensionUpperLimit) ||
+        f->off == offsetof(tHandlingData, m_fSuspensionLowerLimit) ||
+        f->off == offsetof(tHandlingData, m_fSuspensionBiasBetweenFrontAndRear))
+        gv->RefreshSuspensionLines();
     return true;
 }
 
@@ -1002,6 +1041,11 @@ bool HndExt_Reset(CVehicle* v)
     const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
     if (!p) return false;
     memcpy((void*)(p + 4), it->second.data() + 4, HND_SIZE - 4);
+    {   // MM_V7: CPhysical kutlesini de qaytar + asma xetlerini yeniden qur
+        std::map<CVehicleGTA*, HndxPhys>::iterator ph = g_HndxPhys.find(v->m_pVehicle);
+        if (ph != g_HndxPhys.end()) { v->m_pVehicle->m_fMass = ph->second.mass; v->m_pVehicle->m_fTurnMass = ph->second.turn; }
+        v->m_pVehicle->RefreshSuspensionLines();
+    }
     return true;
 }
 
@@ -1336,3 +1380,5 @@ bool HndExt_ApplyFileSlot(CVehicle* v, int slot, std::string& msg)
     return true;
 }
 // ===== /HNDV3 =====
+
+// MM_V7

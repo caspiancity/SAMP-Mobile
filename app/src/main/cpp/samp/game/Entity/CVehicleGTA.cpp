@@ -118,6 +118,12 @@ void CVehicleGTA::RemoveVehicleUpgrade(int32 upgradeModelIndex) {
     CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x58CC2C + 1 : 0x6B0718), this, upgradeModelIndex);
 }
 
+// MM_V7: asma (susp) handling deyisenden sonra xetlerin yeniden hesablanmasi (yoxsa hundurluk deyismir)
+void CVehicleGTA::RefreshSuspensionLines() {
+    if (m_nVehicleSubType != VEHICLE_TYPE_AUTOMOBILE) return;
+    CHook::CallFunction<void>("_ZN11CAutomobile20SetupSuspensionLinesEv", this);
+}
+
 // 0x6D3000
 void CVehicleGTA::SetGettingInFlags(uint8 doorId) {
     m_nGettingInFlags |= doorId;
@@ -401,11 +407,13 @@ namespace VehControls
 }
 
 // Render zamani lampa materiallarinin yanma massivini (ms_lightsOn) sinyala gore deyisir
+#include "../VehDetach.h"   // MM_V7
 void (*CVehicleModelInfo__SetupLightFlags)(CVehicleGTA* veh);
 void CVehicleModelInfo__SetupLightFlags_hook(CVehicleGTA* veh)
 {
     CVehicleModelInfo__SetupLightFlags(veh);
     VehControls::ApplyLampArray(veh);
+    VehDetach::Apply(veh);   // MM_V7
 }
 
 void CVehicleGTA::InjectHooks() {

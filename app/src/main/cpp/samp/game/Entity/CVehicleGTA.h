@@ -349,6 +349,9 @@ public:
 
     void AddVehicleUpgrade(int32 modelId);
     void RemoveVehicleUpgrade(int32 upgradeModelIndex);
+    // MM_V7
+    bool HasUpgrade(int32 modelId) const { for (int i = 0; i < 15; ++i) if (m_anUpgrades[i] == modelId) return true; return false; }
+    void RefreshSuspensionLines();
 };
 
 VALIDATE_SIZE(CVehicleGTA, (VER_x32 ? 0x5B4 : 0x758));

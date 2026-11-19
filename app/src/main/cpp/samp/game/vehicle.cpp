@@ -293,29 +293,24 @@ int CVehicle::GetVehicleSubtype()
     return 0;
 }
 
+#include <unistd.h>
 void CVehicle::AddComponent(int iComponentID)
 {
     if (!m_pVehicle || !GamePool_Vehicle_GetAt(m_dwGTAId)) return;
     if (GetVehicleSubtype() != VEHICLE_SUBTYPE_CAR) return;
     if (iComponentID < 1000 || iComponentID > 1193) return;
+    if (m_pVehicle->HasUpgrade(iComponentID)) return;
 
-    // MM_V7: evvel burada exception atilirdi (crash) ve nitro/hidravlika ucun artıq is_component_available yoxlanirdi
-    if (!CStreaming::TryLoadModel(iComponentID)) return;
-
-    const bool special = (iComponentID >= 1008 && iComponentID <= 1010) || iComponentID == 1086 || iComponentID == 1087;
-    if (!special && !ScriptCommand(&is_component_available, iComponentID)) return;
-
+    // MM_V8: SA-MP-in standart yolu. Evvelki versiyada native AddVehicleUpgrade cagirilirdi -> atma verirdi.
+    ScriptCommand(&request_car_component, iComponentID);
+    ScriptCommand(&load_requested_models);
+    int wait = 0;
+    while (!ScriptCommand(&is_component_available, iComponentID)) {
+        usleep(2000);
+        if (++wait > 400) return;      // ~0.8 san
+    }
     uint32_t dwRet = 0;
     ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
-
-    // skript komandasi isleməyibse birbasa native
-    if (!m_pVehicle->HasUpgrade(iComponentID)) m_pVehicle->AddVehicleUpgrade(iComponentID);
-    if (!m_pVehicle->HasUpgrade(iComponentID)) return;
-
-    if (iComponentID == 1008) m_pVehicle->m_nNitroBoosts = 5;
-    else if (iComponentID == 1009) m_pVehicle->m_nNitroBoosts = 2;
-    else if (iComponentID == 1010) m_pVehicle->m_nNitroBoosts = 10;
-    else if (iComponentID == 1087) ScriptCommand(&set_car_hydraulics, m_dwGTAId, 1);   // yaradilarkən 0 verilirdi
 }
 
 void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
@@ -533,8 +528,6 @@ void CVehicle::RemoveComponent(int iComponentID)
         return;
 
     ScriptCommand(&remove_component, m_dwGTAId, iComponentID);
-    if (m_pVehicle->HasUpgrade(iComponentID)) m_pVehicle->RemoveVehicleUpgrade(iComponentID);   // MM_V7 native ehtiyat
-    if (iComponentID == 1087) ScriptCommand(&set_car_hydraulics, m_dwGTAId, 0);
 }
 
 void CVehicle::SetZAngle(float fAngle)
@@ -944,11 +937,13 @@ static void HndxFixMass(uintptr_t p)
 // masinin ilk (original) handling-i: "Sifirla" ucun
 static std::map<CVehicleGTA*, std::vector<uint8_t>> g_HndxOrig;
 
-// MM_V7: CPhysical kutlesi handling-den AYRI saxlanir -> evvel "Cəki" deyisende real masin deyismirdi
-struct HndxPhys { float mass; float turn; };
+// MM_V8: ferdi handling kopyasi + CPhysical kutlesi (handling-den AYRI saxlanir)
+struct HndxPhys { float mass; float turn; uint32_t ctime; };
 static std::map<CVehicleGTA*, HndxPhys> g_HndxPhys;
+struct HndxOwn { uint32_t ctime; tHandlingData* copy; };
+static std::map<CVehicleGTA*, HndxOwn> g_HndxOwnMap;
 
-// maxspeed: yalniz bir sahe deyismek kifayet etmir, vites cedveli ve maxVelocity de miqyaslanmalidir
+// maxspeed: yalniz bir sahe yox, vites cedveli ve maxVelocity de miqyaslanmalidir
 static void HndxScaleSpeed(uintptr_t p, float ratio)
 {
     if (!(ratio > 0.01f && ratio < 100.0f)) return;
@@ -960,16 +955,31 @@ static void HndxScaleSpeed(uintptr_t p, float ratio)
     for (size_t i = 0; i < n; ++i) gr[i] *= ratio;
 }
 
+static tHandlingData* HndxOwnCopy(CVehicleGTA* g)
+{   // MM_V8: pointer birbasa strukturdan (xam offset yox); masina ferdi kopya
+    if (!g || !g->m_pHandlingData) return nullptr;
+    std::map<CVehicleGTA*, HndxOwn>::iterator it = g_HndxOwnMap.find(g);
+    if (it != g_HndxOwnMap.end()) {
+        if (it->second.ctime == g->m_nCreationTime && g->m_pHandlingData == it->second.copy) return it->second.copy;
+        if (it->second.ctime != g->m_nCreationTime) delete it->second.copy;   // eyni adresde basqa masin
+        g_HndxOwnMap.erase(it);
+    }
+    tHandlingData* c = new tHandlingData(*g->m_pHandlingData);
+    g->m_pHandlingData = c;
+    HndxOwn o; o.ctime = g->m_nCreationTime; o.copy = c;
+    g_HndxOwnMap[g] = o;
+    return c;
+}
+
 static void HndxSnap(CVehicle* v)
 {
     CVehicleGTA* g = v->m_pVehicle;
-    const uintptr_t p = GetCurrentHandling(g);
-    if (!p) return;
-    std::map<CVehicleGTA*, std::vector<uint8_t>>::iterator it = g_HndxOrig.find(g);
-    if (it != g_HndxOrig.end() && it->second.size() == HND_SIZE &&
-        memcmp(it->second.data(), (void*)p, 4) == 0) return;   // eyni model, snapshot kecerlidir
-    g_HndxOrig[g].assign((uint8_t*)p, (uint8_t*)p + HND_SIZE);
-    g_HndxPhys[g] = HndxPhys{ g->m_fMass, g->m_fTurnMass };
+    if (!g || !g->m_pHandlingData) return;
+    std::map<CVehicleGTA*, HndxPhys>::iterator ph = g_HndxPhys.find(g);
+    if (ph != g_HndxPhys.end() && ph->second.ctime == g->m_nCreationTime && g_HndxOrig.count(g)) return;
+    g_HndxOrig[g].assign((uint8_t*)g->m_pHandlingData, (uint8_t*)g->m_pHandlingData + HND_SIZE);
+    HndxPhys pp; pp.mass = g->m_fMass; pp.turn = g->m_fTurnMass; pp.ctime = g->m_nCreationTime;
+    g_HndxPhys[g] = pp;
 }
 
 static int HndxHexVal(char c)
@@ -1002,9 +1012,9 @@ bool HndExt_Get(CVehicle* v, const char* name, float* out)
     if (!v || !v->m_pVehicle || !out) return false;
     const HndxField* f = HndxFind(name);
     if (!f) return false;
-    const uintptr_t p = GetCurrentHandling(v->m_pVehicle);
-    if (!p) return false;
-    *out = *(float*)(p + f->off);
+    tHandlingData* h = v->m_pVehicle->m_pHandlingData;
+    if (!h) return false;
+    *out = *(float*)((uintptr_t)h + f->off);
     return true;
 }
 
@@ -1015,14 +1025,15 @@ bool HndExt_Set(CVehicle* v, const char* name, float val)
     const HndxField* f = HndxFind(name);
     if (!f) return false;
     HndxSnap(v);
-    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
-    if (!p) return false;
+    tHandlingData* h = HndxOwnCopy(v->m_pVehicle);
+    if (!h) return false;
+    const uintptr_t p = (uintptr_t)h;
+    CVehicleGTA* gv = v->m_pVehicle;
     const float oldVal = *(float*)(p + f->off);
     *(float*)(p + f->off) = val;
-    CVehicleGTA* gv = v->m_pVehicle;
     if (f->off == offsetof(tHandlingData, m_fMass)) {
         HndxFixMass(p);
-        if (oldVal > 1.0e-4f) gv->m_fMass *= (val / oldVal);          // MM_V7
+        if (oldVal > 1.0e-4f) gv->m_fMass *= (val / oldVal);
     }
     if (f->off == offsetof(tHandlingData, m_fTurnMass) && oldVal > 1.0e-4f) gv->m_fTurnMass *= (val / oldVal);
     if (f->off == HND_MAX_VELOCITY && oldVal > 1.0e-4f && val > 0.0f) HndxScaleSpeed(p, val / oldVal);
@@ -1038,14 +1049,12 @@ bool HndExt_Reset(CVehicle* v)
     if (!v || !v->m_pVehicle) return false;
     std::map<CVehicleGTA*, std::vector<uint8_t>>::iterator it = g_HndxOrig.find(v->m_pVehicle);
     if (it == g_HndxOrig.end() || it->second.size() != HND_SIZE) return false;
-    const uintptr_t p = GetOrCreateOwnHandling(v->m_pVehicle);
-    if (!p) return false;
-    memcpy((void*)(p + 4), it->second.data() + 4, HND_SIZE - 4);
-    {   // MM_V7: CPhysical kutlesini de qaytar + asma xetlerini yeniden qur
-        std::map<CVehicleGTA*, HndxPhys>::iterator ph = g_HndxPhys.find(v->m_pVehicle);
-        if (ph != g_HndxPhys.end()) { v->m_pVehicle->m_fMass = ph->second.mass; v->m_pVehicle->m_fTurnMass = ph->second.turn; }
-        v->m_pVehicle->RefreshSuspensionLines();
-    }
+    tHandlingData* h = HndxOwnCopy(v->m_pVehicle);
+    if (!h) return false;
+    memcpy((void*)((uintptr_t)h + 4), it->second.data() + 4, HND_SIZE - 4);
+    std::map<CVehicleGTA*, HndxPhys>::iterator ph = g_HndxPhys.find(v->m_pVehicle);
+    if (ph != g_HndxPhys.end()) { v->m_pVehicle->m_fMass = ph->second.mass; v->m_pVehicle->m_fTurnMass = ph->second.turn; }
+    v->m_pVehicle->RefreshSuspensionLines();
     return true;
 }
 
@@ -1381,4 +1390,4 @@ bool HndExt_ApplyFileSlot(CVehicle* v, int slot, std::string& msg)
 }
 // ===== /HNDV3 =====
 
-// MM_V7
+// MM_V8

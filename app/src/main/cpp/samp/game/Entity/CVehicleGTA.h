@@ -349,7 +349,7 @@ public:
 
     void AddVehicleUpgrade(int32 modelId);
     void RemoveVehicleUpgrade(int32 upgradeModelIndex);
-    // MM_V7
+    // MM_V8
     bool HasUpgrade(int32 modelId) const { for (int i = 0; i < 15; ++i) if (m_anUpgrades[i] == modelId) return true; return false; }
     void RefreshSuspensionLines();
 };

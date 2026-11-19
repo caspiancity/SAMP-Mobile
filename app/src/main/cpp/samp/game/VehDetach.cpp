@@ -1,4 +1,5 @@
 #include "VehDetach.h"
+#include <cstdio>
 #include <unordered_map>
 #include <vector>
 #include <cstring>
@@ -12,26 +13,26 @@ namespace VehDetach
     const char* const kLabel[P_COUNT] = {
         "Kapot", "Baqaj", "Ön bufer", "Arxa bufer",
         "Sol ön qapı", "Sağ ön qapı", "Sol arxa qapı", "Sağ arxa qapı",
-        "Sol ön qanad", "Sağ ön qanad", "Fara", "Stop",
+        "Sol ön qanad", "Sağ ön qanad", "Ön farlar", "Stoplar",
         "Ön şüşə", "Ekzoz", "Əlavə detallar"
     };
 
-    // GTA SA vehicle.dff frame adlari (modele gore bezileri olmaya biler)
+    // GTA SA vehicle.dff frame adlari (her model hamisina malik deyil)
     static const char* const kFrames[P_COUNT][6] = {
-        { "bonnet_dummy" },
-        { "boot_dummy" },
-        { "bump_front_dummy" },
-        { "bump_rear_dummy" },
-        { "door_lf_dummy" },
-        { "door_rf_dummy" },
-        { "door_lr_dummy" },
-        { "door_rr_dummy" },
-        { "wing_lf_dummy" },
-        { "wing_rf_dummy" },
+        { "bonnet_dummy", "bonnet_ok", "bonnet" },
+        { "boot_dummy", "boot_ok", "boot" },
+        { "bump_front_dummy", "bump_front_ok", "bump_front" },
+        { "bump_rear_dummy", "bump_rear_ok", "bump_rear" },
+        { "door_lf_dummy", "door_lf_ok" },
+        { "door_rf_dummy", "door_rf_ok" },
+        { "door_lr_dummy", "door_lr_ok" },
+        { "door_rr_dummy", "door_rr_ok" },
+        { "wing_lf_dummy", "wing_lf_ok" },
+        { "wing_rf_dummy", "wing_rf_ok" },
         { "headlights", "headlights2" },
         { "taillights", "taillights2" },
-        { "windscreen_dummy" },
-        { "exhaust_ok" },
+        { "windscreen_dummy", "windscreen_ok", "windscreen" },
+        { "exhaust_ok", "exhaust_dummy", "exhaust" },
         { "extra1", "extra2", "extra3", "extra4", "extra5", "extra6" },
     };
 
@@ -55,11 +56,11 @@ namespace VehDetach
         return o;
     }
 
-    static void Walk(RwFrame* f, std::vector<Saved>& out)
+    static void Walk(RwFrame* f, std::vector<Saved>& out, int depth)
     {
-        if (!f) return;
+        if (!f || depth > 8) return;
         RwFrameForAllObjects(f, CollectCB, &out);
-        for (RwFrame* c = f->child; c; c = c->next) Walk(c, out);
+        for (RwFrame* c = f->child; c; c = c->next) Walk(c, out, depth + 1);
     }
 
     static void Collect(CVehicleGTA* v, int part, std::vector<Saved>& out)
@@ -67,7 +68,7 @@ namespace VehDetach
         for (const char* nm : kFrames[part]) {
             if (!nm) break;
             RwFrame* fr = CClumpModelInfo::GetFrameFromName((RpClump*)v->m_pRwClump, nm);
-            if (fr) Walk(fr, out);
+            if (fr) Walk(fr, out, 0);
         }
     }
 
@@ -77,7 +78,6 @@ namespace VehDetach
         auto it = g_st.find(v);
         if (it != g_st.end()) {
             State& s = it->second;
-            // basqa masin eyni adresde / klump yeniden yuklenib -> kohne pointerlere TOXUNMADAN sifirla
             if (s.ctime != v->m_nCreationTime || s.clump != (void*)v->m_pRwClump) g_st.erase(it);
             else return &s;
         }
@@ -92,7 +92,7 @@ namespace VehDetach
     {
         if (!v || !v->m_pRwClump || part < 0 || part >= P_COUNT) return false;
         State* s = Get(v, false);
-        if (s && (s->mask & (1u << part))) return true;     // artiq sokulub
+        if (s && (s->mask & (1u << part))) return true;
         std::vector<Saved> tmp;
         Collect(v, part, tmp);
         return !tmp.empty();
@@ -110,7 +110,7 @@ namespace VehDetach
         State* s = Get(v, true);
         if (!s) return false;
         const uint32_t bit = 1u << part;
-        if (s->mask & bit) {                                  // geri qoy
+        if (s->mask & bit) {
             for (auto& sv : s->saved[part]) sv.o->flags = sv.flags;
             s->saved[part].clear();
             s->mask &= ~bit;
@@ -124,15 +124,8 @@ namespace VehDetach
         return true;
     }
 
-    void ShowAll(CVehicleGTA* v)
-    {
-        for (int p = 0; p < P_COUNT; ++p) if (IsHidden(v, p)) Toggle(v, p);
-    }
-
-    void HideAll(CVehicleGTA* v)
-    {
-        for (int p = 0; p < P_COUNT; ++p) if (!IsHidden(v, p)) Toggle(v, p);
-    }
+    void ShowAll(CVehicleGTA* v) { for (int p = 0; p < P_COUNT; ++p) if (IsHidden(v, p)) Toggle(v, p); }
+    void HideAll(CVehicleGTA* v) { for (int p = 0; p < P_COUNT; ++p) if (!IsHidden(v, p)) Toggle(v, p); }
 
     void Apply(CVehicleGTA* v)
     {
@@ -141,6 +134,25 @@ namespace VehDetach
         if (!s || !s->mask) return;
         for (int p = 0; p < P_COUNT; ++p)
             if (s->mask & (1u << p))
-                for (auto& sv : s->saved[p]) sv.o->flags &= ~kRenderFlag;   // GTA geri yandirsa yeniden sondur
+                for (auto& sv : s->saved[p]) sv.o->flags &= ~kRenderFlag;
+    }
+
+    void Diag(CVehicleGTA* v, void* file)
+    {
+        FILE* f = (FILE*)file;
+        if (!f || !v) return;
+        fprintf(f, "clump=%p\n", (void*)v->m_pRwClump);
+        if (!v->m_pRwClump) return;
+        for (int p = 0; p < P_COUNT; ++p) {
+            fprintf(f, "[%s]", kLabel[p]);
+            for (const char* nm : kFrames[p]) {
+                if (!nm) break;
+                RwFrame* fr = CClumpModelInfo::GetFrameFromName((RpClump*)v->m_pRwClump, nm);
+                std::vector<Saved> tmp;
+                if (fr) Walk(fr, tmp, 0);
+                fprintf(f, " %s=%s/%d", nm, fr ? "frame" : "yox", (int)tmp.size());
+            }
+            fprintf(f, " hidden=%d\n", IsHidden(v, p) ? 1 : 0);
+        }
     }
 }

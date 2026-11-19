@@ -13,12 +13,11 @@ namespace VehDetach
 
     extern const char* const kLabel[P_COUNT];
 
-    bool Available(CVehicleGTA* v, int part);   // bu modelde bele hisse varmi
+    bool Available(CVehicleGTA* v, int part);   // modelde bu hisse ayrica obyekt kimi varmi
     bool IsHidden (CVehicleGTA* v, int part);
-    bool Toggle   (CVehicleGTA* v, int part);   // true = deyisdi
+    bool Toggle   (CVehicleGTA* v, int part);
     void ShowAll  (CVehicleGTA* v);
     void HideAll  (CVehicleGTA* v);
-
-    // CVehicleModelInfo::SetupLightFlags hook-undan (render zamani, her kadr) cagirilir
-    void Apply(CVehicleGTA* v);
+    void Apply    (CVehicleGTA* v);              // render hook-dan
+    void Diag     (CVehicleGTA* v, void* file);  // FILE* -> hansi frame/atomlar tapildi
 }

@@ -118,10 +118,19 @@ void CVehicleGTA::RemoveVehicleUpgrade(int32 upgradeModelIndex) {
     CHook::CallFunction<void>(g_libGTASA + (VER_x32 ? 0x58CC2C + 1 : 0x6B0718), this, upgradeModelIndex);
 }
 
-// MM_V7: asma (susp) handling deyisenden sonra xetlerin yeniden hesablanmasi (yoxsa hundurluk deyismir)
+// MM_V8: susp (hundurluk) handling deyisenden sonra xetlerin yeniden qurulmasi. Simvol tapilmasa HEC NE etmir (atma yoxdur).
+#include <dlfcn.h>
 void CVehicleGTA::RefreshSuspensionLines() {
-    if (m_nVehicleSubType != VEHICLE_TYPE_AUTOMOBILE) return;
-    CHook::CallFunction<void>("_ZN11CAutomobile20SetupSuspensionLinesEv", this);
+    if (!m_pHandlingData) return;
+    if (m_pHandlingData->m_bIsBike || m_pHandlingData->m_bIsHeli || m_pHandlingData->m_bIsPlane || m_pHandlingData->m_bIsBoat) return;
+    static void (*fn)(CVehicleGTA*) = nullptr;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        void* h = dlopen("libGTASA.so", RTLD_NOLOAD | RTLD_LAZY);
+        if (h) fn = (void (*)(CVehicleGTA*))dlsym(h, "_ZN11CAutomobile20SetupSuspensionLinesEv");
+    }
+    if (fn) fn(this);
 }
 
 // 0x6D3000
@@ -407,13 +416,13 @@ namespace VehControls
 }
 
 // Render zamani lampa materiallarinin yanma massivini (ms_lightsOn) sinyala gore deyisir
-#include "../VehDetach.h"   // MM_V7
+#include "../VehDetach.h"   // MM_V8
 void (*CVehicleModelInfo__SetupLightFlags)(CVehicleGTA* veh);
 void CVehicleModelInfo__SetupLightFlags_hook(CVehicleGTA* veh)
 {
     CVehicleModelInfo__SetupLightFlags(veh);
     VehControls::ApplyLampArray(veh);
-    VehDetach::Apply(veh);   // MM_V7
+    VehDetach::Apply(veh);   // MM_V8
 }
 
 void CVehicleGTA::InjectHooks() {
@@ -445,3 +454,5 @@ bool CVehicleGTA::IsRCVehicleModelID() {
     }
     return false;
 }
+
+// MM_V8

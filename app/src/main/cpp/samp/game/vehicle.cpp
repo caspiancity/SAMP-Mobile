@@ -309,8 +309,8 @@ void CVehicle::AddComponent(int iComponentID)
         usleep(2000);
         if (++wait > 400) return;      // ~0.8 san
     }
-    uint32_t dwRet = 0;
-    ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet);
+    uint32_t dwRet[16] = { 0 };   // MM_V10: cixis parametri 4 baytdan cox yaza biler -> stack canary
+    ScriptCommand(&add_car_component, m_dwGTAId, iComponentID, &dwRet[0]);
 }
 
 void CVehicle::SetPaintJob(uint8_t bytePaintJobID)
@@ -1391,3 +1391,5 @@ bool HndExt_ApplyFileSlot(CVehicle* v, int slot, std::string& msg)
 // ===== /HNDV3 =====
 
 // MM_V8
+
+// MM_V10

@@ -443,6 +443,7 @@ uint32_t CHudColours__GetIntColour(uintptr* thiz, uint8 colour_id)
 /* =============================================================================== */
 
 void CamCtl_OnTouch(int type, int num, int x, int y);   // AZ_PATCH4 (gui.cpp)
+bool CamX_OnTouch(int type, int num, int x, int y);   // AZ_CAMX
 void (*AND_TouchEvent)(int type, int num, int posX, int posY);
 void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
@@ -488,7 +489,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
         }
 	}
 
-	CamCtl_OnTouch(type, num, posX, posY);   // AZ_PATCH4: UI qebul etmeyen toxunuslar
+	if (CamX_OnTouch(type, num, posX, posY)) { AND_TouchEvent(1, num, posX, posY); return; }   // AZ_CAMX
 	if (pGame->IsGameInputEnabled())
 		AND_TouchEvent(type, num, posX, posY);
 	else
@@ -1698,11 +1699,12 @@ void CGame_Process_hook()
     }
 }
 
+extern float g_camxFovOffset;   // AZ_CAMX
 float (*CDraw__SetFOV)(float thiz, float a2);
 float CDraw__SetFOV_hook(float thiz, float a2)
 {
-    float tmp = (float)((float)((float)(*(float *)&*(float *)(g_libGTASA + (VER_x32 ? 0x00A26A90 : 0xCC7F00)) - 1.3333) * 11.0) / 0.44444) + thiz;
-    if(tmp > 100) tmp = 100.0;
+    float tmp = (float)((float)((float)(*(float *)&*(float *)(g_libGTASA + (VER_x32 ? 0x00A26A90 : 0xCC7F00)) - 1.3333) * 11.0) / 0.44444) + thiz + g_camxFovOffset;
+    { const float cap = (g_camxFovOffset != 0.0f) ? 140.0f : 100.0f; if (tmp > cap) tmp = cap; if (tmp < 20.0f) tmp = 20.0f; }
     *(float *)(g_libGTASA + (VER_x32 ? 0x006B1CB8 : 0x88E6BC)) = tmp;
     return thiz;
 }

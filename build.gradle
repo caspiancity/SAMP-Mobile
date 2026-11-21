@@ -5,8 +5,8 @@
 buildscript {
     repositories {
         google()
+        maven { url 'https://maven.aliyun.com/repository/central' }
         mavenCentral()
-        maven { url 'https://artifacts.applovin.com/android' }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.2.1'

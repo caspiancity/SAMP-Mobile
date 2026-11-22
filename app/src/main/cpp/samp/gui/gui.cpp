@@ -47,9 +47,14 @@ extern UI* pUI;
 //  Ekranin SAG terefinde (x>35%, y<72%) barmaqla surusdurende kamera donur.
 //  Kamera SA-MP-nin oz script emrleri ile (set_camera_position + point_camera) her kadr yerlesdirilir.
 // ============================================================================
-void CamX_Update();   // AZ_CAMX
-bool CamX_OnTouch(int type, int num, int x, int y);
+// AZ_CAMX
 bool CamX_Command(const char* a, const char* b, char* rep, int n);
+int   CamX_GetMode();
+void  CamX_Cycle();
+bool  CamX_IsDrone();
+void  CamX_ToggleDrone();
+float CamX_GetFov();
+void  CamX_SetFov(float v);
 
 namespace CamCtl
 {
@@ -324,7 +329,7 @@ void UI::render()
         ProcessTouchQueue();     // toxunuslari bu kadr ucun oxu
 
         AzPlate::ProcessPending();
-        CamX_Update();            // AZ_PATCH4: /cam   // nomre teksturalari (ImGui kadrindan evvel)
+        /* AZ_CAMX: eski /cam sondurulub */            // AZ_PATCH4: /cam   // nomre teksturalari (ImGui kadrindan evvel)
 
         ImGuiWrapper::render();
 
@@ -1061,14 +1066,57 @@ static void RenderHandlingDialog_Old()
                                 { "/tormoz N","Tormoz gücü" },
                                 { "/gizle",   "Bütün UI-ı gizlət/geri qaytar" },
                                 { "/yt",      "YouTube paneli" },
+                                { "/cam",     "mta | fps | game | drone | fov N" },
                         };
                         const int n = (int)(sizeof(kCmds) / sizeof(kCmds[0]));
                         for (int i = 0; i < n; ++i)
                         {
-                                const Rc row{ cx0, P.y + S(124.0f + 52.0f * i), cw, S(44.0f) };
+                                const Rc row{ cx0, P.y + S(124.0f + 34.0f * i), cw, S(30.0f) };
                                 Fill(row, Col(27, 30, 40, 255), S(9.0f));
                                 Txt(S(15.0f), row.x + S(16.0f), row.y + (row.h - S(15.0f)) * 0.5f, Accent(0.0f), kCmds[i].cmd);
                                 Txt(S(14.0f), row.x + S(160.0f), row.y + (row.h - S(14.0f)) * 0.5f, Col(200, 204, 216), kCmds[i].desc);
+                        }
+                        {   // AZ_CAMX: kamera paneli
+                                const float y0 = P.y + S(124.0f + 34.0f * n + 14.0f);
+                                static const char* kMn[3] = { "Oyun kamerasi", "MTA (el ile)", "Birinci shexs" };
+                                const Rc rA{ cx0, y0, cw, S(36.0f) };
+                                Fill(rA, Col(27, 30, 40, 255), S(9.0f));
+                                Txt(S(15.0f), rA.x + S(16.0f), rA.y + (rA.h - S(15.0f)) * 0.5f, Col(200, 204, 216), "Kamera");
+                                Txt(S(15.0f), rA.x + S(120.0f), rA.y + (rA.h - S(15.0f)) * 0.5f, Accent(0.0f), kMn[CamX_GetMode() % 3]);
+                                const Rc bA{ rA.x + rA.w - S(112.0f), rA.y + S(5.0f), S(100.0f), S(26.0f) };
+                                Fill(bA, Col(60, 66, 84, 255), S(7.0f));
+                                Txt(S(14.0f), bA.x + S(22.0f), bA.y + (bA.h - S(14.0f)) * 0.5f, Col(240, 243, 250), "Deyish");
+                                if (Tap(240, bA, canInput)) CamX_Cycle();
+
+                                const Rc rB{ cx0, y0 + S(40.0f), cw, S(36.0f) };
+                                Fill(rB, Col(27, 30, 40, 255), S(9.0f));
+                                Txt(S(15.0f), rB.x + S(16.0f), rB.y + (rB.h - S(15.0f)) * 0.5f, Col(200, 204, 216), "Dron kamera");
+                                Txt(S(15.0f), rB.x + S(120.0f), rB.y + (rB.h - S(15.0f)) * 0.5f, Accent(0.0f), CamX_IsDrone() ? "ACIQ" : "bagli");
+                                const Rc bB{ rB.x + rB.w - S(112.0f), rB.y + S(5.0f), S(100.0f), S(26.0f) };
+                                Fill(bB, CamX_IsDrone() ? Col(70, 130, 90, 255) : Col(60, 66, 84, 255), S(7.0f));
+                                Txt(S(14.0f), bB.x + S(24.0f), bB.y + (bB.h - S(14.0f)) * 0.5f, Col(240, 243, 250), CamX_IsDrone() ? "Bagla" : "Ac");
+                                if (Tap(241, bB, canInput)) CamX_ToggleDrone();
+
+                                const Rc rC{ cx0, y0 + S(80.0f), cw, S(40.0f) };
+                                Fill(rC, Col(27, 30, 40, 255), S(9.0f));
+                                char fb[32]; snprintf(fb, sizeof(fb), "FOV  %.0f", CamX_GetFov());
+                                Txt(S(15.0f), rC.x + S(16.0f), rC.y + (rC.h - S(15.0f)) * 0.5f, Col(200, 204, 216), fb);
+                                const float tx0 = rC.x + S(120.0f), tx1 = rC.x + rC.w - S(24.0f), ty = rC.y + rC.h * 0.5f;
+                                static bool s_fovDrag = false;
+                                const bool inHit = g_mmTouch.x >= tx0 - S(12.0f) && g_mmTouch.x <= tx1 + S(12.0f) &&
+                                                   g_mmTouch.y >= rC.y && g_mmTouch.y <= rC.y + rC.h;
+                                if (g_mmTouch.pressed && inHit && canInput) s_fovDrag = true;
+                                if (!g_mmTouch.down) s_fovDrag = false;
+                                if (s_fovDrag) {
+                                        float f = (g_mmTouch.x - tx0) / (tx1 - tx0);
+                                        f = f < 0.0f ? 0.0f : (f > 1.0f ? 1.0f : f);
+                                        CamX_SetFov(40.0f + 70.0f * f);
+                                }
+                                float ff = (CamX_GetFov() - 40.0f) / 70.0f;
+                                ff = ff < 0.0f ? 0.0f : (ff > 1.0f ? 1.0f : ff);
+                                Fill(Rc{ tx0, ty - S(3.0f), tx1 - tx0, S(6.0f) }, Col(255, 255, 255, 40), S(3.0f));
+                                Fill(Rc{ tx0, ty - S(3.0f), (tx1 - tx0) * ff, S(6.0f) }, Col(235, 235, 235, 255), S(3.0f));
+                                Fill(Rc{ tx0 + (tx1 - tx0) * ff - S(8.0f), ty - S(8.0f), S(16.0f), S(16.0f) }, Col(255, 255, 255, 255), S(8.0f));
                         }
                 }
                 else if (s_page == 6)    // NOMRE (Azerbaycan)
@@ -3513,286 +3561,3 @@ void RenderHandlingDialog()
     if (!g_mmTouch.down) s_act = 0;
 }
 // MM_V8
-
-// ============================================================================
-// AZ_CAMX : kamera sistemi (kamera ikonu ile deyisme, pinch zoom, MTA, FPS, dron, FOV)
-// ============================================================================
-int LineOfSight(RwV3d* start, RwV3d* end, void* colpoint, uintptr_t ent, char buildings, char vehicles, char peds, char objects, char dummies, bool seeThrough, bool camera, bool unk);
-float g_camxFovOffset = 0.0f;
-
-namespace CamX
-{
-    enum { M_GAME = 0, M_CHASE = 1, M_MTA = 2, M_FPS = 3 };
-    enum { MAXP = 8 };
-    static int   s_mode = M_GAME, s_prevMode = M_CHASE;
-    static bool  s_active = false, s_drone = false, s_pinching = false;
-    static float s_yaw = 0.0f, s_pitch = -0.22f, s_dist = 5.0f;
-    static float s_distChase = 5.0f, s_distMta = 7.5f, s_lastH = 0.0f, s_idle = 0.0f;
-    static float s_sens = 0.0045f, s_dspeed = 22.0f;
-    static CVector s_dpos;
-    static bool  p_down[MAXP] = {}, p_rz[MAXP] = {};
-    static float p_x[MAXP] = {}, p_y[MAXP] = {};
-    static int   s_look = -1, s_stick = -1;
-    static float s_lx = 0, s_ly = 0, s_sx = 0, s_sy = 0, s_mx = 0, s_my = 0;
-    static float s_pinchPrev = 0.0f, s_pinchAcc = 0.0f;
-
-    static float Clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-    static float WrapPi(float a) { while (a > 3.14159265f) a -= 6.2831853f; while (a < -3.14159265f) a += 6.2831853f; return a; }
-    static bool  Own() { return s_mode != M_GAME || s_drone; }
-    static CCamera& Cam() { return *reinterpret_cast<CCamera*>(g_libGTASA + (VER_x32 ? 0x00951FA8 : 0xBBA8D0)); }
-
-    static void ClampPitch()
-    {
-        const float lo = (s_mode == M_FPS || s_drone) ? -1.45f : -1.25f;
-        const float hi = (s_mode == M_FPS || s_drone) ?  1.45f :  0.12f;   // 3-cu shexsde kamera yerin altina dusmesin
-        s_pitch = Clampf(s_pitch, lo, hi);
-    }
-
-    static CPedGTA* Ped()
-    {
-        CPlayerPed* p = pGame ? pGame->FindPlayerPed() : nullptr;
-        return (p && p->m_pPed) ? p->m_pPed : nullptr;
-    }
-
-    static bool GetTarget(CVector& t, float& h, bool& inVeh)
-    {
-        CPedGTA* g = Ped();
-        if (!g) return false;
-        inVeh = g->IsInVehicle();
-        if (inVeh) {
-            CVehicleGTA* v = g->pVehicle;
-            RwMatrix m = v->GetMatrix().ToRwMatrix();
-            h = atan2f(m.up.y, m.up.x);
-            const CVector p = v->GetPosition();
-            t.x = p.x; t.y = p.y; t.z = p.z + 0.9f;
-        } else {
-            RwMatrix m = g->GetMatrix().ToRwMatrix();
-            h = atan2f(m.up.y, m.up.x);
-            const CVector p = g->GetPosition();
-            t.x = p.x; t.y = p.y; t.z = p.z + 0.75f;
-        }
-        return true;
-    }
-
-    // oyunun hazirki kamerasindan yaw/pitch/mesafe goturur (keçid hhamar olsun)
-    static void InitFromGameCam(float defDist)
-    {
-        CVector t; float h = 0.0f; bool v = false;
-        if (!GetTarget(t, h, v)) return;
-        const CVector c = Cam().GetPosition();
-        const float dx = t.x - c.x, dy = t.y - c.y, dz = t.z - c.z;
-        const float d = sqrtf(dx * dx + dy * dy + dz * dz);
-        if (d < 1.0f || d > 40.0f) { s_yaw = h; s_pitch = -0.22f; s_dist = defDist; }
-        else { s_yaw = atan2f(dy, dx); s_pitch = asinf(Clampf(dz / d, -1.0f, 1.0f)); s_dist = d; }
-        ClampPitch();
-    }
-
-    static void SetMode(int m)
-    {
-        if (m == s_mode) return;
-        if (s_mode == M_CHASE) s_distChase = s_dist; else if (s_mode == M_MTA) s_distMta = s_dist;
-        const int old = s_mode;
-        if (old == M_GAME) InitFromGameCam(5.0f);
-        if (m == M_CHASE) { if (old == M_GAME) s_distChase = s_dist; s_dist = Clampf(s_distChase, 1.6f, 16.0f); }
-        else if (m == M_MTA) s_dist = Clampf(s_distMta, 2.5f, 25.0f);
-        if (m == M_FPS) s_prevMode = (old == M_GAME) ? (int)M_CHASE : old;
-        s_mode = m; s_idle = 0.0f; ClampPitch();
-    }
-
-    static void ApplyPinch(float delta)      // delta>0: barmaqlar aralanir = yaxinlasdir
-    {
-        if (s_drone) { s_dspeed = Clampf(s_dspeed + delta * 0.06f, 5.0f, 120.0f); return; }
-        if (s_mode == M_GAME) {
-            s_pinchAcc += delta;
-            if (fabsf(s_pinchAcc) < 40.0f) return;
-            SetMode(M_CHASE); s_pinchAcc = 0.0f;
-        }
-        if (s_mode == M_FPS) {
-            if (delta < 0.0f) { s_pinchAcc += delta; if (s_pinchAcc < -70.0f) { SetMode(s_prevMode); s_pinchAcc = 0.0f; } }
-            else s_pinchAcc = 0.0f;
-            return;
-        }
-        s_dist -= delta * 0.02f * (1.0f + s_dist * 0.15f);
-        if (s_dist < 1.3f) { s_dist = 2.0f; SetMode(M_FPS); s_pinchAcc = 0.0f; return; }
-        s_dist = Clampf(s_dist, 1.3f, s_mode == M_MTA ? 25.0f : 16.0f);
-    }
-
-    static bool LosClear(const CVector& a, const CVector& b)
-    {
-        RwV3d s = { a.x, a.y, a.z }, e = { b.x, b.y, b.z };
-        alignas(16) char col[256]; uintptr_t hitEnt = 0;
-        return LineOfSight(&s, &e, col, (uintptr_t)&hitEnt, 1, 0, 0, 0, 0, false, true, false) == 0;
-    }
-
-    static void Place(const CVector& P, const CVector& T)
-    {
-        CCamera::SetPosition(P.x, P.y, P.z, 0.0f, 0.0f, 0.0f);
-        CCamera::LookAtPoint(T.x, T.y, T.z, 2);
-    }
-
-    static void SetDrone(bool on)
-    {
-        if (on == s_drone) return;
-        if (on) {
-            if (s_mode == M_GAME) InitFromGameCam(5.0f);
-            const CVector c = Cam().GetPosition();
-            s_dpos.x = c.x; s_dpos.y = c.y; s_dpos.z = c.z;
-            s_stick = -1; s_mx = s_my = 0.0f; s_look = -1;
-            s_drone = true;
-        } else { s_drone = false; s_stick = -1; s_mx = s_my = 0.0f; ClampPitch(); }
-    }
-}
-
-bool CamX_OnTouch(int type, int num, int x, int y)
-{
-    using namespace CamX;
-    if (num < 0 || num >= MAXP) return false;
-    const ImVec2 d = ImGui::GetIO().DisplaySize;
-    const float fx = (float)x, fy = (float)y;
-    bool consume = false;
-
-    if (type == 2) {                                   // push
-        p_down[num] = true; p_x[num] = fx; p_y[num] = fy;
-        p_rz[num] = fx > d.x * 0.35f && fy < d.y * 0.72f;
-        if (s_drone && !p_rz[num] && fy > d.y * 0.30f && s_stick < 0) { s_stick = num; s_sx = fx; s_sy = fy; s_mx = s_my = 0.0f; }
-        if (num == s_stick) consume = true;
-        else if (p_rz[num] && s_look < 0 && Own() && !s_pinching) { s_look = num; s_lx = fx; s_ly = fy; }
-    }
-    else if (type == 3) {                              // move
-        p_x[num] = fx; p_y[num] = fy;
-        if (num == s_stick) {
-            const float Rr = d.y * 0.16f;
-            s_mx = Clampf((fx - s_sx) / Rr, -1.0f, 1.0f); s_my = Clampf((fy - s_sy) / Rr, -1.0f, 1.0f);
-            consume = true;
-        } else if (num == s_look && !s_pinching) {
-            s_yaw   -= (fx - s_lx) * s_sens;           // saga surusdur -> saga bax
-            s_pitch -= (fy - s_ly) * s_sens;           // asagi surusdur -> asagi bax
-            s_lx = fx; s_ly = fy; s_idle = 0.0f; ClampPitch();
-        } else if (s_look < 0 && p_rz[num] && Own() && !s_pinching) { s_look = num; s_lx = fx; s_ly = fy; }
-    }
-    else if (type == 1) {                              // pop
-        if (num == s_stick) { s_stick = -1; s_mx = s_my = 0.0f; consume = true; }
-        if (num == s_look) s_look = -1;
-        p_down[num] = false; p_rz[num] = false;
-    }
-
-    // pinch (zonada 2 barmaq)
-    if (type != 1) {
-        int a = -1, b = -1;
-        for (int i = 0; i < MAXP; ++i) if (p_down[i] && p_rz[i]) { if (a < 0) a = i; else if (b < 0) b = i; }
-        if (a >= 0 && b >= 0) {
-            const float dd = hypotf(p_x[a] - p_x[b], p_y[a] - p_y[b]);
-            if (!s_pinching) { s_pinching = true; s_pinchPrev = dd; s_pinchAcc = 0.0f; s_look = -1; }
-            else if (type == 3 && (num == a || num == b)) { const float dl = dd - s_pinchPrev; s_pinchPrev = dd; ApplyPinch(dl); }
-        } else s_pinching = false;
-    } else {
-        int cnt = 0;
-        for (int i = 0; i < MAXP; ++i) if (p_down[i] && p_rz[i]) ++cnt;
-        if (cnt < 2) s_pinching = false;
-    }
-    return consume;
-}
-
-void CamX_Update()
-{
-    using namespace CamX;
-    static auto last = std::chrono::steady_clock::now();
-    const auto now = std::chrono::steady_clock::now();
-    float dt = std::chrono::duration<float>(now - last).count(); last = now;
-    if (dt > 0.05f) dt = 0.05f;
-    if (dt < 0.0f) dt = 0.0f;
-
-    if (!Own()) {
-        if (s_active) { s_active = false; s_look = -1; s_stick = -1; CCamera::SetBehindPlayer(); }
-        return;
-    }
-    if (!pGame || !pNetGame || pGame->IsGamePaused()) return;
-
-    CVector t; float h = 0.0f; bool inVeh = false;
-    if (!GetTarget(t, h, inVeh)) return;
-    if (!s_active) { s_active = true; s_lastH = h; }
-    if (inVeh && s_mode == M_FPS && !s_drone) s_yaw += WrapPi(h - s_lastH);   // masin donende baxis da donsun
-    s_lastH = h;
-    if (s_look < 0) s_idle += dt;
-
-    // CHASE: masinda barmaq yoxdursa kamera ozu arxaya qayidir (MTA-da hec vaxt)
-    if (s_mode == M_CHASE && inVeh && !s_drone && s_look < 0 && s_idle > 1.2f) {
-        const float k = Clampf(dt * 2.2f, 0.0f, 1.0f);
-        s_yaw += WrapPi(h - s_yaw) * k;
-        s_pitch += (-0.2f - s_pitch) * k * 0.7f;
-    }
-
-    const float cp = cosf(s_pitch), sp = sinf(s_pitch), cy = cosf(s_yaw), sy = sinf(s_yaw);
-    CVector dir; dir.x = cp * cy; dir.y = cp * sy; dir.z = sp;
-
-    if (s_drone) {
-        const float fwd = -s_my, str = s_mx;
-        s_dpos.x += (dir.x * fwd + sy * str) * s_dspeed * dt;
-        s_dpos.y += (dir.y * fwd - cy * str) * s_dspeed * dt;
-        s_dpos.z += (dir.z * fwd) * s_dspeed * dt;
-        const float ex = s_dpos.x - t.x, ey = s_dpos.y - t.y, ez = s_dpos.z - t.z;
-        const float dd = sqrtf(ex * ex + ey * ey + ez * ez);
-        if (dd > 300.0f) { const float k = 300.0f / dd; s_dpos.x = t.x + ex * k; s_dpos.y = t.y + ey * k; s_dpos.z = t.z + ez * k; }
-        CVector T; T.x = s_dpos.x + dir.x; T.y = s_dpos.y + dir.y; T.z = s_dpos.z + dir.z;
-        Place(s_dpos, T);
-        return;
-    }
-
-    if (s_mode == M_FPS) {
-        CPedGTA* g = Ped();
-        RwV3d bp = { 0.0f, 0.0f, 0.0f };
-        if (g) g->GetBonePosition(&bp, 5, false);               // 5 = bash
-        if (bp.x == 0.0f && bp.y == 0.0f && bp.z == 0.0f) { bp.x = t.x; bp.y = t.y; bp.z = t.z - 0.1f; }
-        CVector P, T;
-        P.x = bp.x + dir.x * 0.12f; P.y = bp.y + dir.y * 0.12f; P.z = bp.z + dir.z * 0.12f + 0.03f;
-        T.x = P.x + dir.x * 5.0f; T.y = P.y + dir.y * 5.0f; T.z = P.z + dir.z * 5.0f;
-        Place(P, T);
-        return;
-    }
-
-    float dd = s_dist; CVector P;
-    for (int i = 0; i < 6; ++i) {
-        P.x = t.x - dir.x * dd; P.y = t.y - dir.y * dd; P.z = t.z - dir.z * dd;
-        if (LosClear(t, P)) break;
-        dd *= 0.75f;
-    }
-    Place(P, t);
-}
-
-void CamX_OnCameraButton()
-{
-    using namespace CamX;
-    static auto last = std::chrono::steady_clock::now() - std::chrono::seconds(2);
-    const auto now = std::chrono::steady_clock::now();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count() < 350) return;
-    last = now;
-    if (s_drone) SetDrone(false); else SetMode((s_mode + 1) % 4);
-    FLog("CamX: kamera duymesi -> mode=%d drone=%d", s_mode, (int)s_drone);
-}
-
-// /mm menyusu ucun
-int   CamX_GetMode()          { return CamX::s_mode; }
-void  CamX_Cycle()            { CamX_OnCameraButton(); }
-bool  CamX_IsDrone()          { return CamX::s_drone; }
-void  CamX_ToggleDrone()      { CamX::SetDrone(!CamX::s_drone); }
-float CamX_GetFov()           { return 70.0f + g_camxFovOffset; }
-void  CamX_SetFov(float v)    { g_camxFovOffset = CamX::Clampf(v - 70.0f, -30.0f, 45.0f); }
-
-bool CamX_Command(const char* a, const char* b, char* rep, int n)
-{
-    using namespace CamX;
-    static const char* names[4] = { "Oyun kamerasi", "Chase (yaxinlasma)", "MTA (el ile)", "Birinci shexs" };
-    auto eq = [&](const char* s) { return a && !strcmp(a, s); };
-    if (!a || !a[0]) { SetDrone(false); SetMode((s_mode + 1) % 4); }
-    else if (eq("game") || eq("off")) { SetDrone(false); SetMode(M_GAME); }
-    else if (eq("chase"))             { SetDrone(false); SetMode(M_CHASE); }
-    else if (eq("mta") || eq("pc"))   { SetDrone(false); SetMode(M_MTA); }
-    else if (eq("fps"))               { SetDrone(false); SetMode(M_FPS); }
-    else if (eq("drone"))             { SetDrone(!s_drone); snprintf(rep, n, "Dron: %s", s_drone ? "ACIQ" : "bagli"); return true; }
-    else if (eq("speed"))             { s_dspeed = Clampf(b ? (float)atof(b) : 22.0f, 5.0f, 120.0f); snprintf(rep, n, "Dron sureti: %.0f", s_dspeed); return true; }
-    else if (eq("fov"))               { const float v = b ? (float)atof(b) : 0.0f; if (v <= 0.0f) g_camxFovOffset = 0.0f; else CamX_SetFov(v); snprintf(rep, n, "FOV: %.0f", CamX_GetFov()); return true; }
-    else if (eq("sens"))              { s_sens = Clampf(b ? (float)atof(b) : 5.0f, 1.0f, 20.0f) * 0.0009f; snprintf(rep, n, "Hessasliq: %.1f", s_sens / 0.0009f); return true; }
-    else return false;
-    snprintf(rep, n, "Kamera: %s", names[s_mode]);
-    return true;
-}

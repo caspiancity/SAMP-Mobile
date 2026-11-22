@@ -451,24 +451,6 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
     }
 }
 
-// AZ_CAMX: kamera ikonu
-#include <dlfcn.h>
-void CamX_OnCameraButton();
-uint32_t(*CPad__CycleCameraModeUp)(uintptr_t thiz);
-uint32_t CPad__CycleCameraModeUp_hook(uintptr_t thiz)
-{
-    const uint32_t r = CPad__CycleCameraModeUp(thiz);
-    if (r) CamX_OnCameraButton();
-    return 0;   // oyunun oz kamera dovrunu yeyirik, bizimki isleyir
-}
-uint32_t(*CPad__CycleCameraModeDown)(uintptr_t thiz);
-uint32_t CPad__CycleCameraModeDown_hook(uintptr_t thiz)
-{
-    const uint32_t r = CPad__CycleCameraModeDown(thiz);
-    if (r) CamX_OnCameraButton();
-    return 0;
-}
-
 uint32_t(*CPad__CycleWeaponRightJustDown)(uintptr_t thiz);
 uint32_t CPad__CycleWeaponRightJustDown_hook(uintptr_t thiz)
 {
@@ -1032,15 +1014,6 @@ void HookCPad()
     CHook::InlineHook("_ZN4CPad9GetWeaponEP4CPedb", &CPad__GetWeapon_hook, &CPad__GetWeapon);
     CHook::InlineHook("_ZN7CCamera17IsTargetingActiveEP10CPlayerPed", &CCamera_IsTargetingActive_hook, &CCamera_IsTargetingActive);
     CHook::InlineHook("_ZN4CPad24CycleWeaponRightJustDownEv", &CPad__CycleWeaponRightJustDown_hook, &CPad__CycleWeaponRightJustDown);
-    {   // AZ_CAMX
-        void* hl = dlopen("libGTASA.so", RTLD_NOW | RTLD_NOLOAD);
-        const char* sUp = "_ZN4CPad25CycleCameraModeUpJustDownEv";
-        const char* sDn = "_ZN4CPad27CycleCameraModeDownJustDownEv";
-        if (hl && dlsym(hl, sUp)) CHook::InlineHook(sUp, &CPad__CycleCameraModeUp_hook, &CPad__CycleCameraModeUp);
-        else FLog("CamX: %s tapilmadi", sUp);
-        if (hl && dlsym(hl, sDn)) CHook::InlineHook(sDn, &CPad__CycleCameraModeDown_hook, &CPad__CycleCameraModeDown);
-        else FLog("CamX: %s tapilmadi", sDn);
-    }
     //CHook::InstallPLT(g_libGTASA + 0x66F304, (uintptr_t)CPad__CycleWeaponLeftJustDown_hook, (uintptr_t*)&CPad__CycleWeaponLeftJustDown);
 
     // nitro

@@ -2072,7 +2072,8 @@ namespace CamX
         if (!GetTarget(g, T, h, inVeh)) return;
         const float dH = WrapPi(h - s_lastH); s_lastH = h;
         if (!s_haveT || sqrtf(Dot(Sub(T, s_T), Sub(T, s_T))) > 8.0f) { s_T = T; s_haveT = true; }
-        else s_T = Add(s_T, Mul(Sub(T, s_T), Clampf(dt * 14.0f, 0.0f, 1.0f)));
+        else if (inVeh || s_mode == M_FPS || s_drone) s_T = T;   // CAMFIX: masinda/FPS-de gecikme olmasin
+        else s_T = Add(s_T, Mul(Sub(T, s_T), Clampf(dt * 30.0f, 0.0f, 1.0f)));
 
         const V3 curSrc = s_natSrc, curFront = Norm(s_natFront);
 
@@ -2113,8 +2114,14 @@ namespace CamX
                 s_pitch = asinf(Clampf(curFront.z, -1.0f, 1.0f)); s_needInit = false; ClampPitch();
             }
             if (inVeh) s_yaw += dH;                        // masin donende baxis da donsun
+            else {                                         // CAMFIX: piyada, stick buraxilibsa bedenle birge don
+                uint16_t lrA = 0, udA = 0;
+                CPlayerPed* lp = pGame->FindPlayerPed();
+                if (lp) lp->GetKeys(&lrA, &udA);
+                if (abs((int)(int16_t)lrA) < 8 && abs((int)(int16_t)udA) < 8) s_yaw += dH;
+            }
             RwV3d bp = { 0.0f, 0.0f, 0.0f };
-            if (g) g->GetBonePosition(&bp, 5, false);      // 5 = bash
+            if (g) g->GetBonePosition(&bp, 5, true);      // 5 = bash
             if (bp.x == 0.0f && bp.y == 0.0f && bp.z == 0.0f) { bp.x = T.x; bp.y = T.y; bp.z = T.z - 0.1f; }
             const float cp = cosf(s_pitch), sp = sinf(s_pitch);
             const V3 dir = Mk(cp * cosf(s_yaw), cp * sinf(s_yaw), sp);

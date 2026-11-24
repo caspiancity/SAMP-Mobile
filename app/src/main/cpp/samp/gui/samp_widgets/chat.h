@@ -1,5 +1,9 @@
 #pragma once
 
+// chat olcusu: 1.0 = kohne boyuk, 0.8 = MTA kimi sixliq (yazi + setir hundurluyu birlikde)
+#define CHAT_SCALE 0.8f
+#define CHAT_TEXT_SIZE (UISettings::fontSize() * 0.5f * CHAT_SCALE)
+
 #include <list>
 
 class Chat : public ListBox
@@ -28,7 +32,7 @@ private:
 	public:
 		MessageItem(const std::string& message, const ImColor& color)
 		{
-			m_text = new Label(message, color, true, UISettings::fontSize() / 2);
+			m_text = new Label(message, color, true, CHAT_TEXT_SIZE);
 			this->addChild(m_text);
 		}
 
@@ -47,8 +51,8 @@ private:
 	public:
 		PlayerMessageItem(const std::string& message, const std::string& nick, const ImColor& nick_color)
 		{
-			m_nick = new Label(nick, nick_color, true, UISettings::fontSize() / 2);
-			m_text = new Label(": " + message, ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
+			m_nick = new Label(nick, nick_color, true, CHAT_TEXT_SIZE);
+			m_text = new Label(": " + message, ImColor(1.0f, 1.0f, 1.0f), true, CHAT_TEXT_SIZE);
 			this->addChild(m_nick);
 			this->addChild(m_text);
 		}

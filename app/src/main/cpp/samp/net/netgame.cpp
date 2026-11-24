@@ -35,14 +35,14 @@
 #define CLR_INFO    CLR_CYAN
 
 // ----- brend + ayirici -----
-#define MSG_BRAND   CLR_PINK "APACHE" CLR_CYAN "ONLINE"
-#define MSG_SEP     CLR_PINK " // " CLR_TEXT
+#define MSG_BRAND ""
+#define MSG_SEP ""
 
 // ----- seviyyeye gore prefikslər: [ikon] APACHEONLINE TAG // metn -----
-#define PFX_INFO    ":star: " MSG_BRAND " " CLR_CYAN  "INFO"  MSG_SEP
-#define PFX_OK      ":ok: "   MSG_BRAND " " CLR_OK    "OK"    MSG_SEP
-#define PFX_WARN    ":fire: " MSG_BRAND " " CLR_WARN  "DIQQET" MSG_SEP
-#define PFX_ERR     ":no: "   MSG_BRAND " " CLR_ERR   "XETA"  MSG_SEP
+#define PFX_INFO CLR_DIM
+#define PFX_OK   CLR_OK
+#define PFX_WARN CLR_WARN
+#define PFX_ERR  CLR_ERR
 
 #define MSG_PREFIX  PFX_INFO
 
@@ -127,8 +127,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char *szPlayerName, 
     if (pSettings)
         sampVer = pSettings->Get().szVersion;
 
-    if (pUI) pUI->chat()->addDebugMessage(
-        PFX_INFO "Klient versiyası " CLR_GOLD "%s" CLR_TEXT " uğurla yükləndi.", sampVer);
+    ;  /* chat spam silindi */
 }
 
 CNetGame::~CNetGame()
@@ -494,8 +493,7 @@ void CNetGame::ProcessConnecting()
 {
     if (GetTickCount() - m_dwLastConnectAttempt > 1000)
     {
-        if (pUI) pUI->chat()->addDebugMessage(
-            PFX_INFO "Serverə qoşulma qurulur" CLR_DIM "...");
+        ;  /* chat spam silindi */
 
         m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 2);
 

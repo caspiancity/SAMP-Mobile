@@ -418,6 +418,7 @@ public abstract class NvEventQueueActivity extends AppCompatActivity implements 
     {
         System.out.println("**** onCreate");
         super.onCreate(savedInstanceState);
+        FpsBoost.apply(this);
 
 		if(supportPauseResume)
 		{

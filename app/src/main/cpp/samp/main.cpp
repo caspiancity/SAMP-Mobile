@@ -111,6 +111,13 @@ static void LogMainLoopFPS()
 {
     static uint64_t last = 0;
     static int frames = 0;
+    static uint64_t s_lastNs = 0, s_sumNs = 0, s_worstNs = 0;
+    {
+        timespec t2; clock_gettime(CLOCK_MONOTONIC, &t2);
+        const uint64_t n = (uint64_t)t2.tv_sec * 1000000000ULL + (uint64_t)t2.tv_nsec;
+        if (s_lastNs) { const uint64_t d = n - s_lastNs; s_sumNs += d; if (d > s_worstNs) s_worstNs = d; }
+        s_lastNs = n;
+    }
 
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -121,7 +128,7 @@ static void LogMainLoopFPS()
     frames++;
     if (now - last >= 1000)
     {
-        FLog("MainLoop FPS: %d", frames);
+        FLog("MainLoop FPS: %d  avg %.1f ms  worst %.1f ms", frames, frames ? (double)s_sumNs / 1e6 / frames : 0.0, (double)s_worstNs / 1e6); s_sumNs = 0; s_worstNs = 0;
         frames = 0;
         last = now;
     }

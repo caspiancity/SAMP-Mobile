@@ -265,7 +265,7 @@ bool UI::initialize()
         this->addChild(m_chat);
         m_chat->setFixedSize(UISettings::chatSize());
         m_chat->setPosition(UISettings::chatPos());
-        m_chat->setItemSize(UISettings::chatItemSize());
+        { ImVec2 chatRow_ = UISettings::chatItemSize(); chatRow_.y *= CHAT_SCALE; m_chat->setItemSize(chatRow_); }
         m_chat->setVisible(false);
 
         m_buttonPanel = new ButtonPanel();
@@ -1276,7 +1276,7 @@ static void RenderHandlingDialog_Old()
                                 changed = false;
                                 s_flash = 1.0f;
                                 for (int k = 0; k < 8; ++k) s_frac[k] = 0.0f;
-                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[MM]: Standart dəyərlər qaytarıldı.");
+                                if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}Standart dəyərlər qaytarıldı.");
                         }
                         const float rp = Prs(ID_RESET, dt);
                         const Rc rd = Shrink(rb, S(1.5f) * rp);
@@ -2010,7 +2010,7 @@ void UI::touchEvent(const ImVec2& pos, TouchType type)
                                      (pos.x >= dsz.x * 0.15f && pos.x <= dsz.x * 0.72f && pos.y <= dsz.y * 0.34f);
                 if (tt == TOUCH_PUSH && hitChat) {
                         g_bHideAllUI = false;
-                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}Arayuz berpa edildi.");
                 }
                 s_dlgCapturedEvent = false;
                 return;
@@ -2060,7 +2060,7 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
                                      (tp.x >= dsz.x * 0.15f && tp.x <= dsz.x * 0.72f && tp.y <= dsz.y * 0.34f);
                 if (type == TOUCH_PUSH && hitChat) {
                         g_bHideAllUI = false;
-                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz berpa edildi.");
+                        if (pUI && pUI->chat()) pUI->chat()->addDebugMessage("{00FF00}Arayuz berpa edildi.");
                 }
                 return true;
         }

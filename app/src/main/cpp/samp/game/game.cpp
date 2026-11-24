@@ -17,6 +17,8 @@
 // Settings obyektinin mövcudluğunu bildiririk
 extern CSettings* pSettings; 
 
+void ApplyFPSPatch(uint8_t fps);
+#include "PerfTweaks.h"
 void ApplyFPSLimit(int iFPS)
 {
     if (iFPS <= 0) iFPS = 60; // Hər ehtimala qarşı standart 60 FPS
@@ -27,6 +29,7 @@ void ApplyFPSLimit(int iFPS)
     // Yaddaşa yazma icazəsini açırıq və yeni FPS kilitini yazırıq
     CHook::UnFuck(fpsAddr);
     *(uint32_t*)fpsAddr = (uint32_t)iFPS;
+    ApplyFPSPatch((uint8_t)(iFPS > 255 ? 255 : iFPS));
 }
 
 
@@ -904,6 +907,7 @@ void CGame::Process() {
         }
         ((void (*)()) (g_libGTASA + (VER_x32 ? 0x005B28D8 + 1 : 0x6D6E34)))(); // CPostEffects::Update()
         ((void (*)()) (g_libGTASA + (VER_x32 ? 0x0041EF78 + 1 : 0x502ADC)))(); // CTimeCycle::Update() crash without
+        PerfTweaks::AfterTimeCycleUpdate();
         // CPopCycle::Update()
 
         // CInterestingEvents::ScanForNearbyEntities

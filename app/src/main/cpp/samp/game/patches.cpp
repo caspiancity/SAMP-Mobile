@@ -90,9 +90,18 @@ void ApplyFPSPatch(uint8_t fps)
     // 3. Render dövrəsindəki usleep/delay (kadr gözləmə) patch-i
     CHook::NOP(g_libGTASA + 0x0053E90C, 2);
 #else
-    CHook::WriteMemory(g_libGTASA + 0x70A38C, "\xE9\x0F\x1E\x32", 4);
-    CHook::WriteMemory(g_libGTASA + 0x70A43C, "\xE8\x0F\x1E\x32", 4);
-    CHook::WriteMemory(g_libGTASA + 0x70A458, "\xE9\x0F\x1E\x32", 4);
+    // arm64: limit evvel 60-a sabit idi (mov w9/w8, #60). Indi MOVZ w9/w8, #fps ile istenilen deyer yazilir.
+    {
+        const uint32_t imm = (uint32_t)fps << 5;
+        const uint32_t ins[3] = { 0x52800009u | imm, 0x52800008u | imm, 0x52800009u | imm };
+        const uintptr_t off[3] = { 0x70A38C, 0x70A43C, 0x70A458 };
+        for (int i = 0; i < 3; ++i)
+        {
+            char b[4] = { (char)(ins[i] & 0xFF), (char)((ins[i] >> 8) & 0xFF),
+                          (char)((ins[i] >> 16) & 0xFF), (char)((ins[i] >> 24) & 0xFF) };
+            CHook::WriteMemory(g_libGTASA + off[i], b, 4);
+        }
+    }
 #endif
 
     FLog("New fps limit = %d", fps);

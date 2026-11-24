@@ -46,7 +46,7 @@ void Chat::addInfoMessage(const std::string& format, ...)
         vsprintf(tmp_buf, format.c_str(), args);
         va_end(args);
 
-        addMessage(std::string(tmp_buf), ImColor(0x00, 0xc8, 0xc8));
+        addMessage(std::string(tmp_buf), ImColor(0xE6, 0xE6, 0xE6));
 }
 
 void Chat::addDebugMessage(const std::string& format, ...)
@@ -289,7 +289,7 @@ bool ProcessClientCommands(const std::string& input)
         if (cmd == "/radar") {   // FAR_RGB_PATCH
                 g_bHideMinimap = !g_bHideMinimap;
                 pUI->chat()->addDebugMessage(
-                    "{00FF00}[Client]: Minimap: %s",
+                    "{00FF00}Minimap: %s",
                     g_bHideMinimap ? "gizli" : "aciq"
                 );
                 return true;
@@ -298,7 +298,7 @@ bool ProcessClientCommands(const std::string& input)
         if (cmd == "/gizle") {
                 g_bHideAllUI = !g_bHideAllUI;
                 if (!g_bHideAllUI) {
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Arayuz aktiv edildi.");
+                        pUI->chat()->addDebugMessage("{00FF00}Arayuz aktiv edildi.");
                 }
                 return true;
         }
@@ -315,15 +315,15 @@ bool ProcessClientCommands(const std::string& input)
                 std::transform(a.begin(), a.end(), a.begin(), ::tolower);
                 if (a == "ters") {
                         VehControls::g_sigSwapSides = !VehControls::g_sigSwapSides;
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
+                        pUI->chat()->addDebugMessage("{00FF00}Sinyal terefleri: %s", VehControls::g_sigSwapSides ? "TERS" : "normal");
                 } else if (a == "lampa") {
                         VehControls::g_sigLamp = !VehControls::g_sigLamp;
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal lampa parildamasi: %s", VehControls::g_sigLamp ? "aciq" : "bagli");
+                        pUI->chat()->addDebugMessage("{00FF00}Sinyal lampa parildamasi: %s", VehControls::g_sigLamp ? "aciq" : "bagli");
                 } else if (a == "korona") {
                         VehControls::g_sigCorona = !VehControls::g_sigCorona;
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
+                        pUI->chat()->addDebugMessage("{00FF00}Sinyal koronasi: %s", VehControls::g_sigCorona ? "aciq" : "bagli");
                 } else {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyalayar [ters|korona|lampa]");
+                        pUI->chat()->addDebugMessage("{FF0000}Istifade: /sinyalayar [ters|korona|lampa]");
                 }
                 return true;
         }
@@ -332,7 +332,7 @@ bool ProcessClientCommands(const std::string& input)
         {
                 CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        pUI->chat()->addDebugMessage("{FF0000}Xeta: Avtomobilde deyilsiniz!");
                         return true;
                 }
 
@@ -343,7 +343,7 @@ bool ProcessClientCommands(const std::string& input)
                         if (vehID != INVALID_VEHICLE_ID) pVeh = pPool->GetAt(vehID);
                 }
                 if (!pVeh || !pVeh->m_pVehicle) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        pUI->chat()->addDebugMessage("{FF0000}Avtomobil tapilmadi!");
                         return true;
                 }
 
@@ -358,12 +358,12 @@ bool ProcessClientCommands(const std::string& input)
                 else if (arg == "off" || arg == "0")       mode = VEH_SIGNAL_OFF;
 
                 if (mode < 0) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /sinyal [sol|sag|avariya|off]");
+                        pUI->chat()->addDebugMessage("{FF0000}Istifade: /sinyal [sol|sag|avariya|off]");
                         return true;
                 }
 
                 VehControls::SetSignal(pVeh->m_pVehicle, (uint8_t)mode);
-                pUI->chat()->addDebugMessage("{00FF00}[Client]: Sinyal: %s", arg.c_str());
+                pUI->chat()->addDebugMessage("{00FF00}Sinyal: %s", arg.c_str());
                 return true;
         }
 
@@ -374,7 +374,7 @@ bool ProcessClientCommands(const std::string& input)
 
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
                         pUI->chat()->addDebugMessage(
-                            "{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!"
+                            "{FF0000}Xeta: Avtomobilde deyilsiniz!"
                         );
                         return true;
                 }
@@ -399,7 +399,7 @@ bool ProcessClientCommands(const std::string& input)
 
                 if (!pVeh || !pVeh->m_pVehicle) {
                         pUI->chat()->addDebugMessage(
-                            "{FF0000}[Client]: Avtomobil tapilmadi!"
+                            "{FF0000}Avtomobil tapilmadi!"
                         );
                         return true;
                 }
@@ -416,7 +416,7 @@ bool ProcessClientCommands(const std::string& input)
                         CCoronas::ClearHeadlightRGB(pVeh->m_pVehicle);
 
                         pUI->chat()->addDebugMessage(
-                            "{00FF00}[Client]: Far rengi standarta qaytarildi."
+                            "{00FF00}Far rengi standarta qaytarildi."
                         );
 
                         return true;
@@ -448,7 +448,7 @@ bool ProcessClientCommands(const std::string& input)
                     fr > 255 || fg > 255 || fb > 255) {
 
                         pUI->chat()->addDebugMessage(
-                            "{FF0000}[Client]: Istifade: "
+                            "{FF0000}Istifade: "
                             "/far R G B (0-255) ve ya "
                             "/far #RRGGBB ve ya /far off"
                         );
@@ -464,7 +464,7 @@ bool ProcessClientCommands(const std::string& input)
                 );
 
                 pUI->chat()->addDebugMessage(
-                    "{00FF00}[Client]: Far rengi: #%02X%02X%02X",
+                    "{00FF00}Far rengi: #%02X%02X%02X",
                     fr, fg, fb
                 );
 
@@ -475,7 +475,7 @@ bool ProcessClientCommands(const std::string& input)
         {
                 CPlayerPed* pLocalPlayer = pGame ? pGame->FindPlayerPed() : nullptr;
                 if (!pLocalPlayer || !pLocalPlayer->IsInVehicle()) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Xeta: Avtomobilde deyilsiniz!");
+                        pUI->chat()->addDebugMessage("{FF0000}Xeta: Avtomobilde deyilsiniz!");
                         return true;
                 }
 
@@ -489,7 +489,7 @@ bool ProcessClientCommands(const std::string& input)
                 }
 
                 if (!pVeh) {
-                        pUI->chat()->addDebugMessage("{FF0000}[Client]: Avtomobil tapilmadi!");
+                        pUI->chat()->addDebugMessage("{FF0000}Avtomobil tapilmadi!");
                         return true;
                 }
 
@@ -498,35 +498,35 @@ bool ProcessClientCommands(const std::string& input)
 
                 if (cmd == "/far") {
                         if (!(ss >> intVal)) {
-                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /far [0-15]");
+                                pUI->chat()->addDebugMessage("{FF0000}Istifade: /far [0-15]");
                                 return true;
                         }
                         pVeh->SetHeadlightColor((uint8_t)intVal);
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Far rengi deyisdirildi: %d", intVal);
+                        pUI->chat()->addDebugMessage("{00FF00}Far rengi deyisdirildi: %d", intVal);
                 }
                 else if (cmd == "/suret") {
                         if (!(ss >> val)) {
-                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /suret [maks_suret]");
+                                pUI->chat()->addDebugMessage("{FF0000}Istifade: /suret [maks_suret]");
                                 return true;
                         }
                         pVeh->SetMaxSpeed(val);
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Maksimum suret deyisdirildi: %.1f", val);
+                        pUI->chat()->addDebugMessage("{00FF00}Maksimum suret deyisdirildi: %.1f", val);
                 }
                 else if (cmd == "/manevr") {
                         if (!(ss >> val)) {
-                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /manevr [donme_bucagi]");
+                                pUI->chat()->addDebugMessage("{FF0000}Istifade: /manevr [donme_bucagi]");
                                 return true;
                         }
                         pVeh->SetSteeringAngle(val);
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Manevr bucagi deyisdirildi: %.1f", val);
+                        pUI->chat()->addDebugMessage("{00FF00}Manevr bucagi deyisdirildi: %.1f", val);
                 }
                 else if (cmd == "/tormoz") {
                         if (!(ss >> val)) {
-                                pUI->chat()->addDebugMessage("{FF0000}[Client]: Istifade: /tormoz [guc]");
+                                pUI->chat()->addDebugMessage("{FF0000}Istifade: /tormoz [guc]");
                                 return true;
                         }
                         pVeh->SetBrakePower(val);
-                        pUI->chat()->addDebugMessage("{00FF00}[Client]: Tormoz gucu deyisdirildi: %.1f", val);
+                        pUI->chat()->addDebugMessage("{00FF00}Tormoz gucu deyisdirildi: %.1f", val);
                 }
 
                 return true;

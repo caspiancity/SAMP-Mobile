@@ -37,12 +37,22 @@ void ImGuiRenderer::drawConvexPolyFilled(ImVec2* points, int num_points, const I
 	m_drawList->AddConvexPolyFilled(points, num_points, color);
 }
 
+int g_uiOutlineMode = 1;   // settings.ini [gui] OutlineMode: 0=1 golge, 1=2 golge, 2=tam kontur
 void ImGuiRenderer::drawText(const ImVec2& pos, const ImColor& color,
 	const char* begin, const char* end, bool outline, float font_size)
 {
 	float sz_font = font_size == 0.0f ? m_font->FontSize : font_size;
 
-	if (outline)
+	if (outline && g_uiOutlineMode < 2)
+	{
+		// qenaet rejimi: tam kontur 4 AddText idi; indi 1-2 (diagonal) golge
+		const float o_ = UISettings::outlineSize();
+		const ImColor sh_(0.0f, 0.0f, 0.0f);
+		m_drawList->AddText(m_font, sz_font, ImVec2(pos.x + o_, pos.y + o_), sh_, begin, end);
+		if (g_uiOutlineMode == 1)
+			m_drawList->AddText(m_font, sz_font, ImVec2(pos.x - o_, pos.y - o_), sh_, begin, end);
+	}
+	if (outline && g_uiOutlineMode >= 2)
 	{
 		ImVec2 outlined = pos;
 		float outlineSize = UISettings::outlineSize();

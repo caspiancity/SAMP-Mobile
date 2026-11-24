@@ -189,7 +189,7 @@ CSettings::CSettings()
 	m_Settings.fChatPosY = reader.GetReal("gui", "ChatPosY", 25.0f);
 	m_Settings.fChatSizeX = reader.GetReal("gui", "ChatSizeX", 1150.0f);
 	m_Settings.fChatSizeY = reader.GetReal("gui", "ChatSizeY", 220.0f);
-	m_Settings.iChatMaxMessages = reader.GetInteger("gui", "ChatMaxMessages", 6);
+	m_Settings.iChatMaxMessages = reader.GetInteger("gui", "ChatMaxMessages", 7);
 
 	// spawnscreen
 	m_Settings.fSpawnScreenPosX = reader.GetReal("gui", "SpawnScreenPosX", 660.0f);
@@ -230,6 +230,11 @@ CSettings::CSettings()
 	m_Settings.iRadarRect = reader.GetBoolean("gui", "radarrect", false);
 	m_Settings.iSkyBox = reader.GetBoolean("gui", "skybox", false);
 	m_Settings.iSnow = reader.GetBoolean("gui", "snow", false);
+	{ extern int g_uiOutlineMode; g_uiOutlineMode = reader.GetInteger("gui", "OutlineMode", 1); }
+	{ extern int g_perfAuto, g_perfTarget, g_perfMinFar;
+	  g_perfAuto = reader.GetBoolean("gui", "PerfAuto", true) ? 1 : 0;
+	  g_perfTarget = reader.GetInteger("gui", "PerfTargetFPS", 0);
+	  g_perfMinFar = reader.GetInteger("gui", "PerfMinFarClip", 450); }
 	FLog("Settings loaded.");
 
 	{   // CRASHLOG
